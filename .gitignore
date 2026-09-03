@@ -1,0 +1,19 @@
+# 依赖与构建产物
+node_modules/
+dist/
+*.local
+
+# 环境与密钥（禁止入库）
+.env
+.env.*
+.dev.vars
+!.env.example
+
+# 备份/回收
+backup/
+_bak/
+*.bak
+
+# 系统
+.DS_Store
+Thumbs.db

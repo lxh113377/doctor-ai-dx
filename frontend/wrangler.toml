@@ -1,0 +1,10 @@
+# ============================================================
+# 医 · AI 辅助诊断 —— Cloudflare Pages 配置（对齐超市web部署模式）
+# 部署：node node_modules/wrangler/bin/wrangler.js pages deploy dist --project-name=doctor-ai-dx
+# 密钥：DEEPSEEK_API_KEY 走 pages secret（勿写入 [vars]，防明文入库）
+# ============================================================
+name = "doctor-ai-dx"
+compatibility_date = "2024-09-23"
+pages_build_output_dir = "dist"   # ⚠️ 必填：缺它 wrangler 4 会 ignoring config（坑1）
+
+# 无 D1（知识库内嵌，无持久化）——需要时按超市web模式追加 [[d1_databases]]

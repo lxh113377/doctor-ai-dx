@@ -1,0 +1,56 @@
+name: CI - build & deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}   # 手动触发完整 CI（含部署）
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install
+        run: npm ci --no-audit --no-fund
+      - name: Build (production)
+        run: npm run build
+      - name: Upload dist
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: frontend/dist
+          if-no-files-found: error
+
+  deploy:
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    # 对齐超市web：job 级禁用 secrets 判断（会导致 workflow 解析失败），secrets 放 step 级
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+        if: env.HAS_TOKEN == 'true'
+      - name: Deploy to Cloudflare Pages
+        env:
+          HAS_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN != '' }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: 04b1466b2606b678a332fe6f26aa87ec  # 坑#26：必须显式账户ID（wrangler 无法自动获取）
+        run: |
+          if [ "$HAS_TOKEN" = "true" ]; then
+            npx wrangler pages deploy dist --project-name=doctor-ai-dx --commit-dirty=true
+          else
+            echo "⏭️  未配置 CLOUDFLARE_API_TOKEN，跳过部署（配置后自动生效）"
+          fi
