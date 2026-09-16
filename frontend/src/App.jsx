@@ -122,7 +122,7 @@ export default function App() {
         <div className="brand">
           <span className="brand-mark">听诊</span>
           <div className="brand-txt">
-            <h1>医 · AI 辅助诊断</h1>
+            <h1>医 · 基层AI辅助诊断</h1>
             <p>基层全科智能助手</p>
           </div>
         </div>

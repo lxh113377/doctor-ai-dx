@@ -26,7 +26,7 @@ export default function Report({ report, patient }) {
 
       <div className="report-sheet">
         <div className="report-head">
-          <h3>医 · AI 辅助诊断 — 电子病历报告</h3>
+          <h3>医 · 基层AI辅助诊断系统 — 电子病历报告</h3>
           <span>生成时间 {dateStr} ｜ {patient?.name} · {patient?.age}岁 {patient?.gender}</span>
         </div>
         {SOAP_KEYS.map(([k, label]) => (
