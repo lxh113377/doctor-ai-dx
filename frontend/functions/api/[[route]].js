@@ -39,11 +39,11 @@ export async function onRequest(context) {
     }
     if (seg.length === 3 && seg[0] === "api" && seg[1] === "workup" && method === "POST") {
       const body = await readBody(context)
-      return json(await buildWorkup(seg[2], body.history || [], env))
+      return json(await buildWorkup(seg[2], body.history || [], env, body.dx || null))
     }
     if (seg.length === 3 && seg[0] === "api" && seg[1] === "report" && method === "POST") {
       const body = await readBody(context)
-      return json(await buildReport(seg[2], body.history || [], env))
+      return json(await buildReport(seg[2], body.history || [], env, body.dx || null))
     }
     if ((seg.length === 1 && seg[0] === "health") || (seg.length === 2 && seg[0] === "api" && seg[1] === "health")) {
       return json({ status: "ok", llm_mode: keyPresent(env) ? "live" : "mock-fallback" })

@@ -27,18 +27,18 @@ export function getDiagnosis(caseId, history) {
   })
 }
 
-export function getWorkup(caseId, history) {
+export function getWorkup(caseId, history, dx) {
   return req('/api/workup/' + caseId, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ case_id: caseId, history }),
+    body: JSON.stringify({ case_id: caseId, history, dx: dx || null }),
   })
 }
 
-export function getReport(caseId, history) {
+export function getReport(caseId, history, dx) {
   return req('/api/report/' + caseId, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ case_id: caseId, history }),
+    body: JSON.stringify({ case_id: caseId, history, dx: dx || null }),
   })
 }

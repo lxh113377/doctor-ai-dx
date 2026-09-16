@@ -76,12 +76,12 @@ export default function App() {
 
   useEffect(() => {
     if (!patient || step !== 3 || workup) return
-    api.getWorkup(patient.id, intakeHistory()).then(setWorkup).then(unlock(3)).catch(console.error)
+    api.getWorkup(patient.id, intakeHistory(), dx).then(setWorkup).then(unlock(3)).catch(console.error)
   }, [patient, step])                            // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!patient || step !== 4 || report) return
-    api.getReport(patient.id, intakeHistory()).then(setReport).then(unlock(4)).catch(console.error)
+    api.getReport(patient.id, intakeHistory(), dx).then(setReport).then(unlock(4)).catch(console.error)
   }, [patient, step])                            // eslint-disable-line react-hooks/exhaustive-deps
 
   /* 显式"下一步"导航：仅解锁+切换，数据加载交给对应 useEffect 兜底，避免双 POST */

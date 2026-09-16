@@ -22,6 +22,7 @@ class IntakeAskRequest(BaseModel):
     case_id: str
     answer: str = ""
     history: list[dict] = []   # [{role: "user"|"assistant", content: ...}] 由前端随请求携带（stateless）
+    dx: dict | None = None     # 前端已生成的诊断结果（workup/report 复用，省一次 LLM 串行调用）
 
 
 class IntakeAskResp(BaseModel):

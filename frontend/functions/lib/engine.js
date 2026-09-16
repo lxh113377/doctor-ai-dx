@@ -219,9 +219,22 @@ ${evBlock}
 }
 
 // ---------- 检查建议 ----------
-export async function buildWorkup(caseId, history = [], env = {}) {
+// 复用前端已生成的诊断结果（省一次 LLM 串行调用，降 P95 时延）；
+// 但红旗一律以后端规则重算为准（不信任前端），证据 id 重新校验，缺失/非法则回退完整生成。
+function reuseOrBuild(state, history, env, providedDx) {
+  if (providedDx && Array.isArray(providedDx.primary) && providedDx.primary.length >= 1) {
+    const dx = structuredClone(providedDx)
+    dx.flags = state.red_flags
+    if (!Array.isArray(dx.evidence) || dx.evidence.length === 0) dx.evidence = search(state.transcript, 5)
+    if (!dx.trace) dx.trace = { evidence_ids: dx.evidence.map((e) => e.id), rounds: state.rounds, symptoms: state.symptoms }
+    return dx
+  }
+  return buildDiagnosis(state.case_id, history, env)
+}
+
+export async function buildWorkup(caseId, history = [], env = {}, providedDx = null) {
   const state = extractState(caseId, history)
-  const dx = await buildDiagnosis(caseId, history, env)
+  const dx = await reuseOrBuild(state, history, env, providedDx)
   const evidence = search(state.transcript + " " + (dx.primary[0]?.name || ""), 5)
   let out = null, mode = "rule-fallback", fallbackReason = ""
   const live = await llmWorkup(state, dx, evidence, env)
@@ -274,9 +287,9 @@ async function llmWorkup(state, dx, evidence, env) {
 }
 
 // ---------- SOAP 病历报告 ----------
-export async function buildReport(caseId, history = [], env = {}) {
+export async function buildReport(caseId, history = [], env = {}, providedDx = null) {
   const state = extractState(caseId, history)
-  const dx = await buildDiagnosis(caseId, history, env)
+  const dx = await reuseOrBuild(state, history, env, providedDx)
   const c = caseOf(caseId)
   const vitals = c.vitals.map((v) => `${v.key} ${v.value}`).join("，")
   let out = null, mode = "rule-fallback", fallbackReason = ""

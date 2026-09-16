@@ -234,9 +234,23 @@ def _llm_diagnosis(state: dict, evidence: list[dict]) -> dict | None:
 
 
 # ---------- 检查建议 ----------
-def build_workup(case_id: str, history: list[dict] | None = None) -> dict:
+def _reuse_or_build(state: dict, history, provided_dx: dict | None) -> dict:
+    """复用前端已生成的诊断结果（省一次 LLM 串行调用）；红旗一律以后端规则重算为准。"""
+    if provided_dx and isinstance(provided_dx.get("primary"), list) and provided_dx["primary"]:
+        dx = dict(provided_dx)
+        dx["flags"] = state["red_flags"]
+        if not dx.get("evidence"):
+            dx["evidence"] = rag.search(state["transcript"], 5)
+        if not dx.get("trace"):
+            dx["trace"] = {"evidence_ids": [e["id"] for e in dx["evidence"]],
+                           "rounds": state["rounds"], "symptoms": state["symptoms"]}
+        return dx
+    return build_diagnosis(state["case_id"], history)
+
+
+def build_workup(case_id: str, history: list[dict] | None = None, provided_dx: dict | None = None) -> dict:
     state = extract_state(case_id, history)
-    dx = build_diagnosis(case_id, history)
+    dx = _reuse_or_build(state, history, provided_dx)
     evidence = rag.search(state["transcript"] + " " + (dx["primary"][0]["name"] if dx["primary"] else ""), 5)
     live = _llm_workup(state, dx, evidence)
     if live:
@@ -296,9 +310,9 @@ def _llm_workup(state: dict, dx: dict, evidence: list[dict]) -> dict | None:
 
 
 # ---------- SOAP 病历报告 ----------
-def build_report(case_id: str, history: list[dict] | None = None) -> dict:
+def build_report(case_id: str, history: list[dict] | None = None, provided_dx: dict | None = None) -> dict:
     state = extract_state(case_id, history)
-    dx = build_diagnosis(case_id, history)
+    dx = _reuse_or_build(state, history, provided_dx)
     c = _case(case_id)
     vitals = "，".join(f"{v['key']} {v['value']}" for v in c["vitals"])
     live = _llm_report(state, dx, vitals)

@@ -33,7 +33,7 @@ def post_dx(case_id: str, req: IntakeAskRequest):
 @router.post("/workup/{case_id}")
 def post_workup(case_id: str, req: IntakeAskRequest):
     try:
-        return {"code": 0, "data": engine.build_workup(case_id, req.history)}
+        return {"code": 0, "data": engine.build_workup(case_id, req.history, req.dx)}
     except engine.UnknownCase as e:
         raise HTTPException(status_code=404, detail=str(e))
 
@@ -41,6 +41,6 @@ def post_workup(case_id: str, req: IntakeAskRequest):
 @router.post("/report/{case_id}")
 def post_report(case_id: str, req: IntakeAskRequest):
     try:
-        return {"code": 0, "data": engine.build_report(case_id, req.history)}
+        return {"code": 0, "data": engine.build_report(case_id, req.history, req.dx)}
     except engine.UnknownCase as e:
         raise HTTPException(status_code=404, detail=str(e))
