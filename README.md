@@ -39,16 +39,18 @@ cd ../frontend && npm install && npm run dev                 # :5173，/api 代�
 - 后端 Functions 端点：`/api/cases` `/api/intake/ask` `/api/dx/:id` `/api/workup/:id` `/api/report/:id` `/api/health`
 - 密钥：`DEEPSEEK_API_KEY` 走 **Pages secret**（`printf '<key>' | wrangler pages secret put DEEPSEEK_API_KEY --project-name=doctor-ai-dx`），不入库
 - 部署命令（cwd = `frontend/`）：
-  - `node node_modules/wrangler/bin/wrangler.js pages deploy dist --project-name=doctor-ai-dx --commit-dirty=true`
-  - ⚠️ wrangler4 需先 `pages project create doctor-ai-dx`（不会自动创建）
-- 线上验证：`python ../work/e2e_online.py`（E2E 5/5 ALL PASS，2026-09-04）
+  - `node node_modules/wrangler/bin/wrangler.js pages deploy dist --project-name=doctor-ai-dx --branch=main`
+  - ⚠️ **必须带 `--branch=main`**：production 分支是 main，不带则只更新 preview 别名，裸域名不变
+  - ⚠️ 代理故障报 `fetch failed` 时：清空 HTTPS_PROXY/HTTP_PROXY 并设 `NO_PROXY=*` 直连（api.cloudflare.com 可直连）
+- 线上验证：`node ../iCAN大学生创新创业大赛/03-评测/live_eval.mjs`（25例结构/引用/红旗 + P95 时延，2026-09-16 全绿）
 
-**离线/本地演示**：`start-demo.ps1`（后端 8000 + 前端 5173）。
+**离线/本地演示**：`start-demo.ps1`（wrangler pages dev，静态+Functions 一体化，:8788，与线上零漂移）。
 
 ## 演示脚本与参赛素材
 
-- `pitch-script-3min.md` —— 3 分钟路演逐字稿（胸痛红旗全流程）
-- `business-plan-v0.1.md` —— 商业计划书初稿（九章，待补项目名/组别/团队/财务）
+- `pitch-script-3min.md` —— 3 分钟路演逐字稿（胸痛红旗全流程，口径通用）
+- **iCAN 参赛材料（主）** —— 见 `../iCAN大学生创新创业大赛/`：应用方案 PDF（20页·官方九类）、来源台账、评审差距矩阵、25例评测、五步截图、视频分镜脚本；冻结交付副本在 `../交付物/iCAN-参赛交付物/`
+- `business-plan-v0.1.md` —— 商业计划书初稿（**中国国际大学生创新大赛口径，非 iCAN 参赛材料**，留作另一赛道历史素材）
 - 项目叙事与答辩数据卡 —— 见 `../memory/08-ac-obs.md`
 
 ## 健康自检
