@@ -42,15 +42,14 @@ cd ../frontend && npm install && npm run dev                 # :5173，/api 代�
   - `node node_modules/wrangler/bin/wrangler.js pages deploy dist --project-name=doctor-ai-dx --branch=main`
   - ⚠️ **必须带 `--branch=main`**：production 分支是 main，不带则只更新 preview 别名，裸域名不变
   - ⚠️ 代理故障报 `fetch failed` 时：清空 HTTPS_PROXY/HTTP_PROXY 并设 `NO_PROXY=*` 直连（api.cloudflare.com 可直连）
-- 线上验证：`node ../iCAN大学生创新创业大赛/03-评测/live_eval.mjs`（25例结构/引用/红旗 + P95 时延，2026-09-16 全绿）
+- 线上验证：`node ../iCAN大学生创新创业大赛/03-评测/live_eval.mjs`（31例结构/引用/红旗 + P95 时延，2026-09-16 全绿）
 
 **离线/本地演示**：`start-demo.ps1`（wrangler pages dev，静态+Functions 一体化，:8788，与线上零漂移）。
 
 ## 演示脚本与参赛素材
 
-- `pitch-script-3min.md` —— 3 分钟路演逐字稿（胸痛红旗全流程，口径通用）
-- **iCAN 参赛材料（主）** —— 见 `../iCAN大学生创新创业大赛/`：应用方案 PDF（20页·官方九类）、来源台账、评审差距矩阵、25例评测、五步截图、视频分镜脚本；冻结交付副本在 `../交付物/iCAN-参赛交付物/`
-- `business-plan-v0.1.md` —— 商业计划书初稿（**中国国际大学生创新大赛口径，非 iCAN 参赛材料**，留作另一赛道历史素材）
+- **iCAN 参赛材料（主）** —— 见 `../iCAN大学生创新创业大赛/`：应用方案 PDF（20页·官方九类）、来源台账、评审差距矩阵、31例评测、五步截图、视频分镜脚本；冻结交付副本在 `../交付物/iCAN-参赛交付物/`
+- `archive/` —— 旧商业计划书与旧 3 分钟路演稿，**均为非 iCAN 提交材料**；保留仅作历史记录，不用于答辩或评审
 - 项目叙事与答辩数据卡 —— 见 `../memory/08-ac-obs.md`
 
 ## 健康自检
@@ -82,7 +81,7 @@ AI 辅助参考 · 医生终审 · 危险信号规则层强制拦截 · RAG 引�
 
 - 本仓库公开可查阅，用于 **2026年iCAN大学生创新创业大赛 AI 应用创新挑战赛（软件赛道·高校组）** 参赛评审与学术交流；授权声明见 `LICENSE`（默认保留全部权利）。
 - 线上演示：https://doctor-ai-dx.pages.dev （评委浏览器可直接访问）
-- 评测可复现：`../iCAN大学生创新创业大赛/03-评测/`（25 例合成病例 + 离线/线上评测脚本与原始输出）
+- 评测可复现：`../iCAN大学生创新创业大赛/03-评测/`（31 例合成病例 + 离线/线上评测脚本与原始输出）
 - 模型依赖：DeepSeek（OpenAI 兼容 API，Key 自备）；无 Key 或超时 8s 自动进入**规则引擎降级模式**并在界面明确标注，功能完整可演示。
 - 演示病例均为脱敏合成数据，不代表真实患者或真实调研样本。
 
