@@ -1,3 +1,4 @@
+import ModeBadge from './ModeBadge.jsx'
 const CLASS = { high: 'high', mid: 'mid', low: 'low' }
 const SvgRef = () => (
   <svg width={11} height={11} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.4}
@@ -7,7 +8,7 @@ const SvgRef = () => (
   </svg>
 )
 
-export default function Dx({ dx, patient, onRestart }) {
+export default function Dx({ dx, patient, onRestart, onNext }) {
   if (!dx) return <section className="page"><div className="card loading">正在生成鉴别诊断与依据…</div></section>
 
   return (
@@ -17,13 +18,18 @@ export default function Dx({ dx, patient, onRestart }) {
           <h2>辅助诊断</h2>
           <p className="page-sub">基于问诊信息的鉴别诊断与依据，附来源引用 · 患者：{patient?.name}，主诉：{patient?.chief}</p>
         </div>
-        <button className="btn ghost" type="button" onClick={onRestart}>重新问诊</button>
+        <div className="head-actions">
+          <button className="btn ghost" type="button" onClick={onRestart}>重新问诊</button>
+          <button className="btn primary" type="button" onClick={onNext}>下一步：检查建议 ›</button>
+        </div>
       </div>
+
+      <ModeBadge mode={dx.mode} reason={dx.fallback_reason} />
 
       {dx.flags.length > 0 && (
         <div className="banner danger">
           <div>
-            <h4>危险信号 · 请优先处理</h4>
+            <h4>危险信号 · 规则引擎独立检出（不可被模型覆盖）</h4>
             <ul>{dx.flags.map((f, i) => <li key={i}>{f}</li>)}</ul>
           </div>
         </div>

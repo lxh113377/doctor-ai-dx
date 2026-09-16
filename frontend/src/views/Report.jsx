@@ -1,3 +1,4 @@
+import ModeBadge from './ModeBadge.jsx'
 const SOAP_KEYS = [
   ['subjective', 'S 主观资料（主诉与现病史）'],
   ['objective', 'O 客观检查'],
@@ -20,6 +21,8 @@ export default function Report({ report, patient }) {
         </div>
         <button className="btn primary" type="button" onClick={() => window.print()}>打印 / 导出 PDF</button>
       </div>
+
+      <ModeBadge mode={report.mode} reason={report.fallback_reason} />
 
       <div className="report-sheet">
         <div className="report-head">

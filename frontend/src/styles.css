@@ -20,6 +20,16 @@ b{font-weight:600}
 
 .app{display:flex;flex-direction:column;min-height:100vh}
 
+/* AI 运行模式标识 */
+.mode-badge{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12px;padding:8px 14px;border-radius:var(--r-md);margin-bottom:14px;border:1px solid var(--border)}
+.mode-badge.live{background:var(--primary-soft);border-color:#B8E4DE;color:#0F5E57}
+.mode-badge.fallback{background:var(--warning-soft);border-color:#FDE68A;color:#92400E}
+.mode-dot{width:8px;height:8px;border-radius:50%;background:currentColor;flex:none}
+.mode-label{font-weight:600}
+.mode-reason{color:inherit;opacity:.85}
+.mode-note{margin-left:auto;color:var(--text-faint);font-size:11px}
+.head-actions{display:flex;gap:8px;flex-wrap:wrap}
+
 /* 顶栏 */
 .topbar{background:rgba(255,255,255,.86);backdrop-filter:blur(8px);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:30;display:flex;align-items:center;justify-content:space-between;padding:12px 20px;max-width:1080px;width:100%;margin:0 auto;gap:16px}
 .brand{display:flex;align-items:center;gap:12px}

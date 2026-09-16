@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { Fragment, useEffect, useState } from 'react'
 import * as api from './api.js'
 import CaseSelect from './views/CaseSelect.jsx'
 import Intake from './views/Intake.jsx'
@@ -39,29 +39,33 @@ export default function App() {
     setMsgs([{ id: Date.now(), role: 'ai', text: c.intro }])
   }
 
-  /* 向后端推进一轮问诊 */
+  /* 向后端推进一轮问诊（携带完整 history，后端抽取临床状态） */
   const askIntake = async (content) => {
     if (!patient || busy) return
     setBusy(true)
     setMsgs((m) => [...m, { id: Date.now(), role: 'user', text: content }])
     setChips([])
     try {
-      const hist = [...msgs.map((m) => ({ role: m.role, content: m.text })), { role: 'user', content }]
-      const data = await api.askIntake(patient.id, content, hist)
+      const hist = [...msgs.map((m) => ({ role: m.role === 'ai' ? 'assistant' : 'user', content: m.text })), { role: 'user', content }]
+      const data = await api.askIntake(patient.id, hist)
       setMsgs((m) => [...m, { id: Date.now(), role: 'ai', text: data.reply }])
       setChips(data.chips || [])
       if (data.done) {
         await new Promise((r) => setTimeout(r, 500))
-        await loadDx()
+        await loadDx(hist)
       }
     } finally {
       setBusy(false)
     }
   }
 
-  const loadDx = async () => {
-    const summary = msgs.map((m) => (m.role === 'user' ? m.text : '')).filter(Boolean).join('；')
-    const d = await api.getDiagnosis(patient.id, summary)
+  const intakeHistory = () => msgs
+    .filter((m) => m.role === 'user')
+    .map((m) => ({ role: 'user', content: m.text }))
+
+  const loadDx = async (hist) => {
+    const h = hist || intakeHistory()
+    const d = await api.getDiagnosis(patient.id, h)
     setDx(d); unlock(2); setStep(2)
   }
 
@@ -72,20 +76,24 @@ export default function App() {
 
   useEffect(() => {
     if (!patient || step !== 3 || workup) return
-    api.getWorkup(patient.id).then(setWorkup).then(unlock(3)).catch(console.error)
+    api.getWorkup(patient.id, intakeHistory()).then(setWorkup).then(unlock(3)).catch(console.error)
   }, [patient, step])                            // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!patient || step !== 4 || report) return
-    api.getReport(patient.id).then(setReport).then(unlock(4)).catch(console.error)
+    api.getReport(patient.id, intakeHistory()).then(setReport).then(unlock(4)).catch(console.error)
   }, [patient, step])                            // eslint-disable-line react-hooks/exhaustive-deps
+
+  /* 显式"下一步"导航：仅解锁+切换，数据加载交给对应 useEffect 兜底，避免双 POST */
+  const goWorkup = () => { unlock(3); setStep(3) }
+  const goReport = () => { unlock(4); setStep(4) }
 
   const renderView = () => {
     switch (step) {
       case 0: return <CaseSelect cases={cases} onPick={startCase} />
       case 1: return <Intake patient={patient} msgs={msgs} chips={chips} busy={busy} onAsk={askIntake} onRestart={() => startCase(patient)} />
-      case 2: return <Dx dx={dx} patient={patient} onRestart={() => startCase(patient)} />
-      case 3: return <Workup workup={workup} />
+      case 2: return <Dx dx={dx} patient={patient} onRestart={() => startCase(patient)} onNext={goWorkup} />
+      case 3: return <Workup workup={workup} onNext={goReport} />
       case 4: return <Report report={report} patient={patient} />
       default: return null
     }
@@ -110,7 +118,7 @@ export default function App() {
 
       <nav className="steps">
         {STEPS.map((s, i) => (
-          <React.Fragment key={s.key}>
+          <Fragment key={s.key}>
             {i > 0 && <span className="step-arrow">›</span>}
             <button
               type="button"
@@ -121,7 +129,7 @@ export default function App() {
               <span className="step-dot">{i + 1}</span>
               <span className="step-name">{s.label}</span>
             </button>
-          </React.Fragment>
+          </Fragment>
         ))}
       </nav>
 
