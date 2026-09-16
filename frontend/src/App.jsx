@@ -25,6 +25,16 @@ export default function App() {
   const [dx, setDx] = useState(null)
   const [workup, setWorkup] = useState(null)
   const [report, setReport] = useState(null)
+  const [err, setErr] = useState(null)              // 错误态：只展示医生可理解文案
+
+  const retry = () => {                            // 重试当前步骤的数据加载
+    const e = err
+    setErr(null)
+    if (!e) return
+    if (e.step === 2) loadDx().catch((x) => setErr({ step: 2, msg: x.message }))
+    else if (e.step === 3) api.getWorkup(patient.id, intakeHistory(), dx).then(setWorkup).catch((x) => setErr({ step: 3, msg: x.message }))
+    else if (e.step === 4) api.getReport(patient.id, intakeHistory(), dx).then(setReport).catch((x) => setErr({ step: 4, msg: x.message }))
+  }
 
   useEffect(() => {
     api.getCases().then(setCases).catch((e) => console.error(e))
@@ -59,6 +69,8 @@ export default function App() {
         await new Promise((r) => setTimeout(r, 500))
         await loadDx(hist)
       }
+    } catch (e) {
+      setMsgs((m) => [...m, { id: Date.now(), role: 'ai', text: '问诊请求未能完成：' + (e.message || '请重试') }])
     } finally {
       setBusy(false)
     }
@@ -71,22 +83,22 @@ export default function App() {
   const loadDx = async (hist) => {
     const h = hist || intakeHistory()
     const d = await api.getDiagnosis(patient.id, h)
-    setDx(d); unlock(2); setStep(2)
+    setDx(d); setErr(null); unlock(2); setStep(2)
   }
 
   useEffect(() => {
     if (!patient || step !== 2 || dx) return
-    loadDx().catch(console.error)                // 直接跳到诊断页时兜底加载
+    loadDx().catch((e) => setErr({ step: 2, msg: e.message }))   // 直接跳到诊断页时兜底加载
   }, [patient, step])                            // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!patient || step !== 3 || workup) return
-    api.getWorkup(patient.id, intakeHistory(), dx).then(setWorkup).then(unlock(3)).catch(console.error)
+    api.getWorkup(patient.id, intakeHistory(), dx).then(setWorkup).then(unlock(3)).catch((e) => setErr({ step: 3, msg: e.message }))
   }, [patient, step])                            // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!patient || step !== 4 || report) return
-    api.getReport(patient.id, intakeHistory(), dx).then(setReport).then(unlock(4)).catch(console.error)
+    api.getReport(patient.id, intakeHistory(), dx).then(setReport).then(unlock(4)).catch((e) => setErr({ step: 4, msg: e.message }))
   }, [patient, step])                            // eslint-disable-line react-hooks/exhaustive-deps
 
   /* 显式"下一步"导航：仅解锁+切换，数据加载交给对应 useEffect 兜底，避免双 POST */
@@ -137,6 +149,15 @@ export default function App() {
           </Fragment>
         ))}
       </nav>
+
+      {err && (
+        <div className="banner danger" style={{ maxWidth: 1080, width: '100%', margin: '10px auto 0', padding: '0 20px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+            <span>{err.msg || '请求未能完成，请重试或重新问诊。'}</span>
+            <button className="btn ghost" type="button" onClick={retry}>重试</button>
+          </div>
+        </div>
+      )}
 
       <main className="view">{renderView()}</main>
 

@@ -2,8 +2,8 @@
 const BASE = ''
 
 async function req(path, opts) {
-  const res = await fetch(BASE + path, opts)
-  if (!res.ok) throw new Error(`API ${res.status}: ${path}`)
+  const res = await fetch(BASE + path, { ...opts, signal: AbortSignal.timeout(20000) })
+  if (!res.ok) throw new Error('服务暂时不可用，请稍后重试')
   return (await res.json()).data
 }
 
