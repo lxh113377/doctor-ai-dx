@@ -37,6 +37,11 @@ export default function App() {
     setPatient(c); setMsgs([]); setChips([]); setDx(null); setWorkup(null); setReport(null)
     unlock(1); setStep(1)
     setMsgs([{ id: Date.now(), role: 'ai', text: c.intro }])
+    try {
+      const first = await api.askIntake(c.id, [])   // 进入问诊即拉取第一问+chips（AC-OBS-02）
+      setMsgs((m) => [...m, { id: Date.now(), role: 'ai', text: first.reply }])
+      setChips(first.chips || [])
+    } catch { /* 保留开场白，医生仍可手动输入主诉推进 */ }
   }
 
   /* 向后端推进一轮问诊（携带完整 history，后端抽取临床状态） */
