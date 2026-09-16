@@ -3,6 +3,16 @@ node_modules/
 dist/
 *.local
 
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# wrangler 本地状态
+.wrangler/
+.dev.vars.*
+
 # 环境与密钥（禁止入库）
 .env
 .env.*
