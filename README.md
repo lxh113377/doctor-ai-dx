@@ -1,39 +1,37 @@
-# 医 · AI 医生辅助诊断系统 — MVP v0.2
+# 医 · 基层AI辅助诊断系统 — v0.3
 
-面向基层医生的 AI 辅助诊断网页端程序。**LLM + RAG 混合引擎 + 危险信号规则层**三重保障。
+面向基层医生的 AI 辅助诊断网页端程序。**临床状态抽取 → BM25证据检索 → LLM结构化生成 → 确定性校验 → 红旗规则兜底 → 失败安全降级**，三重保障控制幻觉。
 
-## 架构
+## 架构（双后端同源）
 
 ```
 frontend/   React 19 + Vite 6（五视图 SPA：选病例 → 问诊 → 诊断 → 检查 → 报告）
-backend/    FastAPI（问诊编排 / 规则层 / RAG 检索 / LLM 可插拔）
+  functions/  Cloudflare Pages Functions —— 线上权威后端（与前端一次部署）
+backend/    FastAPI —— 同一链路的 Python 镜像（可选本地运行，满足 FastAPI 栈要求）
 ```
 
-- `backend/app/rules.py`    危险信号规则引擎（不依赖 LLM，可解释可测试）
-- `backend/app/knowledge.py`+`rag.py`  医学知识库 RAG 轻量检索（Jaccard 相关度，可换向量库）
-- `backend/app/services/llm.py`  DeepSeek（OpenAI 兼容）接入；**未配置 Key 自动降级内置演示数据**
+- **线上 = Functions**：`https://doctor-ai-dx.pages.dev`，前端 dist + functions/ 单次部署。
+- **两端镜像**：`backend/app/{knowledge,rules,rag}.py` 与 `functions/lib/{knowledge,rules,rag}.js` 逻辑一致；`knowledge.py` 由 `../iCAN大学生创新创业大赛/03-评测/export_kb.mjs` 从 `knowledge.js` 自动生成，保证知识库数据零漂移。
+- `rules` 危险信号规则引擎（不依赖 LLM，可解释可测试，命中即强制转诊，**优先级高于模型不可覆盖**）
+- `rag` BM25 + 医学术语同义词扩展检索，输出带 `id/source/year/url/scope` 的证据
+- `engine` 确定性校验：非法 `evidence_id` 直接拒绝；无 Key / 超时 / JSON 非法 → 明确标注 `mode=rule-fallback` 降级
+- `llm` DeepSeek（OpenAI 兼容）；单次硬超时 8s
 
-## 启动
+## 启动（本地演示，二选一）
 
 ```bash
-# 0) 一键演示（推荐，现场零配置）
-powershell -ExecutionPolicy Bypass -File start-demo.ps1
-# 自动：起后端(8000) + 前端静态托管(5173) + 打开浏览器
+# 方式A（推荐·与线上零漂移）：wrangler 同时托管 dist + functions
+cd frontend && npm install && npm run build
+node node_modules/wrangler/bin/wrangler.js pages dev dist --port 8788 --local
+# 打开 http://127.0.0.1:8788 ；或直接 powershell -File start-demo.ps1
 
-# 1) 后端（默认 8000）
-cd backend
-cp .env.example .env        # 有 DeepSeek Key 则填入；无 Key 走 mock 降级
-python -m pip install -r requirements.txt
-python run.py               # 或 python -m uvicorn app.main:app --port 8000
-
-# 2) 前端（默认 5173，/api 已代理到 8000）
-cd frontend
-npm install
-npm run dev                 # 打开 http://localhost:5173
+# 方式B（FastAPI 栈）：起 Python 后端 + Vite 前端
+cd backend && cp .env.example .env   # 有 DeepSeek Key 则填入；无 Key 走 rule-fallback
+python -m pip install -r requirements.txt && python run.py   # :8000
+cd ../frontend && npm install && npm run dev                 # :5173，/api 代理到 8000
 ```
 
-> 本机构键提示：`~/.npmrc` 配了 `proxy=http://127.0.0.1:7897`——Clash 开启时 npm 直接可用；
-> 若代理未开，npm 安装会卡在 ECONNREFUSED，用 `npm install --proxy="" --https-proxy="" --noproxy="*"` 覆盖（或临时改 .npmrc）。
+> 无 DeepSeek Key 时两端均自动进入**规则引擎降级模式**并在界面明确标注，功能完整可演示（AC-OBS-07）。
 
 ## 部署上线（已上线 ✅）
 
