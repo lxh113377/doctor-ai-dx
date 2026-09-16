@@ -58,19 +58,31 @@ curl http://127.0.0.1:8000/health
 # {"status":"ok","llm_mode":"live",...}  → 真实 LLM；"mock-fallback" → 演示数据
 ```
 
-## API 契约（shape 即前端 api.js 依赖）
+## API 契约（stateless，问诊历史随请求携带；Functions 与 FastAPI 完全一致）
 
-| 方法 | 路径 | 说明 |
-|---|---|---|
-| GET  | /api/cases | 病例列表 |
-| POST | /api/intake/ask | {case_id, answer, history} → 下一问/完成 |
-| POST | /api/dx/{id} | 问诊汇总 → 诊断结论（红旗+鉴别+引用） |
-| GET  | /api/workup/{id} | 检查建议（必查/建议/可选） |
-| GET  | /api/report/{id}  | SOAP 病历报告 |
+| 方法 | 路径 | 请求 | 响应关键字段 |
+|---|---|---|---|
+| GET  | /api/cases | — | 病例列表（含脱敏合成标注） |
+| POST | /api/intake/ask | {case_id, history[]} | reply/question, chips[], done, state{symptoms,missing_slots,red_flags,rounds}, mode |
+| POST | /api/dx/{id} | {case_id, history[]} | primary[]{name,prob,strength,reasons,evidence_ids,refs}, differential[], flags[], evidence[], trace, mode, fallback_reason |
+| POST | /api/workup/{id} | {case_id, history[], dx?} | essential/suggested/optional[]{item,why,evidence_ids}, evidence_ids[], mode |
+| POST | /api/report/{id} | {case_id, history[], dx?} | soap{S,O,A,P}, conclusion, disclaimer, evidence_ids[], mode |
+| GET  | /api/health | — | {status, llm_mode: live\|mock-fallback} |
+
+> `dx?` 为前端已生成的诊断结果，workup/report 复用它以消除冗余 LLM 串行调用；**红旗一律由后端规则重算，不信任前端**。
+> 契约封板于 2026-09-16，两端（Functions / FastAPI）同步实现，冒烟与评测脚本见 `../iCAN大学生创新创业大赛/03-评测/`。
 
 ## 安全定位（评审叙事）
 
 AI 辅助参考 · 医生终审 · 危险信号规则层强制拦截 · RAG 引用溯源 · 演示环境仅脱敏模拟病例。
+
+## 竞赛用途与授权
+
+- 本仓库公开可查阅，用于 **2026年iCAN大学生创新创业大赛 AI 应用创新挑战赛（软件赛道·高校组）** 参赛评审与学术交流；授权声明见 `LICENSE`（默认保留全部权利）。
+- 线上演示：https://doctor-ai-dx.pages.dev （评委浏览器可直接访问）
+- 评测可复现：`../iCAN大学生创新创业大赛/03-评测/`（25 例合成病例 + 离线/线上评测脚本与原始输出）
+- 模型依赖：DeepSeek（OpenAI 兼容 API，Key 自备）；无 Key 或超时 8s 自动进入**规则引擎降级模式**并在界面明确标注，功能完整可演示。
+- 演示病例均为脱敏合成数据，不代表真实患者或真实调研样本。
 
 ## 阶段状态
 
