@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useState } from 'react'
 import * as api from './api.js'
+import ErrorBoundary from './ErrorBoundary.jsx'
 import CaseSelect from './views/CaseSelect.jsx'
 import Intake from './views/Intake.jsx'
 import Dx from './views/Dx.jsx'
@@ -13,6 +14,9 @@ const STEPS = [
   { key: 'workup', label: '检查建议' },
   { key: 'report', label: '病历报告' },
 ]
+
+/* 消息 id：优先 UUID，非安全上下文回退时间戳+随机数，防同毫秒撞 key */
+const nextId = () => (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : Date.now() + Math.random())
 
 export default function App() {
   const [step, setStep] = useState(0)
@@ -46,10 +50,10 @@ export default function App() {
   const startCase = async (c) => {
     setPatient(c); setMsgs([]); setChips([]); setDx(null); setWorkup(null); setReport(null)
     unlock(1); setStep(1)
-    setMsgs([{ id: Date.now(), role: 'ai', text: c.intro }])
+    setMsgs([{ id: nextId(), role: 'ai', text: c.intro }])
     try {
       const first = await api.askIntake(c.id, [])   // 进入问诊即拉取第一问+chips（AC-OBS-02）
-      setMsgs((m) => [...m, { id: Date.now(), role: 'ai', text: first.reply }])
+      setMsgs((m) => [...m, { id: nextId(), role: 'ai', text: first.reply }])
       setChips(first.chips || [])
     } catch { /* 保留开场白，医生仍可手动输入主诉推进 */ }
   }
@@ -58,19 +62,19 @@ export default function App() {
   const askIntake = async (content) => {
     if (!patient || busy) return
     setBusy(true)
-    setMsgs((m) => [...m, { id: Date.now(), role: 'user', text: content }])
+    setMsgs((m) => [...m, { id: nextId(), role: 'user', text: content }])
     setChips([])
     try {
       const hist = [...msgs.map((m) => ({ role: m.role === 'ai' ? 'assistant' : 'user', content: m.text })), { role: 'user', content }]
       const data = await api.askIntake(patient.id, hist)
-      setMsgs((m) => [...m, { id: Date.now(), role: 'ai', text: data.reply }])
+      setMsgs((m) => [...m, { id: nextId(), role: 'ai', text: data.reply }])
       setChips(data.chips || [])
       if (data.done) {
         await new Promise((r) => setTimeout(r, 500))
         await loadDx(hist)
       }
     } catch (e) {
-      setMsgs((m) => [...m, { id: Date.now(), role: 'ai', text: '问诊请求未能完成：' + (e.message || '请重试') }])
+      setMsgs((m) => [...m, { id: nextId(), role: 'ai', text: '问诊请求未能完成：' + (e.message || '请重试') }])
     } finally {
       setBusy(false)
     }
@@ -142,6 +146,7 @@ export default function App() {
               className={'step' + (i === step ? ' active' : i < reached ? ' done' : '')}
               onClick={() => go(i)}
               disabled={i > reached}
+              aria-current={i === step ? 'step' : undefined}
             >
               <span className="step-dot">{i + 1}</span>
               <span className="step-name">{s.label}</span>
@@ -151,15 +156,17 @@ export default function App() {
       </nav>
 
       {err && (
-        <div className="banner danger" style={{ maxWidth: 1080, width: '100%', margin: '10px auto 0', padding: '0 20px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+        <div className="banner danger banner-page" role="alert">
+          <div className="banner-page-row">
             <span>{err.msg || '请求未能完成，请重试或重新问诊。'}</span>
             <button className="btn ghost" type="button" onClick={retry}>重试</button>
           </div>
         </div>
       )}
 
-      <main className="view">{renderView()}</main>
+      <main className="view">
+        <ErrorBoundary>{renderView()}</ErrorBoundary>
+      </main>
 
       <footer className="app-footer">
         <span><SvgShield /> AI 辅助参考 · 医生终审</span>

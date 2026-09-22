@@ -5,7 +5,9 @@ export default function Intake({ patient, msgs, chips, busy, onAsk, onRestart })
   const endRef = useRef(null)
 
   useEffect(() => {
-    endRef.current?.scrollIntoView({ block: 'end', behavior: 'smooth' })
+    const reduced = typeof window.matchMedia === 'function'
+      && window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    endRef.current?.scrollIntoView({ block: 'end', behavior: reduced ? 'auto' : 'smooth' })
   }, [msgs, busy])
 
   const choose = (text) => { onAsk(text) }
@@ -18,14 +20,14 @@ export default function Intake({ patient, msgs, chips, busy, onAsk, onRestart })
         {patient.vitals.map((v) => <span key={v.key} className="vital"><b>{v.value}</b><span>{v.key}</span></span>)}
       </div>
 
-      <div className="chat">
+      <div className="chat" aria-live="polite" aria-label="问诊对话记录">
         {msgs.map((m) => (
           <div key={m.id} className={'msg ' + m.role}>
             <span className="msg-avatar">{m.role === 'ai' ? '问' : '患'}</span>
             <div className="msg-bubble">{m.text}</div>
           </div>
         ))}
-        {busy && <div className="msg ai"><span className="msg-avatar">问</span><div className="msg-bubble typing">…</div></div>}
+        {busy && <div className="msg ai" role="status"><span className="msg-avatar">问</span><div className="msg-bubble typing">正在分析，请稍候…</div></div>}
         <div ref={endRef} />
       </div>
 
@@ -40,6 +42,7 @@ export default function Intake({ patient, msgs, chips, busy, onAsk, onRestart })
         <form className="ask-form" onSubmit={submit}>
           <input className="ask-input" value={input} disabled={busy}
             onChange={(e) => setInput(e.target.value)}
+            aria-label="补充症状描述"
             placeholder="补充描述症状、诱因、伴随情况…" />
           <button className="btn primary" type="submit" disabled={busy}>发送</button>
         </form>

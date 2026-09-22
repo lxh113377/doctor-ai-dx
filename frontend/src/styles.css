@@ -105,6 +105,8 @@ b{font-weight:600}
 
 /* banner / 诊断 */
 .banner{display:flex;gap:12px;border-radius:var(--r-lg);padding:14px 16px;margin-bottom:16px;border:1.5px solid}
+.banner-page{max-width:1080px;width:100%;margin:10px auto 0;padding:0 20px}
+.banner-page-row{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
 .banner h4{font-size:14px;font-weight:700;display:flex;align-items:center;gap:8px}
 .banner p{font-size:13px;line-height:1.6;margin-top:4px}
 .banner ul{font-size:13px;line-height:1.7;margin:8px 0 0 18px}
@@ -171,3 +173,8 @@ b{font-weight:600}
 @media (max-width:860px){.case-grid{grid-template-columns:1fr 1fr}.msg{max-width:90%}}
 @media (max-width:560px){.case-grid{grid-template-columns:1fr}.step-name{display:none}.report-sheet{padding:20px}.page-head-with-action{flex-direction:column;align-items:stretch}}
 @media print{.topbar,.steps,.app-footer,.chat-input,.report-toolbar{display:none!important}body{background:#fff}.view{padding:0;max-width:100%}.report-sheet{box-shadow:none;border:none;padding:0}}
+
+/* 减弱动效偏好：关闭过渡与动画，滚动行为交由 JS 降级 */
+@media (prefers-reduced-motion: reduce){
+  *,*::before,*::after{animation:none!important;transition:none!important}
+}

@@ -9,7 +9,7 @@ const SvgRef = () => (
 )
 
 export default function Dx({ dx, patient, onRestart, onNext }) {
-  if (!dx) return <section className="page"><div className="card loading">正在生成鉴别诊断与依据…</div></section>
+  if (!dx) return <section className="page"><div className="card loading" role="status">正在生成鉴别诊断与依据…</div></section>
 
   return (
     <section className="page">

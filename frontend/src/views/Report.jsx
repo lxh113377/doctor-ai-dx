@@ -7,7 +7,7 @@ const SOAP_KEYS = [
 ]
 
 export default function Report({ report, patient }) {
-  if (!report) return <section className="page"><div className="card loading">正在生成 SOAP 病历报告…</div></section>
+  if (!report) return <section className="page"><div className="card loading" role="status">正在生成 SOAP 病历报告…</div></section>
 
   const now = new Date()
   const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`

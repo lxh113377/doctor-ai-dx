@@ -6,7 +6,7 @@ const GROUPS = [
 ]
 
 export default function Workup({ workup, onNext }) {
-  if (!workup) return <section className="page"><div className="card loading">正在整理检查方案…</div></section>
+  if (!workup) return <section className="page"><div className="card loading" role="status">正在整理检查方案…</div></section>
 
   return (
     <section className="page">
