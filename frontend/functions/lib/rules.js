@@ -44,29 +44,37 @@ const COMBO_RULES = [
 ]
 
 // 血压数值解析：收缩压≥180 或舒张压≥120 → 高血压急症
+const BP_SYS = 180
+const BP_DIA = 120
+const HYPERTENSION_ADVICE = DANGER_RULES.find((r) => r.name.includes("高血压"))?.advice || "血压显著升高伴靶器官损害症状为高血压急症，需急诊处理。"
 function bpCrisis(text) {
-  const m = text.match(/(\d{2,3})\s*[/／]\s*(\d{2,3})/)
+  const t = String(text ?? "")
+  const m = t.match(/(\d{2,3})\s*[/／]\s*(\d{2,3})/)
   if (!m) return false
   const sys = parseInt(m[1], 10)
   const dia = parseInt(m[2], 10)
-  return sys >= 180 || dia >= 120
+  if (!Number.isFinite(sys) || !Number.isFinite(dia)) return false
+  if (sys > 350 || dia > 250 || sys < 50 || dia < 20) return false
+  return sys >= BP_SYS || dia >= BP_DIA
 }
 
 export function scanFlags(text) {
+  const t = String(text ?? "").toLowerCase().slice(0, 2000)
+  if (!t.trim()) return []
   const hits = []
   for (const r of DANGER_RULES) {
-    if (r.keywords.some((k) => text.includes(k))) {
+    if (r.keywords.some((k) => t.includes(String(k).toLowerCase()))) {
       hits.push(`严重危险信号：${r.name}。${r.advice}`)
     }
   }
   // 组合规则：每个线索组至少命中一词才触发（表达"症状组合"临床逻辑，降低单非特异词误报）
   for (const r of COMBO_RULES) {
-    if (r.all.every((group) => group.some((k) => text.includes(k)))) {
+    if (r.all.every((group) => group.some((k) => t.includes(String(k).toLowerCase())))) {
       hits.push(`严重危险信号：${r.name}。${r.advice}`)
     }
   }
-  if (bpCrisis(text) && !hits.some((h) => h.includes("高血压急症"))) {
-    hits.push(`严重危险信号：高血压急症红旗。${DANGER_RULES.find((r) => r.name.includes("高血压")).advice}`)
+  if (bpCrisis(t) && !hits.some((h) => h.includes("高血压急症"))) {
+    hits.push(`严重危险信号：高血压急症红旗。${HYPERTENSION_ADVICE}`)
   }
   const seen = new Set(); const out = []
   for (const h of hits) { if (!seen.has(h)) { seen.add(h); out.push(h) } }

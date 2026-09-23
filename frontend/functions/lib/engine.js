@@ -7,7 +7,10 @@
 import { CASES, INTAKE_DONE_REPLY } from "./data.js"
 import { scanFlags } from "./rules.js"
 import { search, evidenceByIds, hasEvidence, evidenceForSymptoms } from "./rag.js"
-import { KNOWLEDGE_BASE } from "./knowledge.js"
+import { KNOWLEDGE_BASE, KB_BY_ID, kbTitleOf, kbConditionOf } from "./knowledge.js"
+
+const kbTitle = (id) => kbTitleOf(id)
+const kbCondition = (id) => kbConditionOf(id)
 
 class Http404 extends Error {}
 
@@ -24,7 +27,7 @@ export function getCases() {
 // ---------- 临床状态抽取（确定性，不依赖 LLM） ----------
 export function extractState(caseId, history = []) {
   const c = caseOf(caseId)
-  const answers = (history || []).filter((m) => m.role === "user").map((m) => m.content)
+  const answers = (history || []).filter((m) => m && m.role === "user").map((m) => String(m.content ?? ""))
   const fullText = [c.chief, ...answers].join("；")
   const flags = scanFlags(fullText)
   const symptoms = detectSymptoms(fullText)
@@ -85,7 +88,7 @@ export async function nextIntakeQuestion(caseId, history = [], env = {}) {
 
 async function llmFollowup(history, c, env) {
   if (!envKey(env)) return null
-  const transcript = (history || []).slice(-8).map((m) => (m.role === "user" ? `医生: ${m.content}` : `助手: ${m.content}`)).join("\n")
+  const transcript = (history || []).slice(-8).map((m) => (m && m.role === "user" ? `医生: ${String(m.content ?? "")}` : `助手: ${String(m?.content ?? "")}`)).join("\n")
   const ctx = `患者：${c.name} ${c.age}岁 ${c.gender}，主诉：${c.chief}\n已有问诊记录：\n${transcript}`
   try {
     const raw = await callLLM([
@@ -124,32 +127,38 @@ export async function buildDiagnosis(caseId, history = [], env = {}) {
 
 function validateDiagnosis(dx, allowedIds) {
   const ok = (id) => typeof id === "string" && hasEvidence(id)
-  const fixRefs = (arr) => (arr || []).filter(ok)
-  dx.primary = (dx.primary || []).slice(0, 4).map((p) => {
-    let evIds = fixRefs(p.evidence_ids)
-    if (evIds.length === 0) evIds = allowedIds.slice(0, 2) // LLM 未挂引用时，回填全局检索证据
+  const fixRefs = (arr) => (Array.isArray(arr) ? arr : []).filter(ok)
+  const asStrArray = (arr, n, len) => (Array.isArray(arr) ? arr : []).slice(0, n).map((r) => String(r ?? "").slice(0, len)).filter(Boolean)
+  dx.primary = (Array.isArray(dx.primary) ? dx.primary : []).slice(0, 4).map((p) => {
+    const pp = (p && typeof p === "object") ? p : {}
+    let evIds = fixRefs(pp.evidence_ids)
+    if (evIds.length === 0) evIds = (allowedIds || []).slice(0, 2).filter(ok) // LLM 未挂引用时，回填全局检索证据
     return {
-      name: String(p.name || "未命名诊断").slice(0, 60),
-      prob: ["高优先级", "需鉴别", "低可能"].includes(p.prob) ? p.prob : "需鉴别",
-      strength: ["high", "mid", "low"].includes(p.strength) ? p.strength : "mid",
-      reasons: (p.reasons || []).slice(0, 4).map((r) => String(r).slice(0, 80)),
+      name: String(pp.name || "未命名诊断").slice(0, 60),
+      prob: ["高优先级", "需鉴别", "低可能"].includes(pp.prob) ? pp.prob : "需鉴别",
+      strength: ["high", "mid", "low"].includes(pp.strength) ? pp.strength : "mid",
+      reasons: asStrArray(pp.reasons, 4, 80),
       evidence_ids: evIds,
-      refs: evIds.map((id) => KNOWLEDGE_BASE.find((k) => k.id === id)?.title || id),
+      refs: evIds.map((id) => kbTitle(id)),
     }
   })
   if (dx.primary.length === 0) { dx.primary = [{ name: "信息不足，建议补充问诊", prob: "需鉴别", strength: "low", reasons: ["现有线索不足以形成鉴别诊断"], evidence_ids: [], refs: [] }] }
-  dx.differential = (dx.differential || []).slice(0, 6).map((d) => ({
-    name: String(d.name || "").slice(0, 60), note: String(d.note || "").slice(0, 120),
-    evidence_ids: fixRefs(d.evidence_ids),
-  }))
+  dx.differential = (Array.isArray(dx.differential) ? dx.differential : []).slice(0, 6).map((d) => {
+    const dd = (d && typeof d === "object") ? d : {}
+    return {
+      name: String(dd.name || "").slice(0, 60), note: String(dd.note || "").slice(0, 120),
+      evidence_ids: fixRefs(dd.evidence_ids),
+    }
+  })
   // AC-OBS-04：鉴别诊断≥2 项，不足时用检索证据回填
-  if (dx.differential.length < 2 && allowedIds.length >= 2) {
+  if (dx.differential.length < 2 && (allowedIds || []).length >= 2) {
     const used = new Set(dx.differential.flatMap((d) => d.evidence_ids))
     for (const id of allowedIds) {
       if (dx.differential.length >= 2) break
       if (used.has(id) || !hasEvidence(id)) continue
-      const kb = KNOWLEDGE_BASE.find((k) => k.id === id)
-      dx.differential.push({ name: kb.condition || kb.title, note: kb.text.slice(0, 60), evidence_ids: [id] })
+      const kb = KB_BY_ID.get(id)
+      if (!kb) continue
+      dx.differential.push({ name: kb.condition || kb.title, note: String(kb.text || "").slice(0, 60), evidence_ids: [id] })
     }
   }
   // AC-OBS-04：疑似诊断≥2 项。回填优先复用鉴别诊断首项（临床语义一致），避免盲取证据引入噪声诊断
@@ -158,28 +167,29 @@ function validateDiagnosis(dx, allowedIds) {
     const d0 = dx.differential.find((d) => d.name && d.name !== first.name)
     if (d0) {
       dx.primary.push({ name: `${d0.name}（需鉴别）`, prob: "需鉴别", strength: "mid",
-        reasons: [d0.note || "与首要诊断共存线索，需进一步检查区分"], evidence_ids: d0.evidence_ids, refs: d0.evidence_ids.map((id) => KNOWLEDGE_BASE.find((k) => k.id === id)?.title || id) })
-    } else if (allowedIds.length >= 2) {
+        reasons: [d0.note || "与首要诊断共存线索，需进一步检查区分"], evidence_ids: d0.evidence_ids, refs: d0.evidence_ids.map((id) => kbTitle(id)) })
+    } else if ((allowedIds || []).length >= 2) {
       const used = new Set(dx.primary.flatMap((p) => p.evidence_ids))
       const extra = allowedIds.find((id) => !used.has(id) && hasEvidence(id))
       if (extra) {
-        const kb = KNOWLEDGE_BASE.find((k) => k.id === extra)
-        dx.primary.push({ name: `${kb.condition}（需鉴别）`, prob: "需鉴别", strength: "mid",
-          reasons: ["与首要诊断共存线索，需进一步检查区分"], evidence_ids: [extra], refs: [kb.title] })
+        const kb = KB_BY_ID.get(extra)
+        if (kb) {
+          dx.primary.push({ name: `${kb.condition}（需鉴别）`, prob: "需鉴别", strength: "mid",
+            reasons: ["与首要诊断共存线索，需进一步检查区分"], evidence_ids: [extra], refs: [kb.title] })
+        }
       }
     }
   }
-  dx.evidence = (dx.evidence || []).filter((e) => ok(e.id))
+  dx.evidence = (Array.isArray(dx.evidence) ? dx.evidence : []).filter((e) => e && ok(e.id))
   return dx
 }
 
 function ruleDiagnosis(state, evidence) {
   // 确定性降级：按红旗与症状线索映射知识库条目生成结构化结论
   const condIds = new Set()
-  for (const e of evidence) condIds.add(e.id)
-  const condOf = (id) => KNOWLEDGE_BASE.find((k) => k.id === id)?.condition || ""
-  const primary = [...condIds].filter((id) => hasEvidence(id)).slice(0, 3).map((id, i) => ({
-    name: condOf(id), prob: i === 0 ? "高优先级" : "需鉴别", strength: i === 0 ? "high" : "mid",
+  for (const e of evidence || []) if (e && hasEvidence(e.id)) condIds.add(e.id)
+  const primary = [...condIds].slice(0, 3).map((id, i) => ({
+    name: kbCondition(id), prob: i === 0 ? "高优先级" : "需鉴别", strength: i === 0 ? "high" : "mid",
     reasons: [state.transcript.slice(0, 40) + "…"], evidence_ids: [id], refs: [id],
   }))
   const symptomEv = evidenceForSymptoms(state.symptoms).filter((e) => !condIds.has(e.id)).slice(0, 3)
@@ -221,12 +231,13 @@ ${evBlock}
 
 // ---------- 检查建议 ----------
 // 复用前端已生成的诊断结果（省一次 LLM 串行调用，降 P95 时延）；
-// 但红旗一律以后端规则重算为准（不信任前端），证据 id 重新校验，缺失/非法则回退完整生成。
-function reuseOrBuild(state, history, env, providedDx) {
+// 但红旗一律以后端规则重算为准（不信任前端），证据非法 id 会过滤后回填，缺失则回退完整生成。
+async function reuseOrBuild(state, history, env, providedDx) {
   if (providedDx && Array.isArray(providedDx.primary) && providedDx.primary.length >= 1) {
     const dx = structuredClone(providedDx)
     dx.flags = state.red_flags
-    if (!Array.isArray(dx.evidence) || dx.evidence.length === 0) dx.evidence = search(state.transcript, 5)
+    const validEv = (Array.isArray(dx.evidence) ? dx.evidence : []).filter((e) => e && typeof e.id === "string" && hasEvidence(e.id))
+    dx.evidence = validEv.length ? validEv : search(state.transcript, 5)
     if (!dx.trace) dx.trace = { evidence_ids: dx.evidence.map((e) => e.id), rounds: state.rounds, symptoms: state.symptoms }
     return dx
   }
@@ -236,7 +247,8 @@ function reuseOrBuild(state, history, env, providedDx) {
 export async function buildWorkup(caseId, history = [], env = {}, providedDx = null) {
   const state = extractState(caseId, history)
   const dx = await reuseOrBuild(state, history, env, providedDx)
-  const evidence = search(state.transcript + " " + (dx.primary[0]?.name || ""), 5)
+  const firstName = dx.primary?.[0]?.name || ""
+  const evidence = search(state.transcript + " " + firstName, 5)
   let out = null, mode = "rule-fallback", fallbackReason = ""
   const live = await llmWorkup(state, dx, evidence, env)
   if (live) { out = live; mode = "live" }
@@ -249,17 +261,21 @@ export async function buildWorkup(caseId, history = [], env = {}, providedDx = n
 }
 
 function validateWorkup(w) {
-  const groups = { essential: "必查", suggested: "建议", optional: "可选" }
-  for (const key of Object.keys(groups)) {
-    w[key] = (w[key] || []).slice(0, 6).map((it) => ({
-      item: String(it.item || "").slice(0, 80), why: String(it.why || "").slice(0, 100),
-      evidence_ids: (it.evidence_ids || []).filter((id) => hasEvidence(id)),
-    }))
+  const src = (w && typeof w === "object") ? w : {}
+  const out = {}
+  const groups = ["essential", "suggested", "optional"]
+  for (const key of groups) {
+    const arr = Array.isArray(src[key]) ? src[key] : []
+    out[key] = arr.slice(0, 6).map((it) => {
+      const o = (it && typeof it === "object") ? it : {}
+      return {
+        item: String(o.item || "").slice(0, 80), why: String(o.why || "").slice(0, 100),
+        evidence_ids: (Array.isArray(o.evidence_ids) ? o.evidence_ids : []).filter((id) => hasEvidence(id)),
+      }
+    })
+    if (!out[key].length) out[key] = [{ item: "请医生结合完整临床资料决定", why: "当前信息不足以给出该组明确建议", evidence_ids: [] }]
   }
-  for (const key of Object.keys(groups)) {
-    if (!w[key].length) w[key] = [{ item: "请医生结合完整临床资料决定", why: "当前信息不足以给出该组明确建议", evidence_ids: [] }]
-  }
-  return w
+  return out
 }
 
 function ruleWorkup(state, dx) {
@@ -282,7 +298,8 @@ async function llmWorkup(state, dx, evidence, env) {
   try {
     const raw = await callLLM([{ role: "system", content: SYSTEM_BASE }, { role: "user", content: prompt }], true, env)
     const d = JSON.parse(raw)
-    if (!d.essential && !d.suggested && !d.optional) return null
+    const hasAny = (a) => Array.isArray(a) && a.length > 0
+    if (!hasAny(d.essential) && !hasAny(d.suggested) && !hasAny(d.optional)) return null
     return d
   } catch { return null }
 }

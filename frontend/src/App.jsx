@@ -35,13 +35,20 @@ export default function App() {
     const e = err
     setErr(null)
     if (!e) return
-    if (e.step === 2) loadDx().catch((x) => setErr({ step: 2, msg: x.message }))
-    else if (e.step === 3) api.getWorkup(patient.id, intakeHistory(), dx).then(setWorkup).catch((x) => setErr({ step: 3, msg: x.message }))
-    else if (e.step === 4) api.getReport(patient.id, intakeHistory(), dx).then(setReport).catch((x) => setErr({ step: 4, msg: x.message }))
+    const loaders = {
+      2: () => loadDx(),
+      3: () => api.getWorkup(patient.id, intakeHistory(), dx).then((w) => { setWorkup(w); setErr(null); unlock(3) }),
+      4: () => api.getReport(patient.id, intakeHistory(), dx).then((r) => { setReport(r); setErr(null); unlock(4) }),
+    }
+    const run = loaders[e.step]
+    if (!run) return
+    run().catch((x) => setErr({ step: e.step, msg: x.message }))
   }
 
   useEffect(() => {
-    api.getCases().then(setCases).catch((e) => console.error(e))
+    const ctrl = new AbortController()
+    api.getCases(ctrl.signal).then(setCases).catch((e) => console.error(e))
+    return () => ctrl.abort()
   }, [])
 
   const unlock = (n) => setReached((r) => Math.max(r, n))
@@ -93,17 +100,17 @@ export default function App() {
   useEffect(() => {
     if (!patient || step !== 2 || dx) return
     loadDx().catch((e) => setErr({ step: 2, msg: e.message }))   // 直接跳到诊断页时兜底加载
-  }, [patient, step])                            // eslint-disable-line react-hooks/exhaustive-deps
+  }, [patient, step, dx])
 
   useEffect(() => {
     if (!patient || step !== 3 || workup) return
-    api.getWorkup(patient.id, intakeHistory(), dx).then(setWorkup).then(unlock(3)).catch((e) => setErr({ step: 3, msg: e.message }))
-  }, [patient, step])                            // eslint-disable-line react-hooks/exhaustive-deps
+    api.getWorkup(patient.id, intakeHistory(), dx).then((w) => { setWorkup(w); unlock(3) }).catch((e) => setErr({ step: 3, msg: e.message }))
+  }, [patient, step, workup, dx])
 
   useEffect(() => {
     if (!patient || step !== 4 || report) return
-    api.getReport(patient.id, intakeHistory(), dx).then(setReport).then(unlock(4)).catch((e) => setErr({ step: 4, msg: e.message }))
-  }, [patient, step])                            // eslint-disable-line react-hooks/exhaustive-deps
+    api.getReport(patient.id, intakeHistory(), dx).then((r) => { setReport(r); unlock(4) }).catch((e) => setErr({ step: 4, msg: e.message }))
+  }, [patient, step, report, dx])
 
   /* 显式"下一步"导航：仅解锁+切换，数据加载交给对应 useEffect 兜底，避免双 POST */
   const goWorkup = () => { unlock(3); setStep(3) }
@@ -165,7 +172,7 @@ export default function App() {
       )}
 
       <main className="view">
-        <ErrorBoundary>{renderView()}</ErrorBoundary>
+        <ErrorBoundary resetKey={`${patient?.id || "none"}-${step}`}>{renderView()}</ErrorBoundary>
       </main>
 
       <footer className="app-footer">

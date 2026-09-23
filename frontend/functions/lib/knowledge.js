@@ -157,3 +157,9 @@ export const SYMPTOM_TO_KB = {
   "下肢放射痛": ["kb-049", "kb-028"],
   "夜尿": ["kb-048"],
 }
+
+// ---- O(1) 索引（新增，不改原导出形态；供 rag/engine 复用消 find/filter） ----
+export const KB_BY_ID = new Map(KNOWLEDGE_BASE.map((k) => [k.id, k]))
+export const KB_ID_SET = new Set(KNOWLEDGE_BASE.map((k) => k.id))
+export const kbTitleOf = (id) => KB_BY_ID.get(id)?.title || id
+export const kbConditionOf = (id) => KB_BY_ID.get(id)?.condition || ""

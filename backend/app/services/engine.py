@@ -241,8 +241,9 @@ def _reuse_or_build(state: dict, history, provided_dx: dict | None) -> dict:
     if provided_dx and isinstance(provided_dx.get("primary"), list) and provided_dx["primary"]:
         dx = dict(provided_dx)
         dx["flags"] = state["red_flags"]
-        if not dx.get("evidence"):
-            dx["evidence"] = rag.search(state["transcript"], 5)
+        ev = dx.get("evidence")
+        valid = [e for e in ev if isinstance(e, dict) and isinstance(e.get("id"), str) and rag.has_evidence(e["id"])] if isinstance(ev, list) else []
+        dx["evidence"] = valid if valid else rag.search(state["transcript"], 5)
         if not dx.get("trace"):
             dx["trace"] = {"evidence_ids": [e["id"] for e in dx["evidence"]],
                            "rounds": state["rounds"], "symptoms": state["symptoms"]}
@@ -253,7 +254,8 @@ def _reuse_or_build(state: dict, history, provided_dx: dict | None) -> dict:
 def build_workup(case_id: str, history: list[dict] | None = None, provided_dx: dict | None = None) -> dict:
     state = extract_state(case_id, history)
     dx = _reuse_or_build(state, history, provided_dx)
-    evidence = rag.search(state["transcript"] + " " + (dx["primary"][0]["name"] if dx["primary"] else ""), 5)
+    first_name = dx["primary"][0].get("name", "") if dx.get("primary") else ""
+    evidence = rag.search(state["transcript"] + " " + first_name, 5)
     live = _llm_workup(state, dx, evidence)
     if live:
         out, mode, reason = live, "live", ""
@@ -278,7 +280,8 @@ def _validate_workup(w: dict) -> dict:
 
 
 def _rule_workup(state: dict, dx: dict) -> dict:
-    top = dx["evidence"][0] if dx.get("evidence") else None
+    ev_list = dx.get("evidence") if isinstance(dx.get("evidence"), list) else []
+    top = ev_list[0] if ev_list and isinstance(ev_list[0], dict) and isinstance(ev_list[0].get("id"), str) and rag.has_evidence(ev_list[0]["id"]) else None
     ev = [top["id"]] if top else []
     def base(item, why):
         return {"item": item, "why": why, "evidence_ids": ev}

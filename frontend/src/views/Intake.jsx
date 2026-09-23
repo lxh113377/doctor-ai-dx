@@ -10,14 +10,14 @@ export default function Intake({ patient, msgs, chips, busy, onAsk, onRestart })
     endRef.current?.scrollIntoView({ block: 'end', behavior: reduced ? 'auto' : 'smooth' })
   }, [msgs, busy])
 
-  const choose = (text) => { onAsk(text) }
+  const choose = (text) => { if (!busy) onAsk(text) }
   const submit = (e) => { e.preventDefault(); if (!busy && input.trim()) { onAsk(input.trim()); setInput('') } }
 
   return (
     <section className="page">
       <div className="intake-head">
         <strong>{patient.name} · {patient.chief}</strong>
-        {patient.vitals.map((v) => <span key={v.key} className="vital"><b>{v.value}</b><span>{v.key}</span></span>)}
+        {(patient.vitals || []).map((v) => <span key={v.key} className="vital"><b>{v.value}</b><span>{v.key}</span></span>)}
       </div>
 
       <div className="chat" aria-live="polite" aria-label="问诊对话记录">
