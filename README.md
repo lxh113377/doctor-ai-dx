@@ -48,6 +48,8 @@ cd ../frontend && npm install && npm run dev                 # :5173，/api 代�
 
 ## 演示脚本与参赛素材
 
+> 注：本仓库为公开源码仓，下列 `../` 相对路径（iCAN 参赛材料、评测脚本、项目叙事）指向工作区内的参赛素材目录，**随提交包（ZIP）提供，公开仓内不含**——评委如需评测脚本与素材，见提交包或联系作者。
+
 - **iCAN 参赛材料（主）** —— 见 `../iCAN大学生创新创业大赛/`：应用方案 PDF（20页·官方九类）、来源台账、评审差距矩阵、31例评测、五步截图、视频分镜脚本；冻结交付副本在 `../交付物/iCAN-参赛交付物/`
 - `archive/` —— 旧商业计划书与旧 3 分钟路演稿，**均为非 iCAN 提交材料**；保留仅作历史记录，不用于答辩或评审
 - 项目叙事与答辩数据卡 —— 见 `../memory/08-ac-obs.md`
@@ -64,8 +66,8 @@ curl http://127.0.0.1:8000/health
 | 方法 | 路径 | 请求 | 响应关键字段 |
 |---|---|---|---|
 | GET  | /api/cases | — | 病例列表（含脱敏合成标注） |
-| POST | /api/intake/ask | {case_id, history[]} | reply/question, chips[], done, state{symptoms,missing_slots,red_flags,rounds}, mode |
-| POST | /api/dx/{id} | {case_id, history[]} | primary[]{name,prob,strength,reasons,evidence_ids,refs}, differential[], flags[], evidence[], trace, mode, fallback_reason |
+| POST | /api/intake/ask | {case_id, history[]} | reply/question, chips[], done, state{symptoms,missing_slots,red_flags,red_flag_details,rounds}, mode |
+| POST | /api/dx/{id} | {case_id, history[]} | primary[]{name,prob,strength,reasons,evidence_ids,refs}, differential[], flags[], flag_details[]{name,severity,advice}, evidence[], trace, mode, fallback_reason |
 | POST | /api/workup/{id} | {case_id, history[], dx?} | essential/suggested/optional[]{item,why,evidence_ids}, evidence_ids[], mode |
 | POST | /api/report/{id} | {case_id, history[], dx?} | soap{S,O,A,P}, conclusion, disclaimer, evidence_ids[], mode |
 | GET  | /api/health | — | {status, llm_mode: live\|mock-fallback} |

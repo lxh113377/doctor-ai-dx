@@ -30,7 +30,17 @@ export default function Dx({ dx, patient, onRestart, onNext }) {
         <div className="banner danger">
           <div>
             <h4>危险信号 · 规则引擎独立检出（不可被模型覆盖）</h4>
-            <ul>{dx.flags.map((f, i) => <li key={i}>{f}</li>)}</ul>
+            <ul>
+              {(Array.isArray(dx.flag_details) && dx.flag_details.length
+                ? dx.flag_details.map((f, i) => (
+                  <li key={i}>
+                    <span className={'flag-sev ' + (f.severity === '高' ? 'sev-high' : 'sev-mid')}>{f.severity}危</span>
+                    {`严重危险信号：${f.name}。${f.advice}`}
+                  </li>
+                ))
+                : dx.flags.map((f, i) => <li key={i}>{f}</li>)
+              )}
+            </ul>
           </div>
         </div>
       )}

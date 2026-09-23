@@ -1,11 +1,14 @@
-import { Fragment, useEffect, useState } from 'react'
+import { Fragment, lazy, Suspense, useCallback, useEffect, useState } from 'react'
 import * as api from './api.js'
 import ErrorBoundary from './ErrorBoundary.jsx'
-import CaseSelect from './views/CaseSelect.jsx'
-import Intake from './views/Intake.jsx'
-import Dx from './views/Dx.jsx'
-import Workup from './views/Workup.jsx'
-import Report from './views/Report.jsx'
+import { useIntakeFlow } from './useIntakeFlow.js'
+
+/* 视图按需分割：首屏只装选病例，其余步骤进入时再加载 */
+const CaseSelect = lazy(() => import('./views/CaseSelect.jsx'))
+const Intake = lazy(() => import('./views/Intake.jsx'))
+const Dx = lazy(() => import('./views/Dx.jsx'))
+const Workup = lazy(() => import('./views/Workup.jsx'))
+const Report = lazy(() => import('./views/Report.jsx'))
 
 const STEPS = [
   { key: 'cases', label: '选择病例' },
@@ -15,30 +18,36 @@ const STEPS = [
   { key: 'report', label: '病历报告' },
 ]
 
-/* 消息 id：优先 UUID，非安全上下文回退时间戳+随机数，防同毫秒撞 key */
-const nextId = () => (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : Date.now() + Math.random())
+const ViewLoading = () => (
+  <div className="page"><div className="card loading" role="status">加载中…</div></div>
+)
 
 export default function App() {
   const [step, setStep] = useState(0)
   const [reached, setReached] = useState(0)       // 已解锁的最大步骤
   const [cases, setCases] = useState([])
   const [patient, setPatient] = useState(null)
-  const [msgs, setMsgs] = useState([])            // [{id, role:'ai'|'user', text, pending?}]
-  const [chips, setChips] = useState([])
-  const [busy, setBusy] = useState(false)
-  const [dx, setDx] = useState(null)
   const [workup, setWorkup] = useState(null)
   const [report, setReport] = useState(null)
   const [err, setErr] = useState(null)              // 错误态：只展示医生可理解文案
+
+  const unlock = useCallback((n) => setReached((r) => Math.max(r, n)), [])
+
+  /* hook 回调：问诊状态机在 useIntakeFlow，App 只负责跨步骤状态 */
+  const onCaseStart = useCallback(() => {
+    setWorkup(null); setReport(null); setErr(null)
+  }, [])
+  const onDxReady = useCallback(() => { setErr(null); unlock(2); setStep(2) }, [unlock])
+  const intake = useIntakeFlow({ patient, onCaseStart, onDxReady })
 
   const retry = () => {                            // 重试当前步骤的数据加载
     const e = err
     setErr(null)
     if (!e) return
     const loaders = {
-      2: () => loadDx(),
-      3: () => api.getWorkup(patient.id, intakeHistory(), dx).then((w) => { setWorkup(w); setErr(null); unlock(3) }),
-      4: () => api.getReport(patient.id, intakeHistory(), dx).then((r) => { setReport(r); setErr(null); unlock(4) }),
+      2: () => intake.loadDx(),
+      3: () => api.getWorkup(patient.id, intake.intakeHistory(), intake.dx).then((w) => { setWorkup(w); setErr(null); unlock(3) }),
+      4: () => api.getReport(patient.id, intake.intakeHistory(), intake.dx).then((r) => { setReport(r); setErr(null); unlock(4) }),
     }
     const run = loaders[e.step]
     if (!run) return
@@ -51,66 +60,29 @@ export default function App() {
     return () => ctrl.abort()
   }, [])
 
-  const unlock = (n) => setReached((r) => Math.max(r, n))
   const go = (n) => { if (n <= reached) setStep(n) }
 
-  const startCase = async (c) => {
-    setPatient(c); setMsgs([]); setChips([]); setDx(null); setWorkup(null); setReport(null)
+  const startCase = (c) => {
+    setPatient(c)
     unlock(1); setStep(1)
-    setMsgs([{ id: nextId(), role: 'ai', text: c.intro }])
-    try {
-      const first = await api.askIntake(c.id, [])   // 进入问诊即拉取第一问+chips（AC-OBS-02）
-      setMsgs((m) => [...m, { id: nextId(), role: 'ai', text: first.reply }])
-      setChips(first.chips || [])
-    } catch { /* 保留开场白，医生仍可手动输入主诉推进 */ }
+    intake.startCase(c)
   }
 
-  /* 向后端推进一轮问诊（携带完整 history，后端抽取临床状态） */
-  const askIntake = async (content) => {
-    if (!patient || busy) return
-    setBusy(true)
-    setMsgs((m) => [...m, { id: nextId(), role: 'user', text: content }])
-    setChips([])
-    try {
-      const hist = [...msgs.map((m) => ({ role: m.role === 'ai' ? 'assistant' : 'user', content: m.text })), { role: 'user', content }]
-      const data = await api.askIntake(patient.id, hist)
-      setMsgs((m) => [...m, { id: nextId(), role: 'ai', text: data.reply }])
-      setChips(data.chips || [])
-      if (data.done) {
-        await new Promise((r) => setTimeout(r, 500))
-        await loadDx(hist)
-      }
-    } catch (e) {
-      setMsgs((m) => [...m, { id: nextId(), role: 'ai', text: '问诊请求未能完成：' + (e.message || '请重试') }])
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  const intakeHistory = () => msgs
-    .filter((m) => m.role === 'user')
-    .map((m) => ({ role: 'user', content: m.text }))
-
-  const loadDx = async (hist) => {
-    const h = hist || intakeHistory()
-    const d = await api.getDiagnosis(patient.id, h)
-    setDx(d); setErr(null); unlock(2); setStep(2)
-  }
-
+  /* 直接跳到某一步时的兜底加载（避免双 POST：显式导航只解锁+切换） */
   useEffect(() => {
-    if (!patient || step !== 2 || dx) return
-    loadDx().catch((e) => setErr({ step: 2, msg: e.message }))   // 直接跳到诊断页时兜底加载
-  }, [patient, step, dx])
+    if (!patient || step !== 2 || intake.dx) return
+    intake.loadDx().catch((e) => setErr({ step: 2, msg: e.message }))
+  }, [patient, step, intake.dx, intake.loadDx])
 
   useEffect(() => {
     if (!patient || step !== 3 || workup) return
-    api.getWorkup(patient.id, intakeHistory(), dx).then((w) => { setWorkup(w); unlock(3) }).catch((e) => setErr({ step: 3, msg: e.message }))
-  }, [patient, step, workup, dx])
+    api.getWorkup(patient.id, intake.intakeHistory(), intake.dx).then((w) => { setWorkup(w); unlock(3) }).catch((e) => setErr({ step: 3, msg: e.message }))
+  }, [patient, step, workup, intake.dx, intake.intakeHistory, unlock])
 
   useEffect(() => {
     if (!patient || step !== 4 || report) return
-    api.getReport(patient.id, intakeHistory(), dx).then((r) => { setReport(r); unlock(4) }).catch((e) => setErr({ step: 4, msg: e.message }))
-  }, [patient, step, report, dx])
+    api.getReport(patient.id, intake.intakeHistory(), intake.dx).then((r) => { setReport(r); unlock(4) }).catch((e) => setErr({ step: 4, msg: e.message }))
+  }, [patient, step, report, intake.dx, intake.intakeHistory, unlock])
 
   /* 显式"下一步"导航：仅解锁+切换，数据加载交给对应 useEffect 兜底，避免双 POST */
   const goWorkup = () => { unlock(3); setStep(3) }
@@ -119,8 +91,8 @@ export default function App() {
   const renderView = () => {
     switch (step) {
       case 0: return <CaseSelect cases={cases} onPick={startCase} />
-      case 1: return <Intake patient={patient} msgs={msgs} chips={chips} busy={busy} onAsk={askIntake} onRestart={() => startCase(patient)} />
-      case 2: return <Dx dx={dx} patient={patient} onRestart={() => startCase(patient)} onNext={goWorkup} />
+      case 1: return <Intake patient={patient} msgs={intake.msgs} chips={intake.chips} busy={intake.busy} onAsk={intake.askIntake} onRestart={() => startCase(patient)} />
+      case 2: return <Dx dx={intake.dx} patient={patient} onRestart={() => startCase(patient)} onNext={goWorkup} />
       case 3: return <Workup workup={workup} onNext={goReport} />
       case 4: return <Report report={report} patient={patient} />
       default: return null
@@ -172,7 +144,9 @@ export default function App() {
       )}
 
       <main className="view">
-        <ErrorBoundary resetKey={`${patient?.id || "none"}-${step}`}>{renderView()}</ErrorBoundary>
+        <ErrorBoundary resetKey={`${patient?.id || "none"}-${step}`}>
+          <Suspense fallback={<ViewLoading />}>{renderView()}</Suspense>
+        </ErrorBoundary>
       </main>
 
       <footer className="app-footer">

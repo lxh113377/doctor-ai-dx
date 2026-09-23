@@ -61,6 +61,7 @@ def extract_state(case_id: str, history: list[dict] | None = None) -> dict:
         "transcript": full_text,
         "symptoms": _detect_symptoms(full_text),
         "red_flags": rules.scan_flags(full_text),
+        "red_flag_details": rules.scan_flag_details(full_text),
         "missing_slots": _missing_slots(c, answers),
         "rounds": len(answers),
         "done": len(answers) >= len(c["answers"]),
@@ -121,6 +122,7 @@ def build_diagnosis(case_id: str, history: list[dict] | None = None) -> dict:
 
     out = _validate_diagnosis(out, evidence_ids)
     out["flags"] = state["red_flags"]          # 红旗兜底：不可被模型覆盖
+    out["flag_details"] = state["red_flag_details"]
     out["mode"] = mode
     out["fallback_reason"] = reason
     out["trace"] = {"evidence_ids": evidence_ids, "rounds": state["rounds"], "symptoms": state["symptoms"]}
@@ -198,6 +200,7 @@ def _rule_diagnosis(state: dict, evidence: list[dict]) -> dict:
     differential = [{"name": e["title"], "note": e["text"][:60], "evidence_ids": [e["id"]]} for e in symptom_ev]
     return {
         "flags": state["red_flags"],
+        "flag_details": state["red_flag_details"],
         "primary": primary or [{"name": "待医生结合查体进一步鉴别", "prob": "需鉴别", "strength": "mid",
                                 "reasons": [state["transcript"][:60]], "evidence_ids": [], "refs": []}],
         "differential": differential,
@@ -241,6 +244,7 @@ def _reuse_or_build(state: dict, history, provided_dx: dict | None) -> dict:
     if provided_dx and isinstance(provided_dx.get("primary"), list) and provided_dx["primary"]:
         dx = dict(provided_dx)
         dx["flags"] = state["red_flags"]
+        dx["flag_details"] = state["red_flag_details"]
         ev = dx.get("evidence")
         valid = [e for e in ev if isinstance(e, dict) and isinstance(e.get("id"), str) and rag.has_evidence(e["id"])] if isinstance(ev, list) else []
         dx["evidence"] = valid if valid else rag.search(state["transcript"], 5)

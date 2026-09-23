@@ -58,25 +58,36 @@ function bpCrisis(text) {
   return sys >= BP_SYS || dia >= BP_DIA
 }
 
-export function scanFlags(text) {
-  const t = String(text ?? "").toLowerCase().slice(0, 2000)
-  if (!t.trim()) return []
+// 结构化命中：按规则匹配并去重（按 name 去重，各规则 name 唯一，与原字符串去重等价）
+function matchFlagRules(t) {
   const hits = []
   for (const r of DANGER_RULES) {
     if (r.keywords.some((k) => t.includes(String(k).toLowerCase()))) {
-      hits.push(`严重危险信号：${r.name}。${r.advice}`)
+      hits.push({ name: r.name, severity: r.severity, advice: r.advice })
     }
   }
   // 组合规则：每个线索组至少命中一词才触发（表达"症状组合"临床逻辑，降低单非特异词误报）
   for (const r of COMBO_RULES) {
     if (r.all.every((group) => group.some((k) => t.includes(String(k).toLowerCase())))) {
-      hits.push(`严重危险信号：${r.name}。${r.advice}`)
+      hits.push({ name: r.name, severity: r.severity, advice: r.advice })
     }
   }
-  if (bpCrisis(t) && !hits.some((h) => h.includes("高血压急症"))) {
-    hits.push(`严重危险信号：高血压急症红旗。${HYPERTENSION_ADVICE}`)
+  if (bpCrisis(t) && !hits.some((h) => h.name.includes("高血压急症"))) {
+    hits.push({ name: "高血压急症红旗", severity: "高", advice: HYPERTENSION_ADVICE })
   }
   const seen = new Set(); const out = []
-  for (const h of hits) { if (!seen.has(h)) { seen.add(h); out.push(h) } }
+  for (const h of hits) { if (!seen.has(h.name)) { seen.add(h.name); out.push(h) } }
   return out
+}
+
+// 结构化红旗明细（新增，供 dx.flag_details 使用；供界面按严重度分级展示）
+export function scanFlagDetails(text) {
+  const t = String(text ?? "").toLowerCase().slice(0, 2000)
+  if (!t.trim()) return []
+  return matchFlagRules(t)
+}
+
+// 红旗字符串（既有契约，格式不变：`严重危险信号：{name}。{advice}`）
+export function scanFlags(text) {
+  return scanFlagDetails(text).map((d) => `严重危险信号：${d.name}。${d.advice}`)
 }

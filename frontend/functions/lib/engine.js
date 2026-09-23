@@ -5,7 +5,7 @@
 // mode 取值：live（LLM 生成）/ rule-fallback（规则降级，明确标注）
 // ============================================================
 import { CASES, INTAKE_DONE_REPLY } from "./data.js"
-import { scanFlags } from "./rules.js"
+import { scanFlags, scanFlagDetails } from "./rules.js"
 import { search, evidenceByIds, hasEvidence, evidenceForSymptoms } from "./rag.js"
 import { KNOWLEDGE_BASE, KB_BY_ID, kbTitleOf, kbConditionOf } from "./knowledge.js"
 
@@ -30,6 +30,7 @@ export function extractState(caseId, history = []) {
   const answers = (history || []).filter((m) => m && m.role === "user").map((m) => String(m.content ?? ""))
   const fullText = [c.chief, ...answers].join("；")
   const flags = scanFlags(fullText)
+  const flagDetails = scanFlagDetails(fullText)
   const symptoms = detectSymptoms(fullText)
   const missing = missingSlots(c, answers)
   return {
@@ -38,6 +39,7 @@ export function extractState(caseId, history = []) {
     transcript: fullText,
     symptoms,
     red_flags: flags,
+    red_flag_details: flagDetails,
     missing_slots: missing,
     rounds: answers.length,
     done: answers.length >= c.answers.length,
@@ -118,6 +120,7 @@ export async function buildDiagnosis(caseId, history = [], env = {}) {
   out = validateDiagnosis(out, evidenceIds)
   // 红旗兜底：规则结果优先，不可被模型覆盖
   out.flags = state.red_flags
+  out.flag_details = state.red_flag_details
   out.mode = mode
   out.fallback_reason = fallbackReason
   out.trace = { evidence_ids: evidenceIds, rounds: state.rounds, symptoms: state.symptoms }
@@ -196,6 +199,7 @@ function ruleDiagnosis(state, evidence) {
   const differential = symptomEv.map((e) => ({ name: e.title, note: e.text.slice(0, 60), evidence_ids: [e.id] }))
   return {
     flags: state.red_flags,
+    flag_details: state.red_flag_details,
     primary: primary.length ? primary : [{ name: "待医生结合查体进一步鉴别", prob: "需鉴别", strength: "mid", reasons: [state.transcript.slice(0, 60)], evidence_ids: [], refs: [] }],
     differential,
     faq: [{ q: "为什么是规则降级模式？", a: "本次未使用大模型生成（无 Key 或模型超时/输出非法），结论由红旗规则与知识库映射产生，已明确标注，请医生复核。" }],
@@ -236,6 +240,7 @@ async function reuseOrBuild(state, history, env, providedDx) {
   if (providedDx && Array.isArray(providedDx.primary) && providedDx.primary.length >= 1) {
     const dx = structuredClone(providedDx)
     dx.flags = state.red_flags
+    dx.flag_details = state.red_flag_details
     const validEv = (Array.isArray(dx.evidence) ? dx.evidence : []).filter((e) => e && typeof e.id === "string" && hasEvidence(e.id))
     dx.evidence = validEv.length ? validEv : search(state.transcript, 5)
     if (!dx.trace) dx.trace = { evidence_ids: dx.evidence.map((e) => e.id), rounds: state.rounds, symptoms: state.symptoms }

@@ -18,7 +18,14 @@ function withTimeout(signal, ms) {
 }
 
 async function req(path, opts, timeoutMs = DEFAULT_TIMEOUT) {
-  const res = await fetch(BASE + path, { ...opts, signal: withTimeout(opts?.signal, timeoutMs) })
+  let res
+  try {
+    res = await fetch(BASE + path, { ...opts, signal: withTimeout(opts?.signal, timeoutMs) })
+  } catch (e) {
+    // 网络层失败/超时不透传浏览器原文（如 "Failed to fetch"），统一医生可理解文案
+    if (e && e.name === 'AbortError') throw new Error('请求超时或网络中断，请稍后重试')
+    throw new Error('网络连接失败，请检查网络后重试')
+  }
   if (!res.ok) throw new Error(`服务暂时不可用，请稍后重试（${res.status}）`)
   let body = null
   try {

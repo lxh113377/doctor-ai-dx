@@ -87,23 +87,39 @@ def _bp_crisis(text: str) -> bool:
     m = re.search(r"(\d{2,3})\s*[/／]\s*(\d{2,3})", text)
     if not m:
         return False
-    return int(m.group(1)) >= 180 or int(m.group(2)) >= 120
+    sys_, dia = int(m.group(1)), int(m.group(2))
+    if sys_ > 350 or dia > 250 or sys_ < 50 or dia < 20:  # 脏读拒绝（与 rules.js 值域守卫对齐）
+        return False
+    return sys_ >= 180 or dia >= 120
+
+
+def _match_flag_rules(text: str) -> list[dict]:
+    hits: list[dict] = []
+    for r in DANGER_RULES:
+        if any(kw.lower() in text for kw in r["keywords"]):  # 两侧小写归一（对齐 rules.js，d-二聚体不漏报）
+            hits.append({"name": r["name"], "severity": r["severity"], "advice": r["advice"]})
+    # 组合规则：每个线索组至少命中一词才触发（表达"症状组合"临床逻辑，降低单非特异词误报）
+    for r in COMBO_RULES:
+        if all(any(kw.lower() in text for kw in group) for group in r["all"]):
+            hits.append({"name": r["name"], "severity": r["severity"], "advice": r["advice"]})
+    if _bp_crisis(text) and not any("高血压急症" in h["name"] for h in hits):
+        hits.append({"name": "高血压急症红旗", "severity": "高", "advice": _HYPERTENSION_ADVICE})
+    seen, out = set(), []
+    for h in hits:
+        if h["name"] not in seen:
+            seen.add(h["name"])
+            out.append(h)
+    return out
+
+
+def scan_flag_details(text: str) -> list[dict]:
+    """结构化红旗明细（镜像 rules.js scanFlagDetails）：[{name, severity, advice}]。"""
+    t = (text or "").lower()[:2000]
+    if not t.strip():
+        return []
+    return _match_flag_rules(t)
 
 
 def scan_flags(text: str) -> list[str]:
-    hits = []
-    for r in DANGER_RULES:
-        if any(kw in text for kw in r["keywords"]):
-            hits.append(f"严重危险信号：{r['name']}。{r['advice']}")
-    # 组合规则：每个线索组至少命中一词才触发（表达"症状组合"临床逻辑，降低单非特异词误报）
-    for r in COMBO_RULES:
-        if all(any(kw in text for kw in group) for group in r["all"]):
-            hits.append(f"严重危险信号：{r['name']}。{r['advice']}")
-    if _bp_crisis(text) and not any("高血压急症" in h for h in hits):
-        hits.append(f"严重危险信号：高血压急症红旗。{_HYPERTENSION_ADVICE}")
-    seen, out = set(), []
-    for h in hits:
-        if h not in seen:
-            seen.add(h)
-            out.append(h)
-    return out
+    """红旗字符串（既有契约，格式不变）。"""
+    return [f"严重危险信号：{d['name']}。{d['advice']}" for d in scan_flag_details(text)]
