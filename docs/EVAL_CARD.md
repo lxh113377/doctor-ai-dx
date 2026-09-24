@@ -33,7 +33,7 @@
 
 - **不证明诊断正确率**：31 例证明结构、引用合法与规则命中；诊断 Top-k 准确率、校准度、真实临床效度未评测（需医生金标准与前瞻研究）。
 - **专科纵深未覆盖**：肿瘤、罕见病、产科复杂合并症、肾内/血液专科、儿科新生儿重症等不在 55 条知识库范围；超出范围时应由医生主导，红旗层仅作提示兜底。
-- **无持久化/无多用户**：请求无服务端会话，刷新即失；未实现认证、审计与 FHIR 对接（试点前补齐项）。刻意未引入浏览器本地会话缓存——在隐私口径与数据留存声明写明前，把问诊叙述落到客户端存储属于新增风险而非收益。
+- **无持久化/无多用户**：请求无服务端会话，刷新即失；未实现认证与审计日志。FHIR 对接自 v1.8.0 起提供 **light 只读导出**（`/api/dx` 的 `data.fhir`，见 ARCHITECTURE §9），但**不含**资源写回、Transaction/批次幂等、术语服务器校验与官方 Profile  conformant 声明——它是「可被集成的输出面」，不是完整 EHR 集成方案。刻意未引入浏览器本地会话缓存——在隐私口径与数据留存声明写明前，把问诊叙述落到客户端存储属于新增风险而非收益。
 - **日志留存与集中化**：结构化日志已具备可归因字段（`req/path/method/ms/kind/msg`），但仅走运行时 stdout（Cloudflare 免费额度保留期短），未接 Sentry/Langfuse/OTLP 后端（需外部账号与密钥）。跨会话的线上故障回溯仍未实现。
 - **ICD-10 字段**：55 条已附初筛映射（组合条目分号并列；综合征/分诊类条目为 `null`），**未经临床复核前不得作为编码依据**。
 - **知识时效**：条目含 source/year，过期撤回流程未建设；使用指南类结论前请核对来源年份。
@@ -52,16 +52,18 @@
 ## 5. 复现命令
 
 ```bash
-cd frontend && npm test                 # 十件套：smoke 27 + 引擎 31 例 + 检索双档地板 + hybrid 双端 50/50 + 双端契约 31:31 + KB 守卫 + 路由守卫 + API 契约对账 + vitest 组件 + 版本真值五方对账
+cd frontend && npm test                 # 十一件套：smoke 27 + 引擎 31 例 + 检索双档地板 + hybrid 双端 50/50 + 双端契约 31:31 + FHIR 导出 30 项（含 6 组反例）+ KB 守卫 17 + 路由守卫 14 + API 契约对账 + vitest 组件 + 版本真值五方对账
+node tests/fhir_guard.mjs               # FHIR-light 单独跑：Bundle 结构/术语白名单/悬挂引用/零时钟/红线文案 + 反例可拦性
 node tests/api_contract_guard.mjs       # openapi.json ↔ Functions 路由双向对账（6 端点）
 node tests/bundle_size_guard.mjs        # 主包体积地板线（需先 npm run build；主 chunk ≤77.5KB / assets ≤86.5KB gzip）
-                                        #      + 双端契约 31/31 + 知识库门禁 16 + 路由可观测性 14
+                                        #      + 双端契约 31/31 + 知识库门禁 17 + 路由可观测性 14
 node tests/retrieval_eval.mjs --retriever=hybrid   # 备选检索器口径（默认 bm25）
 node tests/retrieval_eval.mjs --retriever=hybrid --write-baseline  # 收紧该检索器地板线（只准收紧）
 node tests/retrieval_eval.mjs --fixture=retrieval_holdout.json --retriever=bm25   # 留出集（不参与基线断言）
 node tests/retrieval_eval.mjs --fixture=retrieval_holdout.json --retriever=hybrid # 留出集对比同命令
 python ../backend/tests/smoke_engine.py         # 后端降级链 19 项
 python ../backend/tests/test_api_observe.py     # 后端可观测性契约 15 项
+python ../backend/tests/test_fhir.py            # 后端 FHIR 导出 17 项（含 API 透出与双端术语集一致）
 ```
 
 数据来源：`frontend/tests/fixtures/*.json`（评测集与基线，provenance 见 `_meta`）；根工作区 `iCAN大学生创新创业大赛/03-评测/eval_report*.json`。

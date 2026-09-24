@@ -80,9 +80,9 @@
 
 | 层 | 命令 | 覆盖 |
 |---|---|---|
-| 前端十件套 | `cd frontend && npm test` | smoke 27 · engine 31 · retrieval 50 例双档地板 · retriever parity · 双端契约 31:31 · kb 16 · route 14 · api 契约 6 端点 · vitest 7 · version 五方 |
+| 前端十一件套 | `cd frontend && npm test` | smoke 27 · engine 31 · retrieval 50 例双档地板 · retriever parity · 双端契约 31:31 · **fhir 30（含 6 组反例）** · kb 17 · route 14 · api 契约 6 端点 · vitest 7 · version 五方 |
 | 构建体积 | `npm run build && npm run test:bundle` | 主 chunk gzip ≤77500B / assets 合计 ≤86500B（地板线，防膨胀也防假瘦身） |
-| 后端 | `python tests/smoke_engine.py` / `tests/test_api_observe.py` | 规则降级 19 项 · 可观测与脱敏 15 项 |
+| 后端 | `python tests/smoke_engine.py` / `tests/test_api_observe.py` / `tests/test_fhir.py` | 规则降级 19 项 · 可观测与脱敏 15 项 · FHIR 导出 17 项 |
 | 契约派生件 | `python scripts/gen_openapi.py --check` | openapi 版本与后端单一源一致（只同步版本行，禁全量重写） |
 | CI | `.github/workflows/ci.yml`（3 job）+ `codeql.yml` + `dep-audit.yml` | 上述全量 + 每周 npm/pip 漏洞扫描 |
 | 引用链健康（唯一联网门禁） | `cd frontend && npm run test:links` | 知识库全部 url 逐条可达性核验：DEAD 即红、412/403 类反爬按 BLOCKED 只报不红；CI `link-health.yml` 每周跑（观察期） |
@@ -95,3 +95,20 @@
 - 加一条红旗：`rules.js` 的 `DANGER_RULES`（单词）或 `COMBO_RULES`（多线索组合，降低非特异词误报）→ 同步 `rules.py` → `test:contract` 兜底。
 - 换模型/自建推理：只动 `llm.py` 的 Provider 与 `DEEPSEEK_BASE_URL`，链路与红线不受影响。
 - 明确未提供：鉴权与多租户、数据持久化（无患者落库）、向量检索（列为后续）、真实临床验证（评测为 silver 标注）。
+
+## 9. FHIR-light 导出层（对外集成面，v1.8.0 起）
+
+兑现 README 的「可被既有 HIS/公卫平台集成的能力单元」——诊断响应 `data.fhir` 直接给出 FHIR R4 资源 Bundle，集成方无需自定义字段映射。
+
+| 面 | 口径（实测） |
+|---|---|
+| 实现 | `functions/lib/fhir.js`（权威）↔ `backend/app/services/fhir.py`（镜像），纯函数、零网络、零 LLM |
+| 资源组合 | Bundle(`collection`) = Patient + Encounter + Condition(疑似/鉴别) + Observation(症状/红旗/引用) + DiagnosticReport |
+| 插入点 | `buildDiagnosis` 末端（确定性校验与红旗兜底**之后**）→ 只读派生视图，红旗层与引用白名单零触碰 |
+| 术语绑定 | 只用 HL7 已发布 CodeSystem 的 code：`condition-clinical#active`、`condition-ver-status#unconfirmed`、`condition-category#encounter-diagnosis\|problem-list-item`、`v3-ActCode#AMB`、`administrative-gender`、`bundle-type#collection`、`observation-status#final`、`diagnostic-report-status#final\|partial`；本地语义走本仓命名空间 `…#fhir-light/code`（仅 `red-flag`/`citation` 两值） |
+| ICD 规则 | 知识库 `icd` 为 null 的条目**只出 `text` 不出 `coding`**——标准编码不得由系统编造（`fhir_guard` + `test_fhir` 双向锁） |
+| 确定性 | 无 `timestamp`/`issued`/`effective` 字段，同输入逐字节相同 → 才能进 `test:contract` 的 31 例双端逐字段对账 |
+| 状态语义 | `mode=live` → `DiagnosticReport.status=final`；降级 → `partial` 并在 `conclusion` 写明降级原因（如实标注，不伪装成终稿） |
+| 红线携带 | 每份 `conclusion` 以「AI 辅助参考 · 医生终审」开头；Patient 打 `syntheticCase=true` 扩展，演示数据不含真实患者 |
+| 门禁 | `npm run test:fhir`（30 项，含 6 组反例：非法 system/非法 code/悬挂引用/时钟字段/丢终审文案/编造 ICD）+ 后端 17 项 + CI backend 新步骤 |
+| 边界 | **light 子集，不声称符合官方 Profile**：未做 StructureDefinition 校验、未接术语服务器、无 Transaction 幂等写回；`docs/openapi.json` 的 `fhir` 字段描述即对外承诺面 |

@@ -5,6 +5,24 @@
 
 ## [Unreleased]
 
+## [1.8.0] - 2026-09-25
+
+### Added（功能模块覆盖：对外集成面）
+- **FHIR R4（light 子集）导出层**：`/api/dx` 响应新增 `data.fhir`——标准 Bundle（Patient + Encounter + Condition + Observation + DiagnosticReport），兑现 README「可被既有 HIS/公卫平台集成的能力单元」此前未落地的部分。实现为 `frontend/functions/lib/fhir.js`（权威）与 `backend/app/services/fhir.py`（镜像）双端同源，纯函数、零网络、零 LLM
+- `frontend/tests/fhir_guard.mjs`（30 项）：Bundle 结构自洽、术语编码白名单（8 个 HL7 已发布 CodeSystem + 本仓命名空间锁两值）、悬挂引用检测、零时钟字段断言、红线文案断言（`conclusion` 必含「医生终审」）、ICD 溯源断言（`icd=null` 的条目只出 `text` 不出 `coding`）；**含 6 组反例实测**（非法 system／非法 code／悬挂 reference／混入 timestamp／丢终审文案／编造 ICD）+ 合法对照组零命中，证明判据已接线而非恒真
+- `backend/tests/test_fhir.py`（17 项）并挂入 CI `backend-test`：API 层透出（Pydantic 未吞字段）、双端 CodeSystem URI 清单一致、空输入兜底
+- `docs/ARCHITECTURE.md` 新增 §9「FHIR-light 导出层」：资源组合、插入点（确定性校验与红旗兜底**之后**）、逐条术语绑定来源与边界声明
+
+### Changed
+- 前端离线套件由十件套扩为**十一件套**（`npm test` 增 `test:fhir`）
+- `docs/openapi.json` 的 `Diagnosis` schema 补 `fhir` 字段说明（手工契约文档，按既有口径只做字符串级改写，不全量重写）
+- README API 契约表 `/api/dx` 响应列补 `fhir`，并新增 HIS 集成说明段
+- `docs/EVAL_CARD.md` §3 状态性表述回扫：原「未实现…FHIR 对接」改为「v1.8.0 起提供 light 只读导出，但不含写回/事务/术语服务器校验/官方 Profile conformant 声明」——避免交付材料里的能力声明落后于实现
+- `docs/ARCHITECTURE.md` §7 与 `EVAL_CARD.md` §5 计数纠正：`kb` 门禁实际为 17 项（round9 增第 17 项后此两处未同步），前端套件计数同步为十一件套
+
+### 红线影响
+无。红旗规则层仍独立且在导出之前执行；引用白名单未扩；「AI 辅助参考 · 医生终审」文案在 Bundle 结论中同样强制（并由门禁断言）。双端契约 31:31 逐字段对账已覆盖新增的 `fhir` 对象。
+
 ## [1.7.0] - 2026-09-25
 
 ### Fixed（🔴 引用面实质缺陷修复）

@@ -1,7 +1,7 @@
 {
   "name": "doctor-ai-dx-frontend",
   "private": true,
-  "version": "1.7.0",
+  "version": "1.8.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -11,11 +11,12 @@
     "test:engine": "node tests/engine_eval.mjs",
     "test:retrieval": "node tests/retrieval_eval.mjs",
     "test:contract": "node tests/contract_parity.mjs",
+    "test:fhir": "node tests/fhir_guard.mjs",
     "test:kb": "node tests/kb_guard.mjs",
     "test:route": "node tests/route_guard.mjs",
     "test:api": "node tests/api_contract_guard.mjs",
     "test:bundle": "node tests/bundle_size_guard.mjs",
-    "test": "npm run test:smoke && npm run test:engine && npm run test:retrieval && npm run test:retrieval-parity && npm run test:contract && npm run test:kb && npm run test:route && npm run test:api && npm run test:components && npm run test:version",
+    "test": "npm run test:smoke && npm run test:engine && npm run test:retrieval && npm run test:retrieval-parity && npm run test:contract && npm run test:fhir && npm run test:kb && npm run test:route && npm run test:api && npm run test:components && npm run test:version",
     "test:retrieval-parity": "node tests/retriever_parity.mjs",
     "test:components": "vitest run",
     "test:version": "node tests/version_guard.mjs",

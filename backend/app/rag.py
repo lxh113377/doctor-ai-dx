@@ -148,3 +148,8 @@ def kb_condition(eid: str) -> str:
 
 def kb_text(eid: str) -> str:
     return _BY_ID.get(eid, {}).get("text", "")
+
+
+def kb_icd(eid: str):
+    """ICD-10 映射原值（组合条目分号并列；综合征/分诊类条目为 None，不得据此编造编码）。"""
+    return _BY_ID.get(eid, {}).get("icd")

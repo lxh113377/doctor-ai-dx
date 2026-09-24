@@ -44,7 +44,7 @@ cd ../frontend && npm install && npm run dev                 # :5173，/api 代�
 
 ```bash
 cd frontend
-npm test       # 22 项冒烟 + 31 例引擎评测 + 检索分层回归 + 31 例双端契约比对（契约需本机 Python）
+npm test       # 十一件套：27 冒烟 + 31 例引擎评测 + 检索分层回归 + 双端契约 31:31 + FHIR 导出 30 项（契约需本机 Python）
 npm run build  # Vite 生产构建
 
 cd ../backend
@@ -96,13 +96,14 @@ curl http://127.0.0.1:8000/health
 |---|---|---|---|
 | GET  | /api/cases | — | 病例列表（含脱敏合成标注） |
 | POST | /api/intake/ask | {case_id, history[]} | reply/question, chips[], done, state{symptoms,missing_slots,red_flags,red_flag_details,rounds}, mode |
-| POST | /api/dx/{id} | {case_id, history[]} | primary[]{name,prob,strength,reasons,evidence_ids,refs}, differential[], flags[], flag_details[]{name,severity,advice}, evidence[], trace, mode, fallback_reason |
+| POST | /api/dx/{id} | {case_id, history[]} | primary[]{name,prob,strength,reasons,evidence_ids,refs}, differential[], flags[], flag_details[]{name,severity,advice}, evidence[], trace, mode, fallback_reason, **fhir**（FHIR R4 light Bundle） |
 | POST | /api/workup/{id} | {case_id, history[], dx?} | essential/suggested/optional[]{item,why,evidence_ids}, evidence_ids[], mode |
 | POST | /api/report/{id} | {case_id, history[], dx?} | soap{S,O,A,P}, conclusion, disclaimer, evidence_ids[], mode |
 | GET  | /api/health | — | {status, llm_mode: live\|mock-fallback, version} |
 
 > `dx?` 为前端已生成的诊断结果，workup/report 复用它以消除冗余 LLM 串行调用；**红旗一律由后端规则重算，不信任前端**。
 > 机器可读契约：[`docs/openapi.json`](docs/openapi.json)（OpenAPI 3.0.3，与实现对账由 `npm run test:api` 守卫；集成方/AI Agent 可直接消费）。
+> **HIS 集成**：`/api/dx` 响应含 `data.fhir`——FHIR R4 light Bundle（Patient/Encounter/Condition/Observation/DiagnosticReport），双端逐字节一致、零时钟字段；`icd` 未映射的条目只出 `text` 不编造标准编码；本导出为**只读派生视图**，不改变红旗判定与引用白名单。详见 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) §9。
 > 版本真值：`backend/app/version.py` == `functions/lib/version.js` == `package.json` == `docs/openapi.json` == 最新 tag，由 `npm run test:version` 五方对账强制（升版本三处同改 + `python scripts/gen_openapi.py` 同步契约版本）。
 > 契约基线于 2026-09-24 完成 E2E 复核，两端（Functions / FastAPI）同步实现；公开仓门禁见 `frontend/tests/`，完整线上评测见工作区 `../iCAN大学生创新创业大赛/03-评测/`。
 

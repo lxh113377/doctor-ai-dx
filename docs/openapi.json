@@ -2,7 +2,7 @@
   "openapi": "3.0.3",
   "info": {
     "title": "医·基层AI辅助诊断系统 API",
-    "version": "1.7.0",
+    "version": "1.8.0",
     "description": "Cloudflare Pages Functions（线上权威实现 functions/api/[[route]].js）的机器可读契约；FastAPI 后端为镜像实现，双端一致性由 contract_parity 测试保障。所有响应统一壳 {code:0,data}（成功）或 {code:<http-status>,message}（失败），并携带 x-request-id 响应头用于故障归因。全程 AI 辅助参考 · 医生终审，输出不构成独立诊断。",
     "x-compliance": "演示仅脱敏合成病例；evidence_ids 仅限知识库白名单 kb-001~055；红旗规则层独立于 LLM 不可被模型覆盖"
   },
@@ -97,7 +97,8 @@
           "fallback_reason": { "type": "string" },
           "faq": { "type": "array", "items": { "type": "object" } },
           "trace": { "type": "object", "properties": { "evidence_ids": { "type": "array", "items": { "type": "string" } }, "rounds": { "type": "integer" }, "symptoms": { "type": "array", "items": { "type": "string" } } } },
-          "state": { "type": "object" }
+          "state": { "type": "object" },
+          "fhir": { "type": "object", "description": "FHIR R4（light 子集）Bundle：Patient/Encounter/Condition/Observation/DiagnosticReport，供 HIS 集成。只读派生视图，不参与决策链；零时钟字段保证双端逐字节对账；术语绑定仅用 HL7 已发布 CodeSystem，本地语义走本仓命名空间。判据见 tests/fhir_guard.mjs。" }
         }
       }
     }

@@ -74,6 +74,7 @@ class DxResult(BaseModel):
     evidence: list[EvidenceItem] = []
     mode: str = "rule-fallback"
     fallback_reason: str = ""
+    fhir: dict = {}  # FHIR R4 light 导出（只读派生视图，不参与决策链）
 
 
 class WorkupItem(BaseModel):

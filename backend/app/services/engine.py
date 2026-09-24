@@ -8,6 +8,7 @@ from ..knowledge import KNOWLEDGE_BASE, SYMPTOM_TO_KB
 from ..retriever import get_retriever
 from ..config import llm_available
 from . import llm as llm_svc
+from . import fhir as fhir_svc
 
 _BY_ID = {k["id"]: k for k in KNOWLEDGE_BASE}
 _RETRIEVER = get_retriever()
@@ -127,6 +128,7 @@ def build_diagnosis(case_id: str, history: list[dict] | None = None) -> dict:
     out["fallback_reason"] = reason
     out["trace"] = {"evidence_ids": evidence_ids, "rounds": state["rounds"], "symptoms": state["symptoms"]}
     out["state"] = state
+    out["fhir"] = fhir_svc.to_fhir_bundle(out)
     return out
 
 
