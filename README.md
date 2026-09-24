@@ -26,7 +26,7 @@ backend/    FastAPI —— 同一链路的 Python 镜像（可选本地运行，
 
 ```bash
 # 方式A（推荐·与线上零漂移）：一键脚本，跨平台（Linux/macOS/Git Bash）
-./start-demo.sh            # Windows 用：powershell -ExecutionPolicy Bypass -File start-demo.ps1
+bash start-demo.sh         # 或 ./start-demo.sh（已置执行位）；Windows 亦可 powershell -File start-demo.ps1
 # 或手工执行同样三步：
 cd frontend && npm install && npm run build
 node node_modules/wrangler/bin/wrangler.js pages dev dist --port 8788 --local

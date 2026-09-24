@@ -5,6 +5,9 @@
 
 ## [Unreleased]
 
+### Fixed
+- `start-demo.sh` 补执行位（`git update-index --chmod=+x`，实测首提交为 100644 需 `bash` 前缀）；README 主用法改 `bash start-demo.sh` 以对所有平台成立
+
 ## [1.6.1] - 2026-09-24
 
 ### Added
