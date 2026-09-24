@@ -1,0 +1,38 @@
+name: 功能建议 Feature Request
+description: 提出功能、病种覆盖或工程改进建议（请先读评测卡了解能力边界）
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        建议先阅读 [`docs/EVAL_CARD.md`](../../blob/main/docs/EVAL_CARD.md)：能力边界（覆盖哪些病、明确不覆盖什么）与既有设计决策（红旗独立层/引用白名单/无服务器形态）都在一页内。
+  - type: textarea
+    id: problem
+    attributes:
+      label: 想解决的问题 / 场景
+      placeholder: 基层诊室场景下 …现状做不到…
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: 建议方案
+      description: 功能描述、涉及模块（engine/rules/rag/knowledge/frontend/CI）
+    validations:
+      required: true
+  - type: dropdown
+    id: redline
+    attributes:
+      label: 是否触碰三条红线
+      description: 红旗层独立于 LLM 不可被覆盖 / 引用白名单溯源 / 辅助参考·医生终审。触碰红线的建议默认不采纳。
+      options:
+        - 不触碰
+        - 可能触碰（请说明）
+        - 不确定
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: 验收建议
+      description: 如"离线评测 31 例全绿 + 新增 X 断言"——本项目合入门槛是门禁全绿，非仅代码完成
