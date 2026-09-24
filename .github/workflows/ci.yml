@@ -72,18 +72,39 @@ jobs:
     if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v7
       - uses: actions/download-artifact@v8
         with:
           name: dist
           path: dist
       - name: Deploy to Cloudflare Pages
         env:
-          HAS_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN != '' }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: 04b1466b2606b678a332fe6f26aa87ec
         run: |
-          if [ "$HAS_TOKEN" = "true" ]; then
-            npx wrangler pages deploy dist --project-name=doctor-ai-dx --branch=main --commit-dirty=true
-          else
-            echo "未配置 CLOUDFLARE_API_TOKEN，跳过部署（配置后自动生效）"
+          # fail-closed（2026-09-25 round9 实测治本）：此前缺 Token 时走 else 分支只打印一行说明并
+          # 以 exit 0 结束 → deploy 作业「绿而没部署」（跳过式通过，R199.8 同族）。本作业只在 main 推送跑，
+          # 缺凭据即属真故障，必须判红。
+          if [ -z "${CLOUDFLARE_API_TOKEN:-}" ]; then
+            echo "::error::CLOUDFLARE_API_TOKEN 未配置：main 分支推送必须部署，拒绝静默跳过。请在仓库 Secrets 配置该 Token 后重跑。"
+            exit 1
           fi
+          npx wrangler pages deploy dist --project-name=doctor-ai-dx --branch=main --commit-dirty=true
+      - name: 部署后真值校验（线上 health.version == 仓内单一源）
+        env:
+          SITE: https://doctor-ai-dx.pages.dev
+        run: |
+          EXPECT=$(grep -oE 'APP_VERSION = "[^"]+"' backend/app/version.py | cut -d'"' -f2)
+          echo "期望版本（backend/app/version.py 单一源）= $EXPECT"
+          for i in 1 2 3 4 5 6 7 8 9 10; do
+            sleep 12
+            BODY=$(curl -s --max-time 20 "$SITE/api/health" || true)
+            GOT=$(printf '%s' "$BODY" | grep -oE '"version":"[^"]+"' | cut -d'"' -f4 || true)
+            echo "try $i: health=$BODY"
+            if [ "$GOT" = "$EXPECT" ]; then
+              echo "PASS 线上已承载 $GOT（部署真值校验通过）"
+              exit 0
+            fi
+          done
+          echo "::error::线上 health.version=$GOT 与仓内 $EXPECT 不一致：部署未生效或被回滚（禁止把「作业绿」当「已上线」）"
+          exit 1
