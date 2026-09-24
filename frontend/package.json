@@ -10,7 +10,8 @@
     "test:smoke": "node tests/engine_smoke.mjs",
     "test:engine": "node tests/engine_eval.mjs",
     "test:retrieval": "node tests/retrieval_eval.mjs",
-    "test": "npm run test:smoke && npm run test:engine && npm run test:retrieval"
+    "test:contract": "node tests/contract_parity.mjs",
+    "test": "npm run test:smoke && npm run test:engine && npm run test:retrieval && npm run test:contract"
   },
   "dependencies": {
     "react": "^19.1.0",
