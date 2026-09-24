@@ -13,6 +13,7 @@ KNOWLEDGE_BASE = [
     "scope": "急诊/心血管",
     "section": "高危胸痛识别",
     "condition": "急性冠脉综合征（待排除）",
+    "icd": None,
     "keywords": [
       "胸痛",
       "胸闷",
@@ -33,6 +34,7 @@ KNOWLEDGE_BASE = [
     "scope": "心血管",
     "section": "ACS 诊断",
     "condition": "急性冠脉综合征（ACS）",
+    "icd": "I21.9",
     "keywords": [
       "ACS",
       "心肌梗死",
@@ -53,6 +55,7 @@ KNOWLEDGE_BASE = [
     "scope": "呼吸/心血管",
     "section": "肺栓塞筛查",
     "condition": "肺栓塞",
+    "icd": "I26.9",
     "keywords": [
       "呼吸困难",
       "气促",
@@ -72,6 +75,7 @@ KNOWLEDGE_BASE = [
     "scope": "心血管/急诊",
     "section": "夹层警示",
     "condition": "主动脉夹层",
+    "icd": "I71.0",
     "keywords": [
       "撕裂样",
       "胸背痛",
@@ -90,6 +94,7 @@ KNOWLEDGE_BASE = [
     "scope": "呼吸",
     "section": "气胸识别",
     "condition": "自发性气胸",
+    "icd": "J93.9",
     "keywords": [
       "突发胸痛",
       "呼吸困难",
@@ -108,6 +113,7 @@ KNOWLEDGE_BASE = [
     "scope": "呼吸/全科",
     "section": "上感管理",
     "condition": "急性上呼吸道感染",
+    "icd": "J06.9",
     "keywords": [
       "发热",
       "咽痛",
@@ -127,6 +133,7 @@ KNOWLEDGE_BASE = [
     "scope": "呼吸/感染",
     "section": "流感诊治",
     "condition": "流行性感冒",
+    "icd": "J11.1",
     "keywords": [
       "高热",
       "流感",
@@ -147,6 +154,7 @@ KNOWLEDGE_BASE = [
     "scope": "心血管/慢病",
     "section": "血压管理",
     "condition": "高血压",
+    "icd": "I10",
     "keywords": [
       "高血压",
       "血压高",
@@ -166,6 +174,7 @@ KNOWLEDGE_BASE = [
     "scope": "神经/全科",
     "section": "头晕分诊",
     "condition": "头晕（前庭/全身性）",
+    "icd": "R42",
     "keywords": [
       "头晕",
       "眩晕",
@@ -185,6 +194,7 @@ KNOWLEDGE_BASE = [
     "scope": "血液/全科",
     "section": "贫血筛查",
     "condition": "贫血",
+    "icd": "D64.9",
     "keywords": [
       "乏力",
       "头昏",
@@ -204,6 +214,7 @@ KNOWLEDGE_BASE = [
     "scope": "心血管/全科",
     "section": "体位性低血压",
     "condition": "体位性低血压",
+    "icd": "I95.1",
     "keywords": [
       "体位",
       "起身",
@@ -223,6 +234,7 @@ KNOWLEDGE_BASE = [
     "scope": "消化/急诊",
     "section": "腹痛红旗",
     "condition": "急腹症（需转诊）",
+    "icd": "R10.0",
     "keywords": [
       "腹痛",
       "腹膜刺激",
@@ -242,6 +254,7 @@ KNOWLEDGE_BASE = [
     "scope": "急诊",
     "section": "分诊等级",
     "condition": "濒危/危重（优先转运）",
+    "icd": None,
     "keywords": [
       "意识障碍",
       "晕厥",
@@ -261,6 +274,7 @@ KNOWLEDGE_BASE = [
     "scope": "消化/急诊",
     "section": "出血红旗",
     "condition": "上消化道出血",
+    "icd": "K92.2",
     "keywords": [
       "呕血",
       "黑便",
@@ -280,6 +294,7 @@ KNOWLEDGE_BASE = [
     "scope": "消化/全科",
     "section": "腹泻管理",
     "condition": "急性胃肠炎",
+    "icd": "A09",
     "keywords": [
       "腹泻",
       "呕吐",
@@ -299,6 +314,7 @@ KNOWLEDGE_BASE = [
     "scope": "内分泌/慢病",
     "section": "糖尿病管理",
     "condition": "2 型糖尿病",
+    "icd": "E11.9",
     "keywords": [
       "多饮",
       "多尿",
@@ -318,6 +334,7 @@ KNOWLEDGE_BASE = [
     "scope": "内分泌/急诊",
     "section": "低血糖三联征",
     "condition": "低血糖",
+    "icd": "E16.2",
     "keywords": [
       "心慌",
       "出汗",
@@ -337,6 +354,7 @@ KNOWLEDGE_BASE = [
     "scope": "心血管/慢病",
     "section": "随访目标",
     "condition": "高血压（随访）",
+    "icd": "I10",
     "keywords": [
       "血压",
       "随访",
@@ -356,6 +374,7 @@ KNOWLEDGE_BASE = [
     "scope": "泌尿/感染",
     "section": "肾盂肾炎",
     "condition": "急性肾盂肾炎",
+    "icd": "N10",
     "keywords": [
       "尿频",
       "尿急",
@@ -375,6 +394,7 @@ KNOWLEDGE_BASE = [
     "scope": "呼吸/耳鼻喉",
     "section": "咽痛鉴别",
     "condition": "化脓性扁桃体炎",
+    "icd": "J03.9",
     "keywords": [
       "咽痛",
       "扁桃体",
@@ -394,6 +414,7 @@ KNOWLEDGE_BASE = [
     "scope": "耳鼻喉/过敏",
     "section": "鼻炎鉴别",
     "condition": "过敏性鼻炎",
+    "icd": "J30.4",
     "keywords": [
       "喷嚏",
       "清水涕",
@@ -413,6 +434,7 @@ KNOWLEDGE_BASE = [
     "scope": "神经",
     "section": "头痛分型",
     "condition": "偏头痛",
+    "icd": "G43.9",
     "keywords": [
       "头痛",
       "搏动",
@@ -432,6 +454,7 @@ KNOWLEDGE_BASE = [
     "scope": "内分泌",
     "section": "甲减识别",
     "condition": "甲状腺功能减退",
+    "icd": "E03.9",
     "keywords": [
       "乏力",
       "畏寒",
@@ -451,6 +474,7 @@ KNOWLEDGE_BASE = [
     "scope": "呼吸",
     "section": "哮喘急性发作",
     "condition": "支气管哮喘",
+    "icd": "J45.9",
     "keywords": [
       "喘息",
       "气促",
@@ -470,6 +494,7 @@ KNOWLEDGE_BASE = [
     "scope": "皮肤/感染",
     "section": "抗病毒窗口",
     "condition": "带状疱疹",
+    "icd": "B02.9",
     "keywords": [
       "水疱",
       "神经痛",
@@ -489,6 +514,7 @@ KNOWLEDGE_BASE = [
     "scope": "风湿/内分泌",
     "section": "痛风急性期",
     "condition": "痛风",
+    "icd": "M10.9",
     "keywords": [
       "关节痛",
       "红肿",
@@ -508,6 +534,7 @@ KNOWLEDGE_BASE = [
     "scope": "泌尿",
     "section": "结石急诊",
     "condition": "泌尿系结石",
+    "icd": "N20.9",
     "keywords": [
       "腰痛",
       "绞痛",
@@ -527,6 +554,7 @@ KNOWLEDGE_BASE = [
     "scope": "骨科/全科",
     "section": "肩颈鉴别",
     "condition": "颈椎病/肩周炎",
+    "icd": "M54.2; M75.0",
     "keywords": [
       "肩痛",
       "颈痛",
@@ -546,6 +574,7 @@ KNOWLEDGE_BASE = [
     "scope": "呼吸/慢病",
     "section": "急性加重",
     "condition": "慢性阻塞性肺疾病",
+    "icd": "J44.9",
     "keywords": [
       "慢性咳嗽",
       "咳痰",
@@ -565,6 +594,7 @@ KNOWLEDGE_BASE = [
     "scope": "神经/精神",
     "section": "慢性失眠",
     "condition": "失眠障碍",
+    "icd": "G47.0",
     "keywords": [
       "入睡困难",
       "早醒",
@@ -584,6 +614,7 @@ KNOWLEDGE_BASE = [
     "scope": "儿科",
     "section": "发热评估",
     "condition": "儿童发热（感染性为主）",
+    "icd": "R50.9",
     "keywords": [
       "发热",
       "小儿",
@@ -604,6 +635,7 @@ KNOWLEDGE_BASE = [
     "scope": "儿科/感染",
     "section": "重症预警",
     "condition": "手足口病",
+    "icd": "B08.0",
     "keywords": [
       "手足口",
       "口腔疱疹",
@@ -624,6 +656,7 @@ KNOWLEDGE_BASE = [
     "scope": "儿科/消化",
     "section": "脱水分级",
     "condition": "小儿腹泻伴脱水",
+    "icd": "A09",
     "keywords": [
       "腹泻",
       "水样便",
@@ -644,6 +677,7 @@ KNOWLEDGE_BASE = [
     "scope": "儿科/急诊",
     "section": "肠套叠红旗",
     "condition": "肠套叠（需急诊）",
+    "icd": "K56.1",
     "keywords": [
       "阵发哭闹",
       "果酱样便",
@@ -663,6 +697,7 @@ KNOWLEDGE_BASE = [
     "scope": "妇产",
     "section": "AUB 分型",
     "condition": "异常子宫出血",
+    "icd": "N93.9",
     "keywords": [
       "月经量多",
       "经期延长",
@@ -682,6 +717,7 @@ KNOWLEDGE_BASE = [
     "scope": "妇产/急诊",
     "section": "宫外孕红旗",
     "condition": "异位妊娠（急症）",
+    "icd": "O00.9",
     "keywords": [
       "停经",
       "阴道出血",
@@ -701,6 +737,7 @@ KNOWLEDGE_BASE = [
     "scope": "妇产/泌尿",
     "section": "分泌物鉴别",
     "condition": "阴道炎",
+    "icd": "N76.0",
     "keywords": [
       "白带增多",
       "外阴瘙痒",
@@ -720,6 +757,7 @@ KNOWLEDGE_BASE = [
     "scope": "妇产",
     "section": "原发继发鉴别",
     "condition": "痛经",
+    "icd": "N94.6",
     "keywords": [
       "经期腹痛",
       "坠胀",
@@ -739,6 +777,7 @@ KNOWLEDGE_BASE = [
     "scope": "皮肤",
     "section": "分级外用",
     "condition": "湿疹/接触性皮炎",
+    "icd": "L30.9",
     "keywords": [
       "皮疹",
       "瘙痒",
@@ -759,6 +798,7 @@ KNOWLEDGE_BASE = [
     "scope": "皮肤/过敏",
     "section": "急性处理",
     "condition": "荨麻疹",
+    "icd": "L50.9",
     "keywords": [
       "风团",
       "瘙痒",
@@ -778,6 +818,7 @@ KNOWLEDGE_BASE = [
     "scope": "皮肤/感染",
     "section": "感染边界",
     "condition": "丹毒/蜂窝织炎",
+    "icd": "A46; L03.9",
     "keywords": [
       "皮肤红肿",
       "皮温高",
@@ -798,6 +839,7 @@ KNOWLEDGE_BASE = [
     "scope": "眼科",
     "section": "危险红眼",
     "condition": "急性闭角型青光眼（急症）",
+    "icd": "H40.2",
     "keywords": [
       "眼红",
       "眼痛",
@@ -818,6 +860,7 @@ KNOWLEDGE_BASE = [
     "scope": "眼科/急诊",
     "section": "视网膜血管",
     "condition": "视网膜中央动脉阻塞（急症）",
+    "icd": "H34.1",
     "keywords": [
       "视力骤降",
       "看不见",
@@ -837,6 +880,7 @@ KNOWLEDGE_BASE = [
     "scope": "耳鼻喉/儿科",
     "section": "镇痛与用药",
     "condition": "急性中耳炎",
+    "icd": "H66.9",
     "keywords": [
       "耳痛",
       "耳朵疼",
@@ -857,6 +901,7 @@ KNOWLEDGE_BASE = [
     "scope": "耳鼻喉",
     "section": "压迫止血",
     "condition": "鼻出血",
+    "icd": "R04.0",
     "keywords": [
       "流鼻血",
       "鼻出血",
@@ -876,6 +921,7 @@ KNOWLEDGE_BASE = [
     "scope": "耳鼻喉/急诊",
     "section": "气道危险",
     "condition": "急性会厌炎（气道急症）",
+    "icd": "J05.1",
     "keywords": [
       "咽痛剧烈",
       "吞咽困难",
@@ -896,6 +942,7 @@ KNOWLEDGE_BASE = [
     "scope": "口腔",
     "section": "感染扩散",
     "condition": "牙髓炎/牙槽脓肿",
+    "icd": "K04.0; K05.2",
     "keywords": [
       "牙痛",
       "夜间痛",
@@ -915,6 +962,7 @@ KNOWLEDGE_BASE = [
     "scope": "泌尿/老年",
     "section": "排尿评估",
     "condition": "良性前列腺增生",
+    "icd": "N40.0",
     "keywords": [
       "尿频",
       "夜尿",
@@ -935,6 +983,7 @@ KNOWLEDGE_BASE = [
     "scope": "骨科/神经",
     "section": "红旗筛查",
     "condition": "腰椎间盘突出（马尾红旗）",
+    "icd": "M51.2",
     "keywords": [
       "腰痛",
       "下肢放射麻痛",
@@ -954,6 +1003,7 @@ KNOWLEDGE_BASE = [
     "scope": "骨科/急诊",
     "section": "影像选择",
     "condition": "四肢外伤/骨折",
+    "icd": None,
     "keywords": [
       "外伤",
       "肿胀",
@@ -974,6 +1024,7 @@ KNOWLEDGE_BASE = [
     "scope": "精神/心理",
     "section": "共病筛查",
     "condition": "焦虑障碍",
+    "icd": "F41.9",
     "keywords": [
       "紧张",
       "担心",
@@ -994,6 +1045,7 @@ KNOWLEDGE_BASE = [
     "scope": "精神/心理",
     "section": "安全评估",
     "condition": "抑郁障碍",
+    "icd": "F32.9",
     "keywords": [
       "情绪低落",
       "兴趣减退",
@@ -1014,6 +1066,7 @@ KNOWLEDGE_BASE = [
     "scope": "内分泌",
     "section": "甲状腺危象",
     "condition": "甲状腺功能亢进症",
+    "icd": "E05.9",
     "keywords": [
       "怕热",
       "多汗",
@@ -1034,6 +1087,7 @@ KNOWLEDGE_BASE = [
     "scope": "感染/急诊",
     "section": "qSOFA",
     "condition": "脓毒症（急症）",
+    "icd": "A41.9",
     "keywords": [
       "感染",
       "高热寒战",
@@ -1054,6 +1108,7 @@ KNOWLEDGE_BASE = [
     "scope": "老年/全科",
     "section": "老年综合征",
     "condition": "老年综合征（跌倒/多重用药）",
+    "icd": None,
     "keywords": [
       "老年",
       "跌倒",

@@ -63,6 +63,7 @@ function evidenceOf(item, score) {
   return {
     id: item.id, title: item.title, source: item.source, year: item.year,
     url: item.url, scope: item.scope, section: item.section, text: item.text,
+    icd: item.icd ?? null,
     score: Math.round(score * 1000) / 1000,
   }
 }
