@@ -65,6 +65,11 @@ CI 会跑同样的东西；`main` 分支保护要求 `build-and-test` 与 `backe
 - 提交说明写「为什么」，一次提交一件事；`feat` / `fix` / `test` / `docs` / `chore` 前缀。
 - 版本号走 SemVer + tag，并同步 `CHANGELOG.md` 与 `docs/EVAL_CARD.md` 的版本锚点。
 - **版本真值链（升版本必做四步）**：① 同改 `backend/app/version.py` + `functions/lib/version.js` + `frontend/package.json` 三处 → ② `python scripts/gen_openapi.py`（外科同步契约版本，禁手改/全量重写 `docs/openapi.json`）→ ③ `npm run test:version` 五方对账绿 → ④ 打 tag `vX.Y.Z`。`/api/health` 的 `version` 字段即以此链为源。
+- **线上部署口径（2026-09-25 实测）**：CI 的 deploy 作业受仓库变量 `AUTO_DEPLOY` 控制——未设时作业 **显式 skipped**（不冒充已部署，也不误红徽章）；
+  配好 `CLOUDFLARE_API_TOKEN` secret 后置 `AUTO_DEPLOY=true` 即由 CI 接管，届时缺 Token 会 **判红**（fail-closed 已实测，禁止改回静默跳过）。
+  部署后 CI 会校验 `线上 /api/health 的 version == backend/app/version.py`（10 次重试），把「作业绿」升级为「线上真值绿」。
+  手工部署坑：`wrangler pages deploy` **不得重定向 stdout**（重定向会让 wrangler 判定非交互环境并拒绝使用缓存 OAuth，实测报
+  `it's necessary to set a CLOUDFLARE_API_TOKEN`；直接执行即成功）。
 - 改动影响交付物时，需同步重建源码 ZIP 与最终提交包，并跑 `node work/freeze_check.mjs`、
   `python work/check_delivery_consistency.py`（这两个是**一致性检查工具**，不是改动门槛）。
 
