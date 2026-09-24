@@ -21,7 +21,7 @@
 | 线上红旗（pages.dev live） | 14/14 | 2026-09-16 线上评测 |
 | 输入敏感性 | 31 例 → 31 种不同结论（≥5 门槛） | 离线，防"恒输出" |
 | 检索质量 · 主口径（BM25+同义词，silver **50** 例） | R@1 0.547 / R@3 0.793 / **R@5 0.850** / MRR 0.867 / nDCG@5 0.789 | 2026-09-24 扩充为 v2.0 集（新增 30 例口语化改写，刻意避开 keywords 书面术语）。原 20 例口径下 R@5=0.95；扩集后回落至 0.85 是**评测集变严**，不是检索退化（同集同码复跑）。红旗子集(23) R@5 0.848；CI 基线按检索器分档锁定不回归 |
-| 检索质量 · 备选口径（hybrid 加权 RRF，同 50 例） | R@5 0.870（+2.0pt）/ MRR 0.825（−4.2pt）/ **红旗子集 R@5 0.891（+4.4pt）** | **未启用**（`RETRIEVER` 可切换，默认 bm25）。取舍：召回优先、首命中位次下移；权重由 `work/sweep_hybrid_weights.mjs` 在同集标定，存在自标定过拟合风险，须经留出集验证后才考虑改默认 |
+| 检索质量 · 备选口径（hybrid 加权 RRF，同 50 例） | R@5 0.870（+2.0pt）/ MRR 0.825（−4.2pt）/ **红旗子集 R@5 0.891（+4.4pt）** | **未启用**（`RETRIEVER` 可切换，默认 bm25）。权重在同集标定存在自标定过拟合风险，**2026-09-24 已完成留出集验证**：`tests/fixtures/retrieval_holdout.json` 20 例患者口语集（刻意避开 keywords，silver-draft 待复核）上 hybrid vs bm25 **ΔR@5 = 0.0、ΔMRR −1.3pt、红旗子集持平** → 标定增益未泛化，**维持 opt-in、默认口径不变** |
 | 延迟（线上诊断链路） | p50 4.1s / **p95 4.73s** / max 4.9s（n=31） | 2026-09-16 live 报告；约束 p95 ≤10s、单次模型硬超时 8s |
 | 双端一致性（Functions JS ↔ FastAPI Py） | 引擎 31/31 逐字段；hybrid 检索器 50/50 逐字段 | 契约测试 CI 常跑；取整规则两端统一为 half-up（`round_half_up`），不用放宽容差掩盖漂移 |
 | 知识库入库门禁 | 55 条逐条 schema + 引用完整性 + 孤儿条目 0（症状线索覆盖 100%）+ 双端数据全等 | `frontend/tests/kb_guard.mjs`，16 项断言入 CI |
@@ -55,6 +55,8 @@ cd frontend && npm test                 # 七件套：smoke 27 + 引擎 31 例 +
                                         #      + 双端契约 31/31 + 知识库门禁 16 + 路由可观测性 14
 node tests/retrieval_eval.mjs --retriever=hybrid   # 备选检索器口径（默认 bm25）
 node tests/retrieval_eval.mjs --retriever=hybrid --write-baseline  # 收紧该检索器地板线（只准收紧）
+node tests/retrieval_eval.mjs --fixture=retrieval_holdout.json --retriever=bm25   # 留出集（不参与基线断言）
+node tests/retrieval_eval.mjs --fixture=retrieval_holdout.json --retriever=hybrid # 留出集对比同命令
 python ../backend/tests/smoke_engine.py         # 后端降级链 19 项
 python ../backend/tests/test_api_observe.py     # 后端可观测性契约 15 项
 ```

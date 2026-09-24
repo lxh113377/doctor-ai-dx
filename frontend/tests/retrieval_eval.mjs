@@ -3,7 +3,9 @@ import { readFileSync, writeFileSync } from "node:fs"
 import { getRetriever } from "../functions/lib/retriever.js"
 import { hasEvidence } from "../functions/lib/rag.js"
 
-const fixtureUrl = new URL("./fixtures/retrieval_cases.json", import.meta.url)
+const fixtureArg = (process.argv.find((a) => a.startsWith("--fixture=")) || "").split("=")[1] || "retrieval_cases.json"
+const fixtureUrl = new URL(`./fixtures/${fixtureArg}`, import.meta.url)
+const holdout = fixtureArg !== "retrieval_cases.json"
 const baselineUrl = new URL("./fixtures/retrieval_baseline.json", import.meta.url)
 const suite = JSON.parse(readFileSync(fixtureUrl, "utf8"))
 // --retriever=bm25|hybrid：默认 bm25（线上口径），用于同口径对比两种检索器的 Recall/MRR/nDCG
@@ -100,6 +102,8 @@ if (process.argv.includes("--write-baseline")) {
   }
   writeFileSync(baselineUrl, `${JSON.stringify(store, null, 2)}\n`)
   console.log(`Baseline written for retriever: ${report.retriever}`)
+} else if (holdout) {
+  console.log(`[holdout] ${fixtureArg} retriever=${report.retriever} cases=${report.overall.cases} R@5=${report.overall.recall_at_5} MRR=${report.overall.mrr} nDCG@5=${report.overall.ndcg_at_5} redR@5=${report.red_flag_subset.recall_at_5}（留出集不参与基线断言）`)
 } else {
   const store = JSON.parse(readFileSync(baselineUrl, "utf8"))
   const baseline = store.retrievers?.[report.retriever]
@@ -108,7 +112,7 @@ if (process.argv.includes("--write-baseline")) {
     process.exit(1)
   }
   const checks = [
-    ["case_count", report.overall.cases === baseline.case_count],
+    ["case_count", !holdout && report.overall.cases === baseline.case_count],
     ["recall_at_5", report.overall.recall_at_5 >= baseline.minimum.recall_at_5],
     ["mrr", report.overall.mrr >= baseline.minimum.mrr],
     ["ndcg_at_5", report.overall.ndcg_at_5 >= baseline.minimum.ndcg_at_5],

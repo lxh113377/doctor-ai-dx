@@ -1,0 +1,32 @@
+{
+  "_meta": {
+    "name": "基层医疗检索 留出集 v1.0（silver-draft）",
+    "date": "2026-09-24",
+    "provenance": "患者口语叙事风格人工撰写（agent 起草，待复核）；刻意避开 knowledge.js keywords 字段原词，与 retrieval_cases.json（部分派生自 keywords）解耦，用于 hybrid 检索器的留出验证",
+    "purpose": "R21 留出集验证：hybrid 加权 RRF 是否具备脱离标定集泛化的语义召回增益；不代表诊断准确率或真实临床有效性",
+    "judgement": "binary relevance",
+    "status": "silver-draft，relevant_ids 依据条目 condition/text 判定，未经临床/人工二次复核前不得写入 EVAL_CARD 正式口径"
+  },
+  "cases": [
+    { "id": "ho-01", "scene": "胸痛", "query": "胸口像压了块石头一样闷，气也喘不上来，汗止不住地冒", "relevant_ids": ["kb-001", "kb-002"], "red_flag": true },
+    { "id": "ho-02", "scene": "胸痛", "query": "后背跟刀划开似的疼，两只胳膊量的血压差得特别多", "relevant_ids": ["kb-004"], "red_flag": true },
+    { "id": "ho-03", "scene": "胸痛", "query": "坐了十几个小时大巴回来，胸口针扎一样疼，一条腿肿得老粗", "relevant_ids": ["kb-003"], "red_flag": true },
+    { "id": "ho-04", "scene": "呼吸道", "query": "嗓子疼得咽不下去水，烧到三十九度，照镜子看见喉咙上有白点点", "relevant_ids": ["kb-020"], "red_flag": false },
+    { "id": "ho-05", "scene": "耳鼻喉", "query": "一到换季喷嚏连串，鼻涕跟清水似的，眼睛也发痒", "relevant_ids": ["kb-021"], "red_flag": false },
+    { "id": "ho-06", "scene": "神经", "query": "一晒大太阳脑袋一侧就突突着疼，见不得亮光还想吐", "relevant_ids": ["kb-022"], "red_flag": false },
+    { "id": "ho-07", "scene": "内分泌", "query": "总犯困没力气，比别人怕冷，饭没多吃人却胖了，大便也干", "relevant_ids": ["kb-023"], "red_flag": false },
+    { "id": "ho-08", "scene": "儿科", "query": "娃娃手心脚心屁股蛋起了小疱疹，低烧不肯吃饭", "relevant_ids": ["kb-032"], "red_flag": false },
+    { "id": "ho-09", "scene": "消化", "query": "拉肚子拉得跟水一样，一晚上跑了十来趟厕所，嘴巴都干脱皮了", "relevant_ids": ["kb-015"], "red_flag": false },
+    { "id": "ho-10", "scene": "风湿", "query": "大脚趾半夜疼得碰都不敢碰，头天晚上啤酒烧烤吃了个够", "relevant_ids": ["kb-026"], "red_flag": false },
+    { "id": "ho-11", "scene": "泌尿", "query": "腰窝一边一阵一阵绞着疼，尿的颜色发红", "relevant_ids": ["kb-027"], "red_flag": false },
+    { "id": "ho-12", "scene": "神经", "query": "躺下翻来覆去两个钟头合不上眼，白天干活一点精神都没有", "relevant_ids": ["kb-030"], "red_flag": false },
+    { "id": "ho-13", "scene": "老年", "query": "家里老人今年摔跤摔了三回，一大把药天天吃着，记性越来越差", "relevant_ids": ["kb-055"], "red_flag": false },
+    { "id": "ho-14", "scene": "精神", "query": "对啥都提不起劲，就想一个人躺着发呆，觉都睡不踏实", "relevant_ids": ["kb-052"], "red_flag": false },
+    { "id": "ho-15", "scene": "内分泌", "query": "心口咚咚跳手也抖，饭量大了人反倒瘦，天凉都怕热出汗", "relevant_ids": ["kb-053"], "red_flag": false },
+    { "id": "ho-16", "scene": "慢病急症", "query": "老糖尿病人突然浑身冒虚汗、手抖，说话都开始含糊", "relevant_ids": ["kb-017"], "red_flag": true },
+    { "id": "ho-17", "scene": "眼科", "query": "眼睛突然钻心地疼，看灯泡周围一圈彩虹，头疼想吐", "relevant_ids": ["kb-042"], "red_flag": true },
+    { "id": "ho-18", "scene": "耳鼻喉", "query": "耳朵里头疼，还流了些水出来，本身也有点发烧", "relevant_ids": ["kb-044"], "red_flag": false },
+    { "id": "ho-19", "scene": "妇产", "query": "两个月没来例假，小肚子一侧突然疼得厉害，下面又出血，人发晕", "relevant_ids": ["kb-036"], "red_flag": true },
+    { "id": "ho-20", "scene": "感染", "query": "小腿伤口周围又红又肿还发烫，还打了寒战，人迷迷糊糊的", "relevant_ids": ["kb-041", "kb-054"], "red_flag": true }
+  ]
+}

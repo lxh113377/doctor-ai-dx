@@ -65,6 +65,7 @@ export function adjacencyChannel(seedIds, maxOut = 10) {
 //   等权 RRF 会让概念通道挤掉词面强相关项（recall@5 0.85→0.81、MRR 0.867→0.634），故降权并截断通道长度。
 //   w_concept=0.3 + top5 时 recall@5 0.850→0.870、红旗子集 0.848→0.891，代价 MRR 0.867→0.825。
 //   近邻通道在本网格上最优权重为 0（无增益），故不进融合，仅保留函数供后续语料扩容复测。
+//   留出集复测（2026-09-24，tests/fixtures/retrieval_holdout.json 20 例患者口语）：ΔR@5=0、MRR −1.3pt、红旗子集持平——标定增益未泛化，维持 opt-in、默认 bm25。
 const W_BM25 = 1
 const W_CONCEPT = 0.3
 export const CONCEPT_TOP = 5
