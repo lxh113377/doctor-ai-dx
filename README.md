@@ -1,5 +1,9 @@
 # 医 · 基层AI辅助诊断系统 — v0.3
 
+[![CI](https://github.com/lxh113377/doctor-ai-dx/actions/workflows/ci.yml/badge.svg)](https://github.com/lxh113377/doctor-ai-dx/actions/workflows/ci.yml)
+[![Latest release](https://img.shields.io/github/v/release/lxh113377/doctor-ai-dx)](https://github.com/lxh113377/doctor-ai-dx/releases)
+[![CodeQL](https://github.com/lxh113377/doctor-ai-dx/actions/workflows/codeql.yml/badge.svg)](https://github.com/lxh113377/doctor-ai-dx/security/code-scanning)
+
 面向基层医生的 AI 辅助诊断网页端程序。**临床状态抽取 → BM25证据检索 → LLM结构化生成 → 确定性校验 → 红旗规则兜底 → 失败安全降级**，三重保障控制幻觉。
 
 ## 架构（双后端同源）
@@ -94,6 +98,7 @@ curl http://127.0.0.1:8000/health
 | GET  | /api/health | — | {status, llm_mode: live\|mock-fallback} |
 
 > `dx?` 为前端已生成的诊断结果，workup/report 复用它以消除冗余 LLM 串行调用；**红旗一律由后端规则重算，不信任前端**。
+> 机器可读契约：[`docs/openapi.json`](docs/openapi.json)（OpenAPI 3.0.3，与实现对账由 `npm run test:api` 守卫；集成方/AI Agent 可直接消费）。
 > 契约基线于 2026-09-24 完成 E2E 复核，两端（Functions / FastAPI）同步实现；公开仓门禁见 `frontend/tests/`，完整线上评测见工作区 `../iCAN大学生创新创业大赛/03-评测/`。
 
 ## 安全定位（评审叙事）

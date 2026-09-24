@@ -5,6 +5,17 @@
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-09-24
+
+### Added
+- `docs/openapi.json`：Functions（线上权威）OpenAPI 3.0.3 机器可读契约，README 挂载；`tests/api_contract_guard.mjs` 契约↔实现双向对账入 `npm test`（round1 §2.6 遗留补票）
+- `tests/bundle_size_guard.mjs`：主包体积地板线（主 chunk gzip ≤77.5KB / assets 合计 ≤86.5KB，按 19.3.0 实测 73,806/82,174B + 约5% 余量标定），build 后 CI 步骤执行
+- README 三徽章（CI / Latest release / CodeQL）
+
+### Changed
+- actions/setup-node v4 → v7（覆盖 Dependabot #1，聚合于本轮）
+
+
 ## [1.4.1] - 2026-09-24
 
 ### Changed

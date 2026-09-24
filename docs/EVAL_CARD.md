@@ -51,7 +51,9 @@
 ## 5. 复现命令
 
 ```bash
-cd frontend && npm test                 # 七件套：smoke 27 + 引擎 31 例 + 检索双档地板 + hybrid 双端 50/50
+cd frontend && npm test                 # 八件套：smoke 27 + 引擎 31 例 + 检索双档地板 + hybrid 双端 50/50
+node tests/api_contract_guard.mjs       # openapi.json ↔ Functions 路由双向对账（6 端点）
+node tests/bundle_size_guard.mjs        # 主包体积地板线（需先 npm run build；主 chunk ≤77.5KB / assets ≤86.5KB gzip）
                                         #      + 双端契约 31/31 + 知识库门禁 16 + 路由可观测性 14
 node tests/retrieval_eval.mjs --retriever=hybrid   # 备选检索器口径（默认 bm25）
 node tests/retrieval_eval.mjs --retriever=hybrid --write-baseline  # 收紧该检索器地板线（只准收紧）
