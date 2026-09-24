@@ -13,7 +13,8 @@
     "test:contract": "node tests/contract_parity.mjs",
     "test:kb": "node tests/kb_guard.mjs",
     "test:route": "node tests/route_guard.mjs",
-    "test": "npm run test:smoke && npm run test:engine && npm run test:retrieval && npm run test:contract && npm run test:kb && npm run test:route"
+    "test": "npm run test:smoke && npm run test:engine && npm run test:retrieval && npm run test:retrieval-parity && npm run test:contract && npm run test:kb && npm run test:route",
+    "test:retrieval-parity": "node tests/retriever_parity.mjs"
   },
   "dependencies": {
     "react": "^19.1.0",

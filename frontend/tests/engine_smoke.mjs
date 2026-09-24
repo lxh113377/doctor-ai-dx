@@ -36,6 +36,16 @@ const probeQuery = "压榨样胸痛向左肩放射出冷汗"
 check("默认检索器为 bm25", retriever.name === "bm25")
 check("适配器与原 BM25 输出一致", JSON.stringify(retriever.search(probeQuery, 5)) === JSON.stringify(legacySearch(probeQuery, 5)))
 
+// hybrid 检索器：线上默认不启用，但必须守住同一条引用白名单红线
+const hyb = getRetriever("hybrid")
+const hybOut = hyb.search("胸口像被石头压着，透不过气，还直冒虚汗", 5)
+check("hybrid 命中条目全部通过引用白名单", hybOut.length > 0 && hybOut.every((e) => hasEvidence(e.id)))
+check("hybrid 输出结构与 bm25 字段集相同",
+  hybOut.every((e) => JSON.stringify(Object.keys(e).sort()) === JSON.stringify(Object.keys(hyb.search(probeQuery, 1)[0] || {}).sort())))
+check("hybrid 空查询返回空且不抛", hyb.search("", 5).length === 0 && hyb.search("   ", 5).length === 0)
+check("hybrid topK 越界被钳制", hyb.search(probeQuery, 999).length <= 10 && hyb.search(probeQuery, 0).length <= 1)
+check("未知检索器名必须显式报错", (() => { try { getRetriever("nope"); return false } catch { return true } })())
+
 console.log("== extractState ==")
 const state = extractState("c1", histC1)
 check("c1 红旗命中 ACS", state.red_flags.length > 0 && state.red_flags[0].includes("ACS"))

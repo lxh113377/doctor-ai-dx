@@ -66,12 +66,21 @@ def _build_index():
 _DOCS, _DF, _N, _AVGDL = _build_index()
 
 
+def round_half_up(value: float, digits: int = 3) -> float:
+    """与 JS 端 Math.round(x*10**n)/10**n 同规则的四舍五入。
+    Python 内置 round() 是 half-to-even，会在 .5 边界上与 JS 差一个末位（实测 hybrid 分数 0.020313 vs 0.020312），
+    双端一致性必须用同一取整规则，不能靠放宽比对容差掩盖。
+    """
+    scale = 10 ** digits
+    return float(__import__("math").floor(float(value) * scale + 0.5)) / scale
+
+
 def _evidence_of(item: dict, score: float) -> dict:
     return {
         "id": item["id"], "title": item["title"], "source": item["source"], "year": item["year"],
         "url": item["url"], "scope": item["scope"], "section": item["section"], "text": item["text"],
         "icd": item.get("icd"),
-        "score": round(score, 3),
+        "score": round_half_up(score, 3),
     }
 
 

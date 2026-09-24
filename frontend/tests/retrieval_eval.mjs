@@ -6,7 +6,9 @@ import { hasEvidence } from "../functions/lib/rag.js"
 const fixtureUrl = new URL("./fixtures/retrieval_cases.json", import.meta.url)
 const baselineUrl = new URL("./fixtures/retrieval_baseline.json", import.meta.url)
 const suite = JSON.parse(readFileSync(fixtureUrl, "utf8"))
-const retriever = getRetriever()
+// --retriever=bm25|hybrid：默认 bm25（线上口径），用于同口径对比两种检索器的 Recall/MRR/nDCG
+const argName = (process.argv.find((a) => a.startsWith("--retriever=")) || "").split("=")[1]
+const retriever = getRetriever(argName || undefined)
 const ks = [1, 3, 5, 10]
 const round = (value) => Math.round(value * 1_000_000) / 1_000_000
 
@@ -84,8 +86,9 @@ const report = {
 }
 
 if (process.argv.includes("--write-baseline")) {
-  const baseline = {
-    retriever: retriever.name,
+  const store = JSON.parse(readFileSync(baselineUrl, "utf8"))
+  store.retrievers = store.retrievers || {}
+  store.retrievers[report.retriever] = {
     fixture_name: suite._meta.name,
     case_count: report.overall.cases,
     minimum: {
@@ -95,12 +98,16 @@ if (process.argv.includes("--write-baseline")) {
       red_flag_recall_at_5: report.red_flag_subset.recall_at_5,
     },
   }
-  writeFileSync(baselineUrl, `${JSON.stringify(baseline, null, 2)}\n`)
-  console.log(`Baseline written: ${baselineUrl.pathname}`)
+  writeFileSync(baselineUrl, `${JSON.stringify(store, null, 2)}\n`)
+  console.log(`Baseline written for retriever: ${report.retriever}`)
 } else {
-  const baseline = JSON.parse(readFileSync(baselineUrl, "utf8"))
+  const store = JSON.parse(readFileSync(baselineUrl, "utf8"))
+  const baseline = store.retrievers?.[report.retriever]
+  if (!baseline) {
+    console.error(`基线缺失：${report.retriever}（先跑 --retriever=${report.retriever} --write-baseline）`)
+    process.exit(1)
+  }
   const checks = [
-    ["retriever", report.retriever === baseline.retriever],
     ["case_count", report.overall.cases === baseline.case_count],
     ["recall_at_5", report.overall.recall_at_5 >= baseline.minimum.recall_at_5],
     ["mrr", report.overall.mrr >= baseline.minimum.mrr],
@@ -109,10 +116,11 @@ if (process.argv.includes("--write-baseline")) {
   ]
   const failed = checks.filter(([, ok]) => !ok).map(([name]) => name)
   if (failed.length) {
-    console.error(`Retrieval regression: ${failed.join(", ")}`)
+    console.error(`Retrieval regression (${report.retriever}): ${failed.join(", ")}`)
     console.error(JSON.stringify(report.overall, null, 2))
     process.exit(1)
   }
+  console.log(`Retrieval baseline OK (${report.retriever}): recall@5=${report.overall.recall_at_5} mrr=${report.overall.mrr} cases=${report.overall.cases}`)
 }
 
 const outputPath = process.env.RETRIEVAL_REPORT_PATH
