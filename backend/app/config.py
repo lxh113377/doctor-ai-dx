@@ -14,6 +14,7 @@ def get_settings() -> dict:
         "deepseek_api_key": os.getenv("DEEPSEEK_API_KEY", "").strip(),
         "deepseek_base_url": os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1"),
         "deepseek_model": os.getenv("DEEPSEEK_MODEL", "deepseek-chat"),
+        "llm_provider": os.getenv("LLM_PROVIDER", "openai_compatible"),
         "backend_host": os.getenv("BACKEND_HOST", "127.0.0.1"),
         "backend_port": int(os.getenv("BACKEND_PORT", "8000")),
         "cors_origins": [o.strip() for o in os.getenv("CORS_ORIGINS", "http://localhost:5173").split(",") if o.strip()],
