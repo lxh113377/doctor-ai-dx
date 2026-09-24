@@ -3,6 +3,7 @@
 // 契约升级：dx/workup/report 均接收完整 history（多轮问诊状态），返回 mode/evidence/fallback_reason
 import { getCases, nextIntakeQuestion, buildDiagnosis, buildWorkup, buildReport } from "../lib/engine.js"
 import { newRequestId, redact, logEvent, withRequestId, SLOW_MS } from "../lib/observe.js"
+import { APP_VERSION } from "../lib/version.js"
 
 function json(data, status = 200, requestId) {
   return new Response(JSON.stringify({ code: 0, data }), {
@@ -45,7 +46,7 @@ export async function onRequest(context) {
       const body = await readBody(context)
       response = json(await buildReport(seg[2], body.history || [], env, body.dx || null), 200, requestId)
     } else if ((seg.length === 1 && seg[0] === "health") || (seg.length === 2 && seg[0] === "api" && seg[1] === "health")) {
-      response = json({ status: "ok", llm_mode: keyPresent(env) ? "live" : "mock-fallback" }, 200, requestId)
+      response = json({ status: "ok", llm_mode: keyPresent(env) ? "live" : "mock-fallback", version: APP_VERSION }, 200, requestId)
     } else {
       response = fail(404, `not found: ${path}`, requestId)
     }

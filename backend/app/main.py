@@ -9,10 +9,11 @@ from fastapi.exceptions import RequestValidationError
 from .config import current_api_key, get_settings
 from .observe import SLOW_MS, log_event, new_request_id, redact
 from .routers import api
+from .version import APP_VERSION
 
 app = FastAPI(
     title="医 · AI 辅助诊断 API",
-    version="0.2.0",
+    version=APP_VERSION,
     description="基层 AI 辅助诊断 MVP 后端：问诊 / 危险信号规则层 / RAG 知识库引用 / 结构化结论。",
 )
 
@@ -69,7 +70,7 @@ async def invalid_request(request: Request, exc: RequestValidationError):
 
 def _health_data():
     from .config import llm_available
-    return {"status": "ok", "llm_mode": "live" if llm_available() else "mock-fallback"}
+    return {"status": "ok", "llm_mode": "live" if llm_available() else "mock-fallback", "version": APP_VERSION}
 
 
 @app.get("/health")

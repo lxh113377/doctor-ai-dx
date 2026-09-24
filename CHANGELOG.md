@@ -5,9 +5,19 @@
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-09-24
+
 ### Added
+- **版本真值链**（round7 对标实测抓到三处漂移：`main.py 0.2.0` / `package.json 0.2.0` / `openapi 1.5.0` / tag `v1.5.0`）：`backend/app/version.py` + `functions/lib/version.js` 双端单一源，双端 `/api/health` 响应新增 `version` 字段（纯增字段，六端点契约零破坏）；`tests/version_guard.mjs` 五方对账（四处声明同值 + 对最新 SemVer tag 单调不减，fail-closed）入 `npm test` 第十项；`scripts/gen_openapi.py` 只外科同步 `info.version` 单行（字符串级替换+改后 JSON 回验，禁全量重写手工契约排版——实测全量覆盖曾打爆 api_contract_guard 10 项）；CI 增 `gen_openapi.py --check` 漂移步骤
+- **社区健康面**：`SECURITY.md` 风险面声明 + 协调披露（对齐 OpenSSF/OSMB CVD 最小模板裁剪，明示"什么不算漏洞"防无效报告，红线三重防线写入）；GitHub Discussions 启用（Q&A / Show and tell 分类）；仓库私有漏洞报告通道开启
 - `.github/ISSUE_TEMPLATE/`（bug/feature 双表单，内嵌红线自查与脱敏提醒）与 `PULL_REQUEST_TEMPLATE.md`（红线/门禁证据/文档同步三段自查）——清偿 round1 差距面"无 issue 模板"欠账（"差距描述必进清单"对账执行）
 - CONTRIBUTING 增"依赖维护策略"节（auto-merge 口径 / 聚合批 / major peer 前置）；仓库启用 native auto-merge
+
+### Changed
+- `frontend/package.json` version 0.2.0 → 1.6.0（历史欠账：发布线已至 v1.5.0 而包版本未跟）；`docs/openapi.json` info.version 经脚本同步 1.6.0
+
+### Tests
+- 十件套全绿：smoke 27 / engine 31 / retrieval 50 例双地板 / retriever-parity / contract 31:31 / kb 16 / route 14 / api 契约对账 / vitest 7 / version 5；后端 19+15；version_guard 正反例实测（注入 1.6.1 漂移 → exit 1 抓到，还原 → 全绿）
 
 ## [1.5.0] - 2026-09-24
 

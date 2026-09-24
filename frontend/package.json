@@ -1,7 +1,7 @@
 {
   "name": "doctor-ai-dx-frontend",
   "private": true,
-  "version": "0.2.0",
+  "version": "1.6.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -15,9 +15,11 @@
     "test:route": "node tests/route_guard.mjs",
     "test:api": "node tests/api_contract_guard.mjs",
     "test:bundle": "node tests/bundle_size_guard.mjs",
-    "test": "npm run test:smoke && npm run test:engine && npm run test:retrieval && npm run test:retrieval-parity && npm run test:contract && npm run test:kb && npm run test:route && npm run test:api && npm run test:components",
+    "test": "npm run test:smoke && npm run test:engine && npm run test:retrieval && npm run test:retrieval-parity && npm run test:contract && npm run test:kb && npm run test:route && npm run test:api && npm run test:components && npm run test:version",
     "test:retrieval-parity": "node tests/retriever_parity.mjs",
-    "test:components": "vitest run"
+    "test:components": "vitest run",
+    "test:version": "node tests/version_guard.mjs",
+    "gen:openapi": "python ../scripts/gen_openapi.py"
   },
   "dependencies": {
     "react": "^19.3.0",

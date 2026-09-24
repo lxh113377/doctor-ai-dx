@@ -64,6 +64,7 @@ CI 会跑同样的东西；`main` 分支保护要求 `build-and-test` 与 `backe
 
 - 提交说明写「为什么」，一次提交一件事；`feat` / `fix` / `test` / `docs` / `chore` 前缀。
 - 版本号走 SemVer + tag，并同步 `CHANGELOG.md` 与 `docs/EVAL_CARD.md` 的版本锚点。
+- **版本真值链（升版本必做四步）**：① 同改 `backend/app/version.py` + `functions/lib/version.js` + `frontend/package.json` 三处 → ② `python scripts/gen_openapi.py`（外科同步契约版本，禁手改/全量重写 `docs/openapi.json`）→ ③ `npm run test:version` 五方对账绿 → ④ 打 tag `vX.Y.Z`。`/api/health` 的 `version` 字段即以此链为源。
 - 改动影响交付物时，需同步重建源码 ZIP 与最终提交包，并跑 `node work/freeze_check.mjs`、
   `python work/check_delivery_consistency.py`（这两个是**一致性检查工具**，不是改动门槛）。
 
