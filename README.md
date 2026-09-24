@@ -49,7 +49,7 @@ docker compose run --rm selftest   # 镜像内自带 19+15+16 项断言，全绿
 
 ```bash
 cd frontend
-npm test       # 十一件套：27 冒烟 + 31 例引擎评测 + 检索分层回归 + 双端契约 31:31 + FHIR 导出 30 项（契约需本机 Python）
+npm test       # 十二件套：27 冒烟 + 31 例引擎评测 + 检索分层回归 + 检索器 3 档双端一致 + 语义表守卫 + 双端契约 31:31 + FHIR 导出 30 项（契约需本机 Python）
 npm run build  # Vite 生产构建
 
 cd ../backend

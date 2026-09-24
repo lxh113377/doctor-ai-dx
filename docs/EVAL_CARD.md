@@ -23,9 +23,10 @@
 | 输入敏感性 | 31 例 → 31 种不同结论（≥5 门槛） | 离线，防"恒输出" |
 | 检索质量 · 主口径（BM25+同义词，silver **50** 例） | R@1 0.547 / R@3 0.793 / **R@5 0.850** / MRR 0.867 / nDCG@5 0.789 | 2026-09-24 扩充为 v2.0 集（新增 30 例口语化改写，刻意避开 keywords 书面术语）。原 20 例口径下 R@5=0.95；扩集后回落至 0.85 是**评测集变严**，不是检索退化（同集同码复跑）。红旗子集(23) R@5 0.848；CI 基线按检索器分档锁定不回归 |
 | 检索质量 · 备选口径（hybrid 加权 RRF，同 50 例） | R@5 0.870（+2.0pt）/ MRR 0.825（−4.2pt）/ **红旗子集 R@5 0.891（+4.4pt）** | **未启用**（`RETRIEVER` 可切换，默认 bm25）。权重在同集标定存在自标定过拟合风险，**2026-09-24 已完成留出集验证**：`tests/fixtures/retrieval_holdout.json` 20 例患者口语集（刻意避开 keywords，silver-draft 待复核）上 hybrid vs bm25 **ΔR@5 = 0.0、ΔMRR −1.3pt、红旗子集持平** → 标定增益未泛化，**维持 opt-in、默认口径不变** |
+| 检索质量 · 备选口径（semantic 语义近邻通道，同 50 例 + 20 例留出集） | 标定集 R@5 0.830~0.840 / MRR 0.494~0.863；留出集 **无任何组合严格优于 bm25**（0/54 组），9 组逐位等值、45 组劣化（ΔMRR 最差 −0.328） | **未启用**（`RETRIEVER=semantic` 可切，默认 bm25）。邻接表由本地 BAAI/bge-small-zh-v1.5 离线蒸馏（512 维余弦，权重 sha256 与语料指纹写入产物头），运行时零模型零网络。结论：条目↔条目语义相似**不能**替代查询编码——真正的语义召回需向量服务（同类项目均外挂 Milvus/Chroma/FAISS/TEI）。复现 `node work/sweep_semantic_weights.mjs`（工作区侧），防陈旧门禁 `npm run test:semantic` |
 | 延迟（线上诊断链路） | p50 4.1s / **p95 4.73s** / max 4.9s（n=31） | 2026-09-16 live 报告；约束 p95 ≤10s、单次模型硬超时 8s |
-| 双端一致性（Functions JS ↔ FastAPI Py） | 引擎 31/31 逐字段；hybrid 检索器 50/50 逐字段 | 契约测试 CI 常跑；取整规则两端统一为 half-up（`round_half_up`），不用放宽容差掩盖漂移 |
-| 知识库入库门禁 | 55 条逐条 schema + 引用完整性 + 孤儿条目 0（症状线索覆盖 100%）+ 双端数据全等 | `frontend/tests/kb_guard.mjs`，16 项断言入 CI |
+| 双端一致性（Functions JS ↔ FastAPI Py） | 引擎 31/31 逐字段；检索器 **3 档（bm25/hybrid/semantic）各 50/50** 逐字段；语义邻接表双端同值 + provenance 同值 | 契约测试 CI 常跑；取整规则两端统一为 half-up（`round_half_up`），不用放宽容差掩盖漂移 |
+| 知识库入库门禁 | 55 条逐条 schema + 引用完整性 + 孤儿条目 0（症状线索覆盖 100%）+ 双端数据全等 | `frontend/tests/kb_guard.mjs`，17 项断言入 CI |
 | 可观测性 | 每请求 `X-Request-Id`；错误结构化日志（无堆栈/路径/密钥，出站前脱敏）；>8s 慢请求告警 | `lib/observe.js` ↔ `app/observe.py`；route_guard 14 项 + 后端 test_api_observe 15 项。日志未接集中式后端（见 §3） |
 | 降级行为 | 无 Key / 超时 / 非法 JSON → `rule-fallback` 且带 `fallback_reason` | 31/31 降级标注通过；错误态只显示医生可理解文案 + 故障编号 |
 
@@ -52,7 +53,11 @@
 ## 5. 复现命令
 
 ```bash
-cd frontend && npm test                 # 十一件套：smoke 27 + 引擎 31 例 + 检索双档地板 + hybrid 双端 50/50 + 双端契约 31:31 + FHIR 导出 30 项（含 6 组反例）+ KB 守卫 17 + 路由守卫 14 + API 契约对账 + vitest 组件 + 版本真值五方对账
+cd frontend && npm test                 # 十二件套：smoke 27 + 引擎 31 例 + 检索双档地板 + 检索器 3 档双端 50/50 + 语义表守卫 22（含 7 组反例）+ 双端契约 31:31 + FHIR 导出 30 项（含 6 组反例）+ KB 守卫 17 + 路由守卫 14 + API 契约对账 + vitest 组件 + 版本真值五方对账
+node tests/semantic_guard.mjs          # 语义邻接表：结构/白名单/无自环/降序整数千分比/弱对称 + 语料指纹防陈旧 + 双端同值 + 7 组反例
+node tests/retrieval_eval.mjs --retriever=semantic                              # 语义档检索读数（默认 bm25）
+node ../../work/sweep_semantic_weights.mjs   # 2026-09-25 起工作区侧：语义通道权重标定 + 留出集泛化判定（0 组严格优于 bm25）
+python ../scripts/build_semantic_neighbors.py --engine-dir <bge_onnx_engine.py 所在目录>   # 知识库变更后重建邻接表（必做，否则 test:semantic 判红）
 node tests/fhir_guard.mjs               # FHIR-light 单独跑：Bundle 结构/术语白名单/悬挂引用/零时钟/红线文案 + 反例可拦性
 node tests/api_contract_guard.mjs       # openapi.json ↔ Functions 路由双向对账（6 端点）
 node tests/bundle_size_guard.mjs        # 主包体积地板线（需先 npm run build；主 chunk ≤77.5KB / assets ≤86.5KB gzip）

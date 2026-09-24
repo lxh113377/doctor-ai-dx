@@ -45,7 +45,9 @@
 - BM25：`K1=1.5`、`B=0.75`；`top_k` 钳制 1..10；稳定排序（分数降序 + 原文档序）。
 - 同义词扩展：34 组；症状→证据映射 60 键；红旗加权词 32 个（命中每条 +2）。
 - 知识库：55 条 / 19 病种域，ICD-10 映射 51 条（余 4 条显式 `null` 待临床复核）。
-- 检索器可切换：`hybrid`（BM25+加权 RRF）为 **opt-in，默认 bm25** —— 留出集（20 例患者口语）实测增益不泛化（ΔR@5=0，MRR −1.3pt），结论见 `EVAL_CARD.md`。
+- 检索器可切换（注册表三档）：默认 `bm25`；`hybrid`（BM25+概念通道加权 RRF）与 `semantic`（BM25+语义近邻通道）均为 **opt-in**。
+- `semantic` 档（v1.9.0 起）：条目↔条目余弦邻接表由 `scripts/build_semantic_neighbors.py` 在**构建期**用本地 BAAI/bge-small-zh-v1.5（512 维，权重 sha256 记录在产物头）蒸馏，运行时**零模型/零网络/零向量服务**，纯查表且双端同源（`semantic_neighbors.js` ↔ `semantic_neighbors.py`）。
+  **实测无增益，故不作默认**：54 组权重网格（`work/sweep_semantic_weights.mjs`）在 20 例留出集上「严格优于 bm25」的候选 = **0 组**，9 组与 bm25 逐位等值（通道惰性），45 组劣化（ΔMRR 最差 −0.328）；根因是该通道只做重排名次、无法对**查询**编码，而同类开源项目为此统一外挂 Milvus/Chroma/FAISS/TEI。条件触发路线亦不可解：漏检例 top1 分 14.39/17.65 与命中例最低 12.41 区间重叠（R236 补注③：改机制而非调参）。保留为语料扩容（55→200+）后的复测位，与 `adjacencyChannel`（标定权重 0）同一处置惯例。
 - 溯源棘轮：未回链条目上限 32、深链下限 0，只准变好（`kb_guard` 强制）。
 
 ## 4. LLM 接入与降级
@@ -82,7 +84,7 @@
 
 | 层 | 命令 | 覆盖 |
 |---|---|---|
-| 前端十一件套 | `cd frontend && npm test` | smoke 27 · engine 31 · retrieval 50 例双档地板 · retriever parity · 双端契约 31:31 · **fhir 30（含 6 组反例）** · kb 17 · route 14 · api 契约 6 端点 · vitest 7 · version 五方 |
+| 前端十二件套 | `cd frontend && npm test` | smoke 27 · engine 31 · retrieval 50 例双档地板 · **retriever parity 3 档 × 50 例** · **semantic 22（含 7 组反例 + 语料指纹防陈旧）** · 双端契约 31:31 · fhir 30（含 6 组反例）· kb 17 · route 14 · api 契约 6 端点 · vitest 7 · version 五方 |
 | 构建体积 | `npm run build && npm run test:bundle` | 主 chunk gzip ≤77500B / assets 合计 ≤86500B（地板线，防膨胀也防假瘦身） |
 | 后端 | `python tests/smoke_engine.py` / `tests/test_api_observe.py` / `tests/test_fhir.py` | 规则降级 19 项 · 可观测与脱敏 15 项 · FHIR 导出 17 项 |
 | 容器（从零启动自证） | `docker compose up -d` + `docker compose run --rm selftest` | 镜像构建成功 + HEALTHCHECK `healthy` + 镜像内 19/15/16 项 exit 0（源码树级检查在容器内显式 SKIP，不计通过也不计失败） |
@@ -97,7 +99,8 @@
 - 补一条回链：先实测该 URL 可达（`npm run test:links` 或 curl 200）→ 把域名加进 `kb_guard.mjs` 的 `VERIFIED_HOSTS` → 再写进条目；**未核验域名会被离线白名单直接拦下**（2026-09-25 实测教训：16 条 url 指向 DNS 不存在的域，属假回链）。
 - 加一条红旗：`rules.js` 的 `DANGER_RULES`（单词）或 `COMBO_RULES`（多线索组合，降低非特异词误报）→ 同步 `rules.py` → `test:contract` 兜底。
 - 换模型/自建推理：只动 `llm.py` 的 Provider 与 `DEEPSEEK_BASE_URL`，链路与红线不受影响。
-- 明确未提供：鉴权与多租户、数据持久化（无患者落库）、向量检索（列为后续）、真实临床验证（评测为 silver 标注）。
+- 重建语义邻接表（**知识库一改必做**）：`python scripts/build_semantic_neighbors.py --engine-dir <含 bge_onnx_engine.py 的目录>` → 产物头写回 `corpusSha256` → `npm run test:semantic` 会比对实算指纹，**忘记重跑即判红**（2026-09-25 变异实测：改一条正文 → `表内 5422… vs 实算 7385…` FAIL）。
+- 明确未提供：鉴权与多租户、数据持久化（无患者落库）、查询侧语义编码（需向量服务，serverless 形态下未引入；条目侧邻接已落地但实测无增益）、真实临床验证（评测为 silver 标注）。
 
 ## 9. FHIR-light 导出层（对外集成面，v1.8.0 起）
 

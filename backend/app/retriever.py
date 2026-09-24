@@ -1,15 +1,25 @@
 """检索器边界——镜像 frontend/functions/lib/retriever.js。
-bm25 = 线上默认（口径不变）；hybrid = BM25+概念通道加权 RRF，用于语义召回补强。
+bm25 = 线上默认（口径不变）；hybrid = BM25+概念通道加权 RRF；
+semantic = BM25+语义近邻通道（构建期 BGE 蒸馏表 semantic_neighbors.py，运行时零模型零网络）。
+后两档均为 opt-in：默认档变更须先过留出集泛化判定（台账#10）。
 红线：不动引用白名单、不动红旗规则层。
 """
 from math import floor
 
 from . import rag
 from .knowledge import KNOWLEDGE_BASE, SYNONYMS, SYMPTOM_TO_KB
+from .semantic_neighbors import SEMANTIC_META, SEMANTIC_NEIGHBORS
 
 DEFAULT_RETRIEVER = "bm25"
 RRF_K = 60
 MAX_TOP_K = 10
+SEMANTIC_NAME = "semantic"
+# 语义通道运行参数：与 JS 端同名常量同值，由 tests/semantic_guard.mjs 双向核对。
+# 实测结论（2026-09-25，54 组网格）：留出集严格优于 bm25 的候选 0 组、9 组惰性等值、45 组劣化（ΔMRR 最差 −0.328），
+# 根因与阈值不可解分析见 JS 端同名常量注释——本档保持 opt-in 实验位，默认仍 bm25，线上口径零改动。
+SEM_TOP = 5
+SEM_FLOOR = 600  # 千分比，cos ≥ 0.60 才作候选
+W_SEM = 0.3
 _BY_ID = {k["id"]: k for k in KNOWLEDGE_BASE}
 
 
@@ -103,6 +113,24 @@ def rrf_fuse(channels: list[dict], top_k: int = 4) -> list[dict]:
     return [_evidence(i, s) for i, s in ordered]
 
 
+def semantic_channel(seed_ids: list[str], top: int = SEM_TOP, floor_per_mille: int = SEM_FLOOR) -> list[str]:
+    """以 BM25 种子为锚查语义邻接表（BGE-small-zh-v1.5 离线蒸馏）。
+    与 adjacency_channel（共享 keywords 计数）的区别：信号来自 512 维语义相似度而非词面重叠。
+    千分比整数 → 与 JS 端取值/排序完全一致；tie-break 用 id 升序，与 rrf_fuse 同规则。
+    """
+    seeds = list(seed_ids or [])[:5]
+    if not seeds:
+        return []
+    seed_set = set(seeds)
+    weight: dict[str, int] = {}
+    for sid in seeds:
+        for nid, per_mille in SEMANTIC_NEIGHBORS.get(sid, []):
+            if nid in seed_set or nid not in _BY_ID or per_mille < floor_per_mille:
+                continue
+            weight[nid] = weight.get(nid, 0) + per_mille
+    return [i for i, _ in sorted(weight.items(), key=lambda kv: (-kv[1], kv[0]))][:top]
+
+
 W_BM25 = 1.0
 # 权重标定口径见 JS 端同名常量注释（work/sweep_hybrid_weights.mjs 实测）
 W_CONCEPT = 0.3
@@ -124,9 +152,29 @@ class HybridRetriever:
         ], k)
 
 
+class SemanticRetriever:
+    name = SEMANTIC_NAME
+
+    @staticmethod
+    def search(query: str, top_k: int = 4, filters: dict | None = None) -> list[dict]:
+        del filters
+        raw = top_k if isinstance(top_k, (int, float)) and float(top_k) == top_k else 4
+        k = max(1, min(int(floor(raw)), MAX_TOP_K))
+        bm = [e["id"] for e in rag.search(query, 10)]
+        return rrf_fuse([
+            {"list": bm, "weight": W_BM25},
+            {"list": semantic_channel(bm), "weight": W_SEM},
+        ], k)
+
+
 _BM25_RETRIEVER = BM25Retriever()
 _HYBRID_RETRIEVER = HybridRetriever()
-_RETRIEVERS = {DEFAULT_RETRIEVER: _BM25_RETRIEVER, "hybrid": _HYBRID_RETRIEVER}
+_SEMANTIC_RETRIEVER = SemanticRetriever()
+_RETRIEVERS = {
+    DEFAULT_RETRIEVER: _BM25_RETRIEVER,
+    "hybrid": _HYBRID_RETRIEVER,
+    SEMANTIC_NAME: _SEMANTIC_RETRIEVER,
+}
 
 
 def get_retriever(name: str = DEFAULT_RETRIEVER):

@@ -5,6 +5,28 @@
 
 ## [Unreleased]
 
+## [1.9.0] - 2026-09-25
+
+### Added（可扩展性：语义通道，含实测负面结论）
+- **语义邻接表离线蒸馏链**：`scripts/build_semantic_neighbors.py` 用本地 BAAI/bge-small-zh-v1.5（512 维，权重 sha256 `69a0b846…` 记录在产物头）对 55 条知识库做 pairwise 余弦，蒸馏为条目↔条目邻接表并双端同源落盘（`functions/lib/semantic_neighbors.js` ↔ `backend/app/semantic_neighbors.py`，440 对 / 每条 8 邻 / 千分比整数）。**运行时零模型、零网络、零向量服务**——本项目权威面是 Cloudflare Pages + Functions（serverless），托管不了同类项目普遍外挂的 Milvus/Chroma/FAISS/TEI
+- 检索器注册表新增 `semantic` 档（BM25 种子 + 语义近邻通道加权 RRF），**opt-in，默认仍 bm25**
+- `frontend/tests/semantic_guard.mjs`（22 项，入 `npm test` 第十二项）：表结构/引用白名单内/无自环/分数降序且为整数千分比/弱对称一致/**语料指纹防陈旧**/双端 provenance·常量·表值同值/**红线：默认档未变**；含 7 组反例实测（越界 id／自环／乱序／越界分数／静默丢条目／破坏对称／击穿地板）+ 合法对照组零命中
+- `work/sweep_semantic_weights.mjs`：54 组权重网格在 50 例标定集 + 20 例留出集上出双集对照，判据要求**严格优于** bm25
+
+### 实测结论（未采纳为默认，如实登记）
+- 留出集上「严格优于 bm25」的组合 = **0 组**；9 组与 bm25 逐位等值（权重过低⇒通道惰性，非增益）；其余 45 组劣化，ΔMRR 最差 −0.328。标定集同样无增益——bm25 在 50 例 top-5 已 100% 命中，无提升空间
+- 根因：该通道只对**条目**建邻接、无法对**查询**编码，只能重排名次；真正的语义召回必须引入查询侧 embedding（即同类项目外挂向量服务的原因）
+- 「条件触发」路线经实测判定**不可解**：漏检例 BM25 top1 分数 14.39/17.65 与命中例最低 12.41 区间重叠 → 按 R236 补注③ 应改机制而非调参，未引入伪阈值
+- 保留为语料扩容（55→200+）后的复测位，与 `adjacencyChannel`（标定权重为 0）同一处置惯例
+
+### Changed
+- `frontend/tests/retriever_parity.mjs` 由硬编码 `hybrid` 泛化为**遍历注册表全部档位**（bm25/hybrid/semantic 各 50/50）——原实现下新增档不受双端判据保护
+- 文档：`ARCHITECTURE.md` §3 语义通道与实测结论、§7 门禁改十二件套、§8 新增「知识库一改必重建邻接表」扩展点；`EVAL_CARD.md` §2 增 semantic 指标行、§5 增复现命令；`README.md` 自动化验证与检索器说明同步
+- 客户端产物 hash 零变化（`index-XkAWhl6S.js`，73.81KB gzip）：9KB 邻接表只进 Functions 服务端，不进前端包，体积地板线复跑 ALL PASS
+
+### 红线影响
+无。默认检索口径仍 bm25（线上零改动）；红旗层与引用白名单未触碰；语义通道输出的每个 id 都由门禁断言在引用白名单内。
+
 ## [1.8.0] - 2026-09-25
 
 ### Added（功能模块覆盖：对外集成面）
