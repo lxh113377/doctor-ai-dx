@@ -13,16 +13,22 @@
     "test:contract": "node tests/contract_parity.mjs",
     "test:kb": "node tests/kb_guard.mjs",
     "test:route": "node tests/route_guard.mjs",
-    "test": "npm run test:smoke && npm run test:engine && npm run test:retrieval && npm run test:retrieval-parity && npm run test:contract && npm run test:kb && npm run test:route",
-    "test:retrieval-parity": "node tests/retriever_parity.mjs"
+    "test": "npm run test:smoke && npm run test:engine && npm run test:retrieval && npm run test:retrieval-parity && npm run test:contract && npm run test:kb && npm run test:route && npm run test:components",
+    "test:retrieval-parity": "node tests/retriever_parity.mjs",
+    "test:components": "vitest run"
   },
   "dependencies": {
     "react": "^19.1.0",
     "react-dom": "^19.1.0"
   },
   "devDependencies": {
+    "@testing-library/dom": "^10.4.2",
+    "@testing-library/react": "^16.3.3",
+    "@testing-library/user-event": "^14.6.7",
     "@vitejs/plugin-react": "^4.5.0",
+    "happy-dom": "^17.6.3",
     "vite": "^6.3.0",
+    "vitest": "^3.2.7",
     "wrangler": "^4.128.0"
   }
 }
