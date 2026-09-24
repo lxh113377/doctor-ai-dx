@@ -25,10 +25,12 @@ backend/    FastAPI —— 同一链路的 Python 镜像（可选本地运行，
 ## 启动（本地演示，二选一）
 
 ```bash
-# 方式A（推荐·与线上零漂移）：wrangler 同时托管 dist + functions
+# 方式A（推荐·与线上零漂移）：一键脚本，跨平台（Linux/macOS/Git Bash）
+./start-demo.sh            # Windows 用：powershell -ExecutionPolicy Bypass -File start-demo.ps1
+# 或手工执行同样三步：
 cd frontend && npm install && npm run build
 node node_modules/wrangler/bin/wrangler.js pages dev dist --port 8788 --local
-# 打开 http://127.0.0.1:8788 ；或直接 powershell -File start-demo.ps1
+# 打开 http://127.0.0.1:8788
 
 # 方式B（FastAPI 栈）：起 Python 后端 + Vite 前端
 cd backend && cp .env.example .env   # 有 DeepSeek Key 则填入；无 Key 走 rule-fallback
@@ -55,6 +57,8 @@ python tests/smoke_engine.py
 - 检索指标用于工程回归，不代表诊断准确率或真实临床有效性。
 - `frontend/tests/contract_parity.mjs` 用同一 31 组黄金输入分别跑 Functions(JS) 与 FastAPI 镜像(Python)，逐字段比对 dx/workup/report，拦截双端静默漂移。
 - **评测卡 / 安全卡**：[`docs/EVAL_CARD.md`](docs/EVAL_CARD.md) —— 能力边界、病种覆盖清单（55 条 · 19 域）、红旗与安全口径、指标日期一页可查。
+- **架构与不变式**：[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) —— 六段链路图、三条产品红线的代码插入点、JS/Py 双端镜像对账矩阵、检索层实测参数、环境变量与门禁清单（数字均为磁盘实测）。
+- **提交前快检**：[`.pre-commit-config.yaml`](.pre-commit-config.yaml) —— `pre-commit install` 后复用仓内既有守卫（版本真值 / 知识库零漂移 / 契约对账），秒级；全量十件套仍由 CI 兜底。
 - **安全边界与未保障项**：[`SECURITY.md`](SECURITY.md) —— 已实现的控制、明确未提供的保障（无认证/无审计/日志不留存）、漏洞报告渠道。
 - **接手与贡献**：[`CONTRIBUTING.md`](CONTRIBUTING.md) —— 双端同步矩阵、提交前必跑门禁、知识库条目与评测集变更规范。
 

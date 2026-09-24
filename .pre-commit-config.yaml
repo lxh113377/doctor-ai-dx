@@ -1,0 +1,32 @@
+# 提交前快检子集（秒级；与 CI 同源判据，不重复 CI 全量十件套）
+# 安装：pip install pre-commit && pre-commit install
+# 手动全量：pre-commit run --all-files
+# 说明：全部使用 language: system 复用仓内既有守卫脚本，零网络拉取、零重复实现
+#       （判据单一源仍是 frontend/tests/*，本文件只是提交时机的编排）
+repos:
+  - repo: local
+    hooks:
+      - id: version-truth
+        name: 版本真值五方对账（四处声明 + 最新 tag 单调不减）
+        entry: node frontend/tests/version_guard.mjs
+        language: system
+        pass_filenames: false
+
+      - id: kb-guard
+        name: 知识库 schema / 溯源棘轮 / 双端数据零漂移
+        entry: node frontend/tests/kb_guard.mjs
+        language: system
+        pass_filenames: false
+
+      - id: api-contract
+        name: openapi 契约 ↔ Functions 实现双向对账
+        entry: node frontend/tests/api_contract_guard.mjs
+        language: system
+        pass_filenames: false
+
+      - id: openapi-version-drift
+        name: OpenAPI 版本与后端单一源一致
+        entry: python scripts/gen_openapi.py --check
+        language: system
+        pass_filenames: false
+        files: ^(backend/app/(version|main)\.py|backend/app/routers/.*|docs/openapi\.json)$

@@ -5,6 +5,16 @@
 
 ## [Unreleased]
 
+## [1.6.1] - 2026-09-24
+
+### Added
+- `docs/ARCHITECTURE.md`：六段链路图 + 三条产品红线的代码插入点 + JS/Py 双端镜像对账矩阵（7 组语义↔守卫）+ 检索层实测参数（K1 1.5 / B 0.75 / 500 字截断 / top_k 1..10 / 32 红旗加权词）+ 环境变量与端口口径 + 门禁清单；数字全部磁盘实测（13 单词红旗 + 4 组合红旗 + 血压 180/120、KB 55 条含 ICD 51 条）——对标 ragflow/CQL/OpenEMR 的 docs 树缺口（round8 实测三家有 docs/ 而我方仅 2 件）
+- `start-demo.sh`：跨平台一键演示启动（Linux / macOS / Windows Git Bash），与 `start-demo.ps1` 同三步口径——**实跑验证**：起服 :8788、`/api/health` 返 `mock-fallback + version 1.6.1`、`POST /api/dx/c1` 命中 ACS 红旗且返回 3 项诊断 / 8 条引用（对标 phlox 的 compose/Makefile 跨平台面）
+- `.pre-commit-config.yaml`：提交前快检子集（版本真值 / 知识库零漂移 / 契约对账 / OpenAPI 版本漂移四只钩子），全部 `language: system` 复用仓内既有守卫，零网络拉取、零第二套判据；`pre-commit run --all-files` 实测 4 Passed，注入版本漂移实测 exit=1（正反例双过）
+
+### Changed
+- README：启动章节改列一键脚本（sh/ps1 双平台）；文档区挂载 ARCHITECTURE 与 pre-commit 两条
+
 ### Security
 - 依赖审计首跑抓到 3 项真实发现并清偿（dev-only 测试依赖，不触线上产物）：`happy-dom` 17→20.14.5（GHSA-37j7-fg3j-429f VM 逃逸 RCE，critical）、`vitest`/`@vitest/mocker` →4.1.11（GHSA-82fw-gwwq-j7x9 路径穿越，moderate）；vitest 4 下组件测试 7/7、十件套全绿，顺带移除误加的 `@vitest/coverage-v8`（本仓无覆盖率承诺，不虚设）
 
