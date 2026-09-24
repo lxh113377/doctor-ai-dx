@@ -66,3 +66,11 @@ CI 会跑同样的东西；`main` 分支保护要求 `build-and-test` 与 `backe
 - 版本号走 SemVer + tag，并同步 `CHANGELOG.md` 与 `docs/EVAL_CARD.md` 的版本锚点。
 - 改动影响交付物时，需同步重建源码 ZIP 与最终提交包，并跑 `node work/freeze_check.mjs`、
   `python work/check_delivery_consistency.py`（这两个是**一致性检查工具**，不是改动门槛）。
+
+## 依赖维护策略（Dependabot）
+
+- 扫描：npm（frontend）/ pip（backend）/ github-actions 每周检查（`.github/dependabot.yml`）。
+- **patch/minor**：可直接对 Dependabot PR 开 auto-merge（仓库已启用；required checks = build-and-test + backend-test，绿后自动 squash 合入）。
+- **同文件多 PR 积压**：按"聚合批"处理——自开分支一次覆盖 N 包，PR 描述引用被覆盖编号，合入后关闭原 PR（留言可 `/rerun` 重建）。
+- **major**：先查 peer（`npm i` 干跑看 ERESOLVE），框架级升级（如 vite 大版本）单独立项，不混入依赖批；结论写入 PR 评论留痕。
+- 任何依赖变更后：`npm test` 九件套 + `npm run build` + `npm run test:bundle`（体积地板线）全绿方可合。

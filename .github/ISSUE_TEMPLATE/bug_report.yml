@@ -1,0 +1,54 @@
+name: 问题反馈 Bug Report
+description: 报告功能异常、错误态或安全问题（脱敏提交，勿含真实患者数据）
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ⚠️ 本项目为 **AI 辅助参考 · 医生终审** 定位的演示系统；仅使用脱敏合成病例。
+        **请勿在本 issue 中粘贴真实患者数据**（主诉/姓名/化验单等一律先脱敏）。
+        API 失败响应含 `x-request-id` 故障编号，贴出编号即可，无需贴堆栈（系统本就不返回堆栈）。
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: 复现步骤
+      description: 页面路径（选例→问诊→诊断→检查→报告）+ 所用病例/输入摘要（脱敏）
+      placeholder: |
+        1. 打开 https://doctor-ai-dx.pages.dev
+        2. 选择病例 c1 → 问诊回答 …
+        3. 期望 …，实际 …
+    validations:
+      required: true
+  - type: input
+    id: request-id
+    attributes:
+      label: 故障编号（x-request-id）
+      description: 若为接口错误，响应头/横幅文案中可见；没有可留空
+  - type: dropdown
+    id: mode
+    attributes:
+      label: 当时运行模式
+      options: [live, rule-fallback, 未知]
+      description: 结果卡顶部 ModeBadge 可见；rule-fallback 属设计内降级，不算 Bug
+  - type: textarea
+    id: expected
+    attributes:
+      label: 期望行为与影响
+    validations:
+      required: true
+  - type: checkboxes
+    id: redline
+    attributes:
+      label: 红线自查（涉及安全叙事请按序勾选）
+      options:
+        - label: 问题涉及红旗规则层（命中/漏检/被覆盖）
+          required: false
+        - label: 问题涉及引用溯源（evidence 白名单外/引用缺失）
+          required: false
+        - label: 问题涉及"辅助参考·医生终审"文案显示
+          required: false
+  - type: input
+    id: version
+    attributes:
+      label: 版本/commit
+      description: 线上看页面源码资源 hash（如 index-XXXX.js）；源码看 CHANGELOG 版本
