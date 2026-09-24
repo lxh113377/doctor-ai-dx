@@ -25,6 +25,16 @@ const ICD_RE = /^[A-Z]\d{2}(\.\d{1,2})?$/
 // url 不在此列：未回链是已知存量债务，由下方「溯源等级棘轮」按数量守门，不逐条硬拦
 const REQUIRED_TEXT_FIELDS = ["title", "source", "scope", "section", "condition", "text"]
 
+// 已核验域名白名单（离线判据，零网络）：防「拼错/不存在的官方域名」冒充回链。
+// 根因（2026-09-25 round9 实测）：知识库曾有 16 条 url 指向 **DNS 根本不解析** 的 cmas.org.cn / www.nhoc.org.cn
+// （正确域为 www.cma.org.cn 与 www.medjournals.cn，均实测 HTTP 200），属「假回链」——比空 url 更危险，
+// 因为它让引用看起来可溯源而实际不可达。新增条目须先核验域名可达再登记进本表。
+const VERIFIED_HOSTS = new Set(["www.nhc.gov.cn", "www.acc.org", "www.cma.org.cn", "www.medjournals.cn"])
+const unverifiedHosts = KNOWLEDGE_BASE
+  .filter((k) => String(k.url || "").trim())
+  .map((k) => ({ id: k.id, host: new URL(k.url).host }))
+  .filter((x) => !VERIFIED_HOSTS.has(x.host))
+
 // 溯源等级棘轮：只准变好，不准变坏。深链=URL 指向具体文档（pathname 非根）；门户=仅机构域名；未链=url 为空。
 // 基线取自 2026-09-24 实测（55 条中 0 深链 / 23 门户 / 32 未链）。补链后请把 UNLINKED_MAX 调小，禁止调大。
 const UNLINKED_MAX = 32
@@ -110,6 +120,8 @@ const unlinked = KNOWLEDGE_BASE.filter((k) => !String(k.url || "").trim()).map((
 const portal = KNOWLEDGE_BASE.filter((k) => String(k.url || "").trim() && !deepLinkIds.has(k.id))
 check(`未回链条目数 ≤ 基线 ${UNLINKED_MAX}`, unlinked.length <= UNLINKED_MAX, `实测 ${unlinked.length}`)
 check(`深链条目数 ≥ 基线 ${DEEPLINK_MIN}`, deepLinkIds.size >= DEEPLINK_MIN, `实测 ${deepLinkIds.size}`)
+check("全部 url 域名 ∈ 已核验白名单（防假回链，新增须先实测可达）",
+  unverifiedHosts.length === 0, unverifiedHosts.map((x) => `${x.id}->${x.host}`).slice(0, 6).join(" "))
 check("非深链条目的 url 要么是空串要么是合法域名（不得填伪造路径）",
   portal.every((k) => {
     try { return new URL(k.url).protocol === "https:" } catch { return false }

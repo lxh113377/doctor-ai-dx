@@ -1,7 +1,7 @@
 {
   "name": "doctor-ai-dx-frontend",
   "private": true,
-  "version": "1.6.1",
+  "version": "1.7.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -19,7 +19,8 @@
     "test:retrieval-parity": "node tests/retriever_parity.mjs",
     "test:components": "vitest run",
     "test:version": "node tests/version_guard.mjs",
-    "gen:openapi": "python ../scripts/gen_openapi.py"
+    "gen:openapi": "python ../scripts/gen_openapi.py",
+    "test:links": "node tests/link_health.mjs"
   },
   "dependencies": {
     "react": "^19.3.0",

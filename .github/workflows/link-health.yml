@@ -1,0 +1,21 @@
+name: Citation link health
+
+on:
+  schedule:
+    - cron: "0 2 * * 3"   # 每周三 10:00 UTC+8（与 dep-audit 错开）
+  workflow_dispatch: {}
+
+jobs:
+  links:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - name: 知识库回链可达性核验（死链即红；412/403 类反爬按 BLOCKED 只报不红）
+        working-directory: frontend
+        env:
+          BLOCKED_BASELINE: "1"   # 实测基线：www.nhc.gov.cn 返 412（WAF 反爬，站点存活），只报不红
+        run: node tests/link_health.mjs --json --timeout=35000
+        continue-on-error: true   # 观察期开关：外部站点抖动会误红，先报告不阻断；连续两周零 DEAD 后删本行转硬门禁

@@ -5,8 +5,23 @@
 
 ## [Unreleased]
 
-### Fixed
+## [1.7.0] - 2026-09-25
+
+### Fixed（🔴 引用面实质缺陷修复）
+- **16 条「假回链」域名纠正**：新增的联网门禁 `tests/link_health.mjs` 首跑即实测发现 `cmas.org.cn`（15 条）与 `www.nhoc.org.cn`（1 条）**DNS 根本不解析**——这类 url 让引用看似可溯源而实际不可达，比空 url 更危险。已逐条改指向实测 HTTP 200 的正确官方域：`www.cma.org.cn`（中华医学会，13 条）与 `www.medjournals.cn`（中华医学期刊网，3 条：《中华内分泌代谢杂志》×2、《中华耳鼻咽喉头颈外科杂志》×1）；`export_kb.mjs` 重导出 `knowledge.py` 保持双端零漂移。改前后实测：DEAD 3 → **0**，`www.nhc.gov.cn` 412 归为 BLOCKED（WAF 反爬、站点存活，只报不红）
 - `start-demo.sh` 补执行位（`git update-index --chmod=+x`，实测首提交为 100644 需 `bash` 前缀）；README 主用法改 `bash start-demo.sh` 以对所有平台成立
+
+### Added
+- `frontend/tests/link_health.mjs` + `npm run test:links` + CI `.github/workflows/link-health.yml`（每周三，观察期不阻断）：**唯一联网门禁**，与离线十件套隔离（离线套件保持零网络确定性）；分级 OK / BLOCKED(401/403/412/429/451) / DEAD，非存活自动重试 2 次防抖动误红，`BLOCKED_BASELINE` 显式登记 nhc 反爬基线
+- `kb_guard.mjs` 新增第 17 项**离线已核验域名白名单**（`VERIFIED_HOSTS` 4 host）：未登记域名的 url 直接 FAIL——治本防「拼错/不存在域名冒充回链」再犯。反例实测：把 `cmas.org.cn` 塞回即同时触发白名单 FAIL + 双端深度相等漂移报警（17→15 pass/2 fail），还原后 17 pass/0 fail
+- `docs/ARCHITECTURE.md` 增「引用链健康」门禁行与「补链流程」扩展点（补链须先实测可达再加白名单，禁写未核验链接）；`docs/EVAL_CARD.md` 溯源小节加 2026-09-25 校正注（保留原表述，因其当时为真）
+
+### Not done（实测受阻，如实登记）
+- 文档级**深链补链**：中文指南全文在官方域内检索无结果；一级出版方候选 `ahajournals.org` DOI 实测 403、`medjournals.cn` 期刊页深链实测 404/JS 空壳 → 按红线「禁止写入未核验链接」维持深链=0，转人工站内定位后再补
+- Docker 化：本机守护进程不可达（`docker version` 连不上 npipe），运行时基建不得先写后验
+
+### Tests
+- 十件套全绿（kb 守卫 16→17 项）：smoke 27 / engine 31 / retrieval 双档 / parity / 契约 31:31 / kb 17 / route 14 / api 对账 / vitest 7 / version 5；后端 19+15 全绿；链健康实测 OK=3 BLOCKED=1 DEAD=0
 
 ## [1.6.1] - 2026-09-24
 
