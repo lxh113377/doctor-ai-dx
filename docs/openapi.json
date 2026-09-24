@@ -1,0 +1,105 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "医·基层AI辅助诊断系统 API",
+    "version": "1.5.0",
+    "description": "Cloudflare Pages Functions（线上权威实现 functions/api/[[route]].js）的机器可读契约；FastAPI 后端为镜像实现，双端一致性由 contract_parity 测试保障。所有响应统一壳 {code:0,data}（成功）或 {code:<http-status>,message}（失败），并携带 x-request-id 响应头用于故障归因。全程 AI 辅助参考 · 医生终审，输出不构成独立诊断。",
+    "x-compliance": "演示仅脱敏合成病例；evidence_ids 仅限知识库白名单 kb-001~055；红旗规则层独立于 LLM 不可被模型覆盖"
+  },
+  "servers": [
+    { "url": "https://doctor-ai-dx.pages.dev", "description": "生产（Pages Functions）" },
+    { "url": "http://127.0.0.1:8000", "description": "本地 FastAPI 镜像（run.py）" }
+  ],
+  "paths": {
+    "/api/cases": {
+      "get": {
+        "tags": ["clinical"],
+        "summary": "脱敏演示病例列表（3 例合成数据）",
+        "responses": { "200": { "$ref": "#/components/responses/JsonEnvelope" } }
+      }
+    },
+    "/api/intake/ask": {
+      "post": {
+        "tags": ["clinical"],
+        "summary": "智能问诊推进（下一追问或置 done；含 state 临床状态抽取）",
+        "requestBody": { "$ref": "#/components/requestBodies/IntakeAsk" },
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonEnvelope" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+    "/api/dx/{caseId}": {
+      "post": {
+        "tags": ["clinical"],
+        "summary": "辅助诊断（状态抽取→BM25 检索→LLM 生成→确定性校验→红旗兜底→失败降级）",
+        "parameters": [{ "name": "caseId", "in": "path", "required": true, "schema": { "type": "string", "example": "c1" } }],
+        "requestBody": { "$ref": "#/components/requestBodies/HistoryDx" },
+        "responses": {
+          "200": { "description": "诊断结果；mode=live|rule-fallback；红旗不可被模型覆盖", "headers": { "x-request-id": { "$ref": "#/components/headers/RequestId" } }, "content": { "application/json": { "schema": { "allOf": [{ "$ref": "#/components/schemas/Envelope" }, { "type": "object", "properties": { "data": { "$ref": "#/components/schemas/Diagnosis" } } }] } } } },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+    "/api/workup/{caseId}": {
+      "post": {
+        "tags": ["clinical"],
+        "summary": "检查建议（essential/suggested/optional 三组；可复用已生成诊断省一次串行 LLM）",
+        "parameters": [{ "name": "caseId", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "requestBody": { "$ref": "#/components/requestBodies/HistoryDx" },
+        "responses": { "200": { "$ref": "#/components/responses/JsonEnvelope" }, "404": { "$ref": "#/components/responses/NotFound" }, "500": { "$ref": "#/components/responses/InternalError" } }
+      }
+    },
+    "/api/report/{caseId}": {
+      "post": {
+        "tags": ["clinical"],
+        "summary": "SOAP 病历报告（含免责声明与医生终审定位）",
+        "parameters": [{ "name": "caseId", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "requestBody": { "$ref": "#/components/requestBodies/HistoryDx" },
+        "responses": { "200": { "$ref": "#/components/responses/JsonEnvelope" }, "404": { "$ref": "#/components/responses/NotFound" }, "500": { "$ref": "#/components/responses/InternalError" } }
+      }
+    },
+    "/api/health": {
+      "get": {
+        "tags": ["system"],
+        "summary": "服务与 LLM 模式探活（llm_mode=live|mock-fallback）",
+        "responses": { "200": { "$ref": "#/components/responses/JsonEnvelope" } }
+      }
+    }
+  },
+  "components": {
+    "headers": {
+      "RequestId": { "description": "请求归因编号（故障反馈凭据；不回显堆栈/内部路径）", "schema": { "type": "string" } }
+    },
+    "requestBodies": {
+      "IntakeAsk": { "content": { "application/json": { "schema": { "type": "object", "required": ["case_id"], "properties": { "case_id": { "type": "string" }, "history": { "$ref": "#/components/schemas/History" } } } } } },
+      "HistoryDx": { "content": { "application/json": { "schema": { "type": "object", "properties": { "history": { "$ref": "#/components/schemas/History" }, "dx": { "nullable": true, "type": "object", "description": "前端已生成诊断对象（复用）；缺省服务端重算；红旗一律以服务端规则重算为准" } } } } } }
+    },
+    "responses": {
+      "JsonEnvelope": { "description": "统一壳 {code:0,data} + x-request-id", "headers": { "x-request-id": { "$ref": "#/components/headers/RequestId" } }, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Envelope" } } } },
+      "NotFound": { "description": "未知病例 id——医生可理解文案", "content": { "application/json": { "schema": { "type": "object", "properties": { "code": { "type": "integer", "example": 404 }, "message": { "type": "string" } } } } } },
+      "InternalError": { "description": "服务暂不可用——仅故障编号与重试文案，不含堆栈/内部路径", "headers": { "x-request-id": { "$ref": "#/components/headers/RequestId" } }, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Envelope" } } } }
+    },
+    "schemas": {
+      "Envelope": { "type": "object", "required": ["code"], "properties": { "code": { "type": "integer", "description": "0=成功；失败时等于 HTTP 状态" }, "data": {}, "message": { "type": "string", "description": "医生可理解文案" } } },
+      "History": { "type": "array", "items": { "type": "object", "properties": { "role": { "type": "string", "enum": ["user", "assistant"] }, "content": { "type": "string" } } } },
+      "Diagnosis": {
+        "type": "object",
+        "properties": {
+          "primary": { "type": "array", "items": { "type": "object", "properties": { "name": { "type": "string" }, "prob": { "type": "string", "enum": ["高优先级", "需鉴别", "低可能"] }, "strength": { "type": "string", "enum": ["high", "mid", "low"] }, "reasons": { "type": "array", "items": { "type": "string" } }, "evidence_ids": { "type": "array", "items": { "type": "string" }, "description": "仅限知识库白名单 kb-001~055" }, "refs": { "type": "array", "items": { "type": "string" } } } } },
+          "differential": { "type": "array", "items": { "type": "object" } },
+          "evidence": { "type": "array", "items": { "type": "object", "properties": { "id": { "type": "string" }, "title": { "type": "string" }, "source": { "type": "string" }, "year": { "type": "string" }, "url": { "type": "string" }, "icd": { "nullable": true, "type": "string", "description": "WHO ICD-10 初筛映射，未经临床复核不得作编码依据" }, "score": { "type": "number" } } } },
+          "flags": { "type": "array", "items": { "type": "string" } },
+          "flag_details": { "type": "array", "items": { "type": "object", "properties": { "name": { "type": "string" }, "severity": { "type": "string" }, "advice": { "type": "string" } } } },
+          "mode": { "type": "string", "enum": ["live", "rule-fallback"] },
+          "fallback_reason": { "type": "string" },
+          "faq": { "type": "array", "items": { "type": "object" } },
+          "trace": { "type": "object", "properties": { "evidence_ids": { "type": "array", "items": { "type": "string" } }, "rounds": { "type": "integer" }, "symptoms": { "type": "array", "items": { "type": "string" } } } },
+          "state": { "type": "object" }
+        }
+      }
+    }
+  }
+}

@@ -19,7 +19,7 @@ jobs:
         working-directory: frontend
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
@@ -37,6 +37,8 @@ jobs:
         run: npm test
       - name: Build (production)
         run: npm run build
+      - name: Bundle size guard
+        run: npm run test:bundle
       - name: Upload dist
         uses: actions/upload-artifact@v7
         with:
