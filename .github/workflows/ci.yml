@@ -41,6 +41,13 @@ jobs:
         run: python ../scripts/gen_openapi.py --check
       - name: Bundle size guard
         run: npm run test:bundle
+      - name: 部署模式声明（自动部署是否接管）
+        run: |
+          if [ "${{ vars.AUTO_DEPLOY }}" = "true" ]; then
+            echo "::notice::AUTO_DEPLOY=true：本 run 结束后由 deploy 作业部署到 Pages"
+          else
+            echo "::notice::AUTO_DEPLOY 未开启：deploy 作业将 skipped，线上更新需手工 wrangler 部署（配 secret 后置 true 接管）"
+          fi
       - name: Upload dist
         uses: actions/upload-artifact@v7
         with:
@@ -69,7 +76,10 @@ jobs:
 
   deploy:
     needs: [build-and-test, backend-test]
-    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    # 自动部署开关 = 仓库变量 AUTO_DEPLOY（默认未设 ⇒ 作业显式 skipped，不冒充「已部署」也不误红徽章）。
+    # 现状（2026-09-25 实测）：本仓未配 CLOUDFLARE_API_TOKEN secret，生产部署由本机 wrangler OAuth 手工执行；
+    # 配好 Token 后置 AUTO_DEPLOY=true 即接管，届时缺 Token 会判红（fail-closed 分支已实测生效，禁止回退成静默跳过）。
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && vars.AUTO_DEPLOY == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
