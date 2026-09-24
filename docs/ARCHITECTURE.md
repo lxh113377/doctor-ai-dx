@@ -73,8 +73,10 @@
 | `BACKEND_HOST` / `BACKEND_PORT` | `127.0.0.1` / `8000` | FastAPI 监听 |
 | `CORS_ORIGINS` | `http://localhost:5173` | 逗号分隔白名单 |
 
-端口口径：`8788` = 一体化演示（`wrangler pages dev dist --local`，与线上零漂移）；`5173` = Vite 开发服（代理到 8000）；`8000` = FastAPI。
-本地启动：Windows `powershell -File start-demo.ps1`；跨平台（Linux/macOS/Git Bash）`./start-demo.sh`。线上 `/api/health` 返回 `version`，可用于确认部署版本。
+端口口径：`8788` = 一体化演示（`wrangler pages dev dist --local`，与线上零漂移）；`5173` = Vite 开发服（代理到 8000）；`8000` = FastAPI（本机或容器）。
+本地启动：Windows `powershell -File start-demo.ps1`；跨平台（Linux/macOS/Git Bash）`./start-demo.sh`；仅有 Docker 时 `docker compose up -d`（`backend/Dockerfile` 基于 `python:3.12-slim`，镜像内置 `BACKEND_HOST=0.0.0.0` 与 HEALTHCHECK；`docker compose run --rm selftest` 跑镜像内 19+15+16 项断言自证，实测 exit 0）。
+容器边界（如实声明）：compose 只编排 FastAPI 镜像面——生产权威面是 Cloudflare Pages + Functions（serverless，不可自托管为容器），强行容器化前端只会造出与线上不同的一条链路。
+线上 `/api/health` 返回 `version`，可用于确认部署版本。
 
 ## 7. 门禁清单（合入前必须全绿）
 
@@ -83,6 +85,7 @@
 | 前端十一件套 | `cd frontend && npm test` | smoke 27 · engine 31 · retrieval 50 例双档地板 · retriever parity · 双端契约 31:31 · **fhir 30（含 6 组反例）** · kb 17 · route 14 · api 契约 6 端点 · vitest 7 · version 五方 |
 | 构建体积 | `npm run build && npm run test:bundle` | 主 chunk gzip ≤77500B / assets 合计 ≤86500B（地板线，防膨胀也防假瘦身） |
 | 后端 | `python tests/smoke_engine.py` / `tests/test_api_observe.py` / `tests/test_fhir.py` | 规则降级 19 项 · 可观测与脱敏 15 项 · FHIR 导出 17 项 |
+| 容器（从零启动自证） | `docker compose up -d` + `docker compose run --rm selftest` | 镜像构建成功 + HEALTHCHECK `healthy` + 镜像内 19/15/16 项 exit 0（源码树级检查在容器内显式 SKIP，不计通过也不计失败） |
 | 契约派生件 | `python scripts/gen_openapi.py --check` | openapi 版本与后端单一源一致（只同步版本行，禁全量重写） |
 | CI | `.github/workflows/ci.yml`（3 job）+ `codeql.yml` + `dep-audit.yml` | 上述全量 + 每周 npm/pip 漏洞扫描 |
 | 引用链健康（唯一联网门禁） | `cd frontend && npm run test:links` | 知识库全部 url 逐条可达性核验：DEAD 即红、412/403 类反爬按 BLOCKED 只报不红；CI `link-health.yml` 每周跑（观察期） |

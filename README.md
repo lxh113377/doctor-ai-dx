@@ -22,7 +22,7 @@ backend/    FastAPI —— 同一链路的 Python 镜像（可选本地运行，
 - `engine` 确定性校验：非法 `evidence_id` 直接拒绝；无 Key / 超时 / JSON 非法 → 明确标注 `mode=rule-fallback` 降级
 - `llm` DeepSeek（OpenAI 兼容）；单次硬超时 8s
 
-## 启动（本地演示，二选一）
+## 启动（本地演示，三选一）
 
 ```bash
 # 方式A（推荐·与线上零漂移）：一键脚本，跨平台（Linux/macOS/Git Bash）
@@ -36,7 +36,12 @@ node node_modules/wrangler/bin/wrangler.js pages dev dist --port 8788 --local
 cd backend && cp .env.example .env   # 有 DeepSeek Key 则填入；无 Key 走 rule-fallback
 python -m pip install -r requirements.txt && python run.py   # :8000
 cd ../frontend && npm install && npm run dev                 # :5173，/api 代理到 8000
+
+# 方式C（容器）：只需 Docker，不装 Python/Node
+docker compose up -d          # :8000 起 FastAPI 镜像面（无 Key ⇒ 按设计降级 rule-fallback）
+docker compose run --rm selftest   # 镜像内自带 19+15+16 项断言，全绿 exit 0 即自证镜像可用
 ```
+> 容器只编排 FastAPI 镜像面：生产权威面是 Cloudflare Pages + Functions（serverless，不是可自托管的容器），故不入 compose。
 
 > 无 DeepSeek Key 时两端均自动进入**规则引擎降级模式**并在界面明确标注，功能完整可演示（AC-OBS-07）。
 

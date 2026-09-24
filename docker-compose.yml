@@ -1,0 +1,36 @@
+name: doctor-ai-dx
+
+# 本地/评审用容器编排：把 FastAPI 镜像面（后端降级链路）一键跑起来。
+# 边界（如实声明）：生产权威面是 Cloudflare Pages + Functions（serverless），不是可自托管的容器，
+# 因此 compose 只编排 FastAPI 镜像面；前端演示请照 README 用 npm run dev / bash start-demo.sh。
+# 密钥口径：DEEPSEEK_API_KEY 刻意不写进本文件——无 Key 时链路按设计降级为 rule-fallback，
+# 需要 live 口径时由使用者自带：DEEPSEEK_API_KEY=sk-xxx docker compose up
+
+services:
+  backend:
+    build:
+      context: ./backend
+    image: doctor-ai-dx-backend
+    ports:
+      - "8000:8000"
+    environment:
+      BACKEND_HOST: 0.0.0.0
+      BACKEND_PORT: "8000"
+      CORS_ORIGINS: "http://localhost:5173"
+      DEEPSEEK_API_KEY: "${DEEPSEEK_API_KEY:-}"
+    restart: unless-stopped
+
+  selftest:
+    # 一次性作业：镜像内自带的三套离线断言全绿即证明这份镜像可用（评审从零启动的自证入口）。
+    # 三套均为进程内 TestClient / 纯函数断言，不依赖 backend 服务在线，故不设 depends_on。
+    build:
+      context: ./backend
+    image: doctor-ai-dx-backend
+    entrypoint: ["sh", "-c"]
+    command:
+      - >
+        python tests/smoke_engine.py &&
+        python tests/test_api_observe.py &&
+        python tests/test_fhir.py
+    healthcheck:
+      disable: true

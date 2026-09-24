@@ -12,6 +12,7 @@
 - `frontend/tests/fhir_guard.mjs`（30 项）：Bundle 结构自洽、术语编码白名单（8 个 HL7 已发布 CodeSystem + 本仓命名空间锁两值）、悬挂引用检测、零时钟字段断言、红线文案断言（`conclusion` 必含「医生终审」）、ICD 溯源断言（`icd=null` 的条目只出 `text` 不出 `coding`）；**含 6 组反例实测**（非法 system／非法 code／悬挂 reference／混入 timestamp／丢终审文案／编造 ICD）+ 合法对照组零命中，证明判据已接线而非恒真
 - `backend/tests/test_fhir.py`（17 项）并挂入 CI `backend-test`：API 层透出（Pydantic 未吞字段）、双端 CodeSystem URI 清单一致、空输入兜底
 - `docs/ARCHITECTURE.md` 新增 §9「FHIR-light 导出层」：资源组合、插入点（确定性校验与红旗兜底**之后**）、逐条术语绑定来源与边界声明
+- **容器化 FastAPI 镜像面**（round8 因守护进程不可用暂缓，本轮守护进程实测可用后落地并全程实跑）：`backend/Dockerfile`（`python:3.12-slim`，依赖层分离、镜像内置 `BACKEND_HOST=0.0.0.0`、HEALTHCHECK 打 `/api/health`、测试随镜像提供）+ `backend/.dockerignore` + 根 `docker-compose.yml`（`backend` 服务 + 一次性 `selftest` 服务）。实测：构建成功（235MB）、`health` 返回 `version 1.8.0` 且 `mock-fallback`、`/api/dx` 命中红旗 1 项并产出 21 条 Bundle entry、容器内三套断言 19/15/16 全绿 exit 0、HEALTHCHECK `healthy`
 
 ### Changed
 - 前端离线套件由十件套扩为**十一件套**（`npm test` 增 `test:fhir`）

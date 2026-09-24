@@ -82,9 +82,12 @@ check("仅引用 icd=null 条目的诊断只出 text、不出 coding",
       bool(null_only) and all("coding" not in x["code"] for x in null_only),
       f"null_only={len(null_only)}")
 
-js_src = (Path(__file__).resolve().parents[2] / "frontend" / "functions" / "lib" / "fhir.js").read_text(encoding="utf-8")
-missing = [u for u in fhir.CS.values() if u not in js_src]
-check("双端 CodeSystem URI 清单一致", not missing, " | ".join(missing))
+JS_FHIR = Path(__file__).resolve().parents[2] / "frontend" / "functions" / "lib" / "fhir.js"
+if JS_FHIR.exists():  # 源码树级检查：容器镜像内只有 /srv/backend，此时该检查无语义（显式 SKIP，不计通过也不计失败）
+    missing = [u for u in fhir.CS.values() if u not in JS_FHIR.read_text(encoding="utf-8")]
+    check("双端 CodeSystem URI 清单一致", not missing, " | ".join(missing))
+else:
+    print("  SKIP 双端 CodeSystem URI 清单一致（非源码树环境：", JS_FHIR.parent, "）")
 
 empty = fhir.to_fhir_bundle({})
 check("空输入兜底仍产出合法 Bundle", empty["resourceType"] == "Bundle" and len(empty["entry"]) >= 4)
