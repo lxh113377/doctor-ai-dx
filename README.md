@@ -38,7 +38,7 @@ cd ../frontend && npm install && npm run dev                 # :5173，/api 代�
 
 ```bash
 cd frontend
-npm test       # 22 项冒烟 + 31 例引擎评测 + 检索分层回归
+npm test       # 22 项冒烟 + 31 例引擎评测 + 检索分层回归 + 31 例双端契约比对（契约需本机 Python）
 npm run build  # Vite 生产构建
 
 cd ../backend
@@ -49,6 +49,8 @@ python tests/smoke_engine.py
 - `frontend/tests/fixtures/eval_cases.json` 为 31 例脱敏合成 CI 镜像，来源记录在 `_meta.provenance`。
 - `frontend/tests/retrieval_eval.mjs` 对 20 条 silver 查询计算 Recall@1/3/5/10、MRR、nDCG@5/10；当前 BM25 基线为 Recall@5=0.95、MRR=0.95、nDCG@5=0.90727。
 - 检索指标用于工程回归，不代表诊断准确率或真实临床有效性。
+- `frontend/tests/contract_parity.mjs` 用同一 31 组黄金输入分别跑 Functions(JS) 与 FastAPI 镜像(Python)，逐字段比对 dx/workup/report，拦截双端静默漂移。
+- **评测卡 / 安全卡**：[`docs/EVAL_CARD.md`](docs/EVAL_CARD.md) —— 能力边界、病种覆盖清单（55 条 · 19 域）、红旗与安全口径、指标日期一页可查。
 
 ## 部署上线（已上线 ✅）
 
