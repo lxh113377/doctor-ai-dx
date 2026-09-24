@@ -18,8 +18,8 @@
     "test:components": "vitest run"
   },
   "dependencies": {
-    "react": "^19.1.0",
-    "react-dom": "^19.1.0"
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0"
   },
   "devDependencies": {
     "@testing-library/dom": "^10.4.2",
@@ -29,6 +29,6 @@
     "happy-dom": "^17.6.3",
     "vite": "^6.3.0",
     "vitest": "^3.2.7",
-    "wrangler": "^4.128.0"
+    "wrangler": "^4.135.0"
   }
 }
