@@ -23,7 +23,16 @@ app.add_middleware(
 app.include_router(api.router)
 
 
-@app.get("/health")
-def health():
+def _health_data():
     from .config import llm_available
     return {"status": "ok", "llm_mode": "live" if llm_available() else "mock-fallback"}
+
+
+@app.get("/health")
+def health():
+    return _health_data()
+
+
+@app.get("/api/health")
+def api_health():
+    return {"code": 0, "data": _health_data()}

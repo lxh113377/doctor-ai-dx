@@ -1,0 +1,120 @@
+// 纯离线检索评测：Recall@k、MRR、nDCG；无需 LLM、云服务或密钥。
+import { readFileSync, writeFileSync } from "node:fs"
+import { getRetriever } from "../functions/lib/retriever.js"
+import { hasEvidence } from "../functions/lib/rag.js"
+
+const fixtureUrl = new URL("./fixtures/retrieval_cases.json", import.meta.url)
+const baselineUrl = new URL("./fixtures/retrieval_baseline.json", import.meta.url)
+const suite = JSON.parse(readFileSync(fixtureUrl, "utf8"))
+const retriever = getRetriever()
+const ks = [1, 3, 5, 10]
+const round = (value) => Math.round(value * 1_000_000) / 1_000_000
+
+function recallAtK(ids, relevant, k) {
+  const hits = ids.slice(0, k).filter((id) => relevant.has(id)).length
+  return relevant.size ? hits / relevant.size : 0
+}
+
+function reciprocalRank(ids, relevant) {
+  const index = ids.findIndex((id) => relevant.has(id))
+  return index < 0 ? 0 : 1 / (index + 1)
+}
+
+function ndcgAtK(ids, relevant, k) {
+  let dcg = 0
+  ids.slice(0, k).forEach((id, index) => {
+    if (relevant.has(id)) dcg += 1 / Math.log2(index + 2)
+  })
+  let idcg = 0
+  const idealHits = Math.min(k, relevant.size)
+  for (let index = 0; index < idealHits; index++) idcg += 1 / Math.log2(index + 2)
+  return idcg ? dcg / idcg : 0
+}
+
+function summarize(records) {
+  const summary = { cases: records.length }
+  for (const k of ks) {
+    summary[`recall_at_${k}`] = round(records.reduce((sum, item) => sum + item[`recall_at_${k}`], 0) / (records.length || 1))
+  }
+  summary.mrr = round(records.reduce((sum, item) => sum + item.mrr, 0) / (records.length || 1))
+  summary.ndcg_at_5 = round(records.reduce((sum, item) => sum + item.ndcg_at_5, 0) / (records.length || 1))
+  summary.ndcg_at_10 = round(records.reduce((sum, item) => sum + item.ndcg_at_10, 0) / (records.length || 1))
+  return summary
+}
+
+const seen = new Set()
+const records = suite.cases.map((item) => {
+  if (!item.id || seen.has(item.id)) throw new Error(`重复或缺失 case id: ${item.id || "<empty>"}`)
+  seen.add(item.id)
+  if (!item.query || !Array.isArray(item.relevant_ids) || item.relevant_ids.length === 0) {
+    throw new Error(`非法 fixture: ${item.id}`)
+  }
+  const invalid = item.relevant_ids.filter((id) => !hasEvidence(id))
+  if (invalid.length) throw new Error(`${item.id} 包含不存在的 evidence_id: ${invalid.join(",")}`)
+
+  const results = retriever.search(item.query, 10)
+  const ids = results.map((result) => result.id)
+  const relevant = new Set(item.relevant_ids)
+  const record = {
+    id: item.id,
+    scene: item.scene,
+    red_flag: Boolean(item.red_flag),
+    relevant_ids: item.relevant_ids,
+    retrieved_ids: ids,
+    mrr: round(reciprocalRank(ids, relevant)),
+    ndcg_at_5: round(ndcgAtK(ids, relevant, 5)),
+    ndcg_at_10: round(ndcgAtK(ids, relevant, 10)),
+  }
+  for (const k of ks) record[`recall_at_${k}`] = round(recallAtK(ids, relevant, k))
+  return record
+})
+
+const scenes = {}
+for (const scene of [...new Set(records.map((record) => record.scene))]) {
+  scenes[scene] = summarize(records.filter((record) => record.scene === scene))
+}
+const report = {
+  date: new Date().toISOString(),
+  retriever: retriever.name,
+  fixture: suite._meta,
+  overall: summarize(records),
+  red_flag_subset: summarize(records.filter((record) => record.red_flag)),
+  scenes,
+  cases: records,
+}
+
+if (process.argv.includes("--write-baseline")) {
+  const baseline = {
+    retriever: retriever.name,
+    fixture_name: suite._meta.name,
+    case_count: report.overall.cases,
+    minimum: {
+      recall_at_5: report.overall.recall_at_5,
+      mrr: report.overall.mrr,
+      ndcg_at_5: report.overall.ndcg_at_5,
+      red_flag_recall_at_5: report.red_flag_subset.recall_at_5,
+    },
+  }
+  writeFileSync(baselineUrl, `${JSON.stringify(baseline, null, 2)}\n`)
+  console.log(`Baseline written: ${baselineUrl.pathname}`)
+} else {
+  const baseline = JSON.parse(readFileSync(baselineUrl, "utf8"))
+  const checks = [
+    ["retriever", report.retriever === baseline.retriever],
+    ["case_count", report.overall.cases === baseline.case_count],
+    ["recall_at_5", report.overall.recall_at_5 >= baseline.minimum.recall_at_5],
+    ["mrr", report.overall.mrr >= baseline.minimum.mrr],
+    ["ndcg_at_5", report.overall.ndcg_at_5 >= baseline.minimum.ndcg_at_5],
+    ["red_flag_recall_at_5", report.red_flag_subset.recall_at_5 >= baseline.minimum.red_flag_recall_at_5],
+  ]
+  const failed = checks.filter(([, ok]) => !ok).map(([name]) => name)
+  if (failed.length) {
+    console.error(`Retrieval regression: ${failed.join(", ")}`)
+    console.error(JSON.stringify(report.overall, null, 2))
+    process.exit(1)
+  }
+}
+
+const outputPath = process.env.RETRIEVAL_REPORT_PATH
+if (outputPath) writeFileSync(outputPath, `${JSON.stringify(report, null, 2)}\n`)
+console.log(JSON.stringify({ retriever: report.retriever, overall: report.overall, red_flag_subset: report.red_flag_subset }, null, 2))

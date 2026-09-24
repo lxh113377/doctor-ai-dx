@@ -3,7 +3,9 @@ name: CI - build & deploy
 on:
   push:
     branches: [main]
-  workflow_dispatch: {}   # 手动触发完整 CI（含部署）
+  pull_request:
+    branches: [main]
+  workflow_dispatch: {}   # 手动触发完整 CI（main 分支且有 Token 时部署）
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -19,11 +21,13 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       - name: Install
         run: npm ci --no-audit --no-fund
+      - name: Test (smoke + engine + retrieval)
+        run: npm test
       - name: Build (production)
         run: npm run build
       - name: Upload dist
@@ -33,24 +37,40 @@ jobs:
           path: frontend/dist
           if-no-files-found: error
 
-  deploy:
-    needs: build-and-test
+  backend-test:
     runs-on: ubuntu-latest
-    # 对齐超市web：job 级禁用 secrets 判断（会导致 workflow 解析失败），secrets 放 step 级
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Install
+        run: python -m pip install -r requirements.txt
+      - name: Test rule-fallback engine
+        run: python tests/smoke_engine.py
+
+  deploy:
+    needs: [build-and-test, backend-test]
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
         with:
           name: dist
           path: dist
-        if: env.HAS_TOKEN == 'true'
       - name: Deploy to Cloudflare Pages
         env:
           HAS_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN != '' }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: 04b1466b2606b678a332fe6f26aa87ec  # 坑#26：必须显式账户ID（wrangler 无法自动获取）
+          CLOUDFLARE_ACCOUNT_ID: 04b1466b2606b678a332fe6f26aa87ec
         run: |
           if [ "$HAS_TOKEN" = "true" ]; then
-            npx wrangler pages deploy dist --project-name=doctor-ai-dx --commit-dirty=true
+            npx wrangler pages deploy dist --project-name=doctor-ai-dx --branch=main --commit-dirty=true
           else
-            echo "⏭️  未配置 CLOUDFLARE_API_TOKEN，跳过部署（配置后自动生效）"
+            echo "未配置 CLOUDFLARE_API_TOKEN，跳过部署（配置后自动生效）"
           fi

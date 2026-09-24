@@ -6,9 +6,11 @@
 // ============================================================
 import { CASES, INTAKE_DONE_REPLY } from "./data.js"
 import { scanFlags, scanFlagDetails } from "./rules.js"
-import { search, evidenceByIds, hasEvidence, evidenceForSymptoms } from "./rag.js"
+import { evidenceByIds, hasEvidence, evidenceForSymptoms } from "./rag.js"
+import { getRetriever } from "./retriever.js"
 import { KNOWLEDGE_BASE, KB_BY_ID, kbTitleOf, kbConditionOf } from "./knowledge.js"
 
+const retriever = getRetriever()
 const kbTitle = (id) => kbTitleOf(id)
 const kbCondition = (id) => kbConditionOf(id)
 
@@ -106,7 +108,7 @@ async function llmFollowup(history, c, env) {
 // ---------- 辅助诊断：检索先行 → LLM 生成 → 校验 → 红旗兜底 ----------
 export async function buildDiagnosis(caseId, history = [], env = {}) {
   const state = extractState(caseId, history)
-  const evidence = search(state.transcript, 5)
+  const evidence = retriever.search(state.transcript, 5)
   const evidenceIds = evidence.map((e) => e.id)
 
   let out = null
@@ -242,7 +244,7 @@ async function reuseOrBuild(state, history, env, providedDx) {
     dx.flags = state.red_flags
     dx.flag_details = state.red_flag_details
     const validEv = (Array.isArray(dx.evidence) ? dx.evidence : []).filter((e) => e && typeof e.id === "string" && hasEvidence(e.id))
-    dx.evidence = validEv.length ? validEv : search(state.transcript, 5)
+    dx.evidence = validEv.length ? validEv : retriever.search(state.transcript, 5)
     if (!dx.trace) dx.trace = { evidence_ids: dx.evidence.map((e) => e.id), rounds: state.rounds, symptoms: state.symptoms }
     return dx
   }
@@ -253,7 +255,7 @@ export async function buildWorkup(caseId, history = [], env = {}, providedDx = n
   const state = extractState(caseId, history)
   const dx = await reuseOrBuild(state, history, env, providedDx)
   const firstName = dx.primary?.[0]?.name || ""
-  const evidence = search(state.transcript + " " + firstName, 5)
+  const evidence = retriever.search(state.transcript + " " + firstName, 5)
   let out = null, mode = "rule-fallback", fallbackReason = ""
   const live = await llmWorkup(state, dx, evidence, env)
   if (live) { out = live; mode = "live" }

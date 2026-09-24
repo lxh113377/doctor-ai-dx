@@ -9,7 +9,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 os.environ.pop("DEEPSEEK_API_KEY", None)  # 强制无 Key 降级
 
 from app.services import engine  # noqa: E402
+from app import rag  # noqa: E402
 from app.rag import has_evidence  # noqa: E402
+from app.retriever import get_retriever  # noqa: E402
 
 HIST_C1 = [{"role": "user", "content": c} for c in
            ["压榨样/紧缩感", "向左肩臂放射", "活动/劳累时加重", "出冷汗", "高血压，吸烟"]]
@@ -28,6 +30,12 @@ def check(name, cond):
         failed += 1
         print("  FAIL", name)
 
+
+print("== retriever compatibility ==")
+retriever = get_retriever()
+probe_query = "压榨样胸痛向左肩放射出冷汗"
+check("默认检索器为 bm25", retriever.name == "bm25")
+check("适配器与原 BM25 输出一致", retriever.search(probe_query, 5) == rag.search(probe_query, 5))
 
 print("== extract_state ==")
 s1 = engine.extract_state("c1", HIST_C1)

@@ -1,0 +1,11 @@
+{
+  "retriever": "bm25",
+  "fixture_name": "基层医疗 BM25 检索 silver 评测集 v1.0",
+  "case_count": 20,
+  "minimum": {
+    "recall_at_5": 0.95,
+    "mrr": 0.95,
+    "ndcg_at_5": 0.90727,
+    "red_flag_recall_at_5": 0.923077
+  }
+}

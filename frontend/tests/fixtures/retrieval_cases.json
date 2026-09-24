@@ -1,0 +1,31 @@
+{
+  "_meta": {
+    "name": "基层医疗 BM25 检索 silver 评测集 v1.0",
+    "date": "2026-09-24",
+    "provenance": "查询由现有脱敏合成病例改写；relevant_ids 依据 knowledge.js 的 condition、keywords 与正文人工复核标注",
+    "purpose": "用于检索回归，不代表诊断准确率或真实临床有效性",
+    "judgement": "binary relevance"
+  },
+  "cases": [
+    { "id": "ret-01", "scene": "胸痛", "query": "活动后压榨样胸痛，向左肩放射，伴冷汗和高血压吸烟史", "relevant_ids": ["kb-001", "kb-002"], "red_flag": true },
+    { "id": "ret-02", "scene": "胸痛", "query": "突发撕裂样前胸后背剧痛，双上肢血压差明显", "relevant_ids": ["kb-004"], "red_flag": true },
+    { "id": "ret-03", "scene": "胸痛", "query": "长途乘车后突发呼吸困难和胸痛，单侧下肢肿胀", "relevant_ids": ["kb-003"], "red_flag": true },
+    { "id": "ret-04", "scene": "呼吸道", "query": "高热咳嗽咽痛，接触过流感患者，全身肌肉酸痛", "relevant_ids": ["kb-007", "kb-006", "kb-020"], "red_flag": false },
+    { "id": "ret-05", "scene": "呼吸道", "query": "吸烟多年，慢性咳痰，活动后气促逐渐加重", "relevant_ids": ["kb-029"], "red_flag": false },
+    { "id": "ret-06", "scene": "头晕", "query": "起床站立时头晕眼前发黑，平卧后缓解", "relevant_ids": ["kb-011", "kb-009"], "red_flag": false },
+    { "id": "ret-07", "scene": "消化", "query": "上腹痛后呕血和柏油样黑便，伴头晕乏力", "relevant_ids": ["kb-014", "kb-012"], "red_flag": true },
+    { "id": "ret-08", "scene": "消化", "query": "聚餐后水样腹泻和呕吐，口干尿少", "relevant_ids": ["kb-015"], "red_flag": false },
+    { "id": "ret-09", "scene": "慢病", "query": "多饮多尿、口渴、消瘦乏力，家族有糖尿病", "relevant_ids": ["kb-016"], "red_flag": false },
+    { "id": "ret-10", "scene": "慢病", "query": "糖尿病用药后未进食，心慌出汗手抖并意识模糊", "relevant_ids": ["kb-017"], "red_flag": true },
+    { "id": "ret-11", "scene": "泌尿感染", "query": "尿频尿急尿痛伴腰痛、高热寒战和血压下降", "relevant_ids": ["kb-019", "kb-054"], "red_flag": true },
+    { "id": "ret-12", "scene": "关节", "query": "饮酒后第一跖趾关节突发红肿热痛", "relevant_ids": ["kb-026"], "red_flag": false },
+    { "id": "ret-13", "scene": "妇产", "query": "停经后下腹剧痛和阴道出血，头晕面色苍白", "relevant_ids": ["kb-036", "kb-035"], "red_flag": true },
+    { "id": "ret-14", "scene": "儿科", "query": "一岁幼儿阵发哭闹、呕吐、面色苍白和果酱样便", "relevant_ids": ["kb-034", "kb-033"], "red_flag": true },
+    { "id": "ret-15", "scene": "耳鼻喉", "query": "剧烈咽痛，吞咽困难流涎，说话含糊并呼吸不畅", "relevant_ids": ["kb-046", "kb-020"], "red_flag": true },
+    { "id": "ret-16", "scene": "骨科", "query": "腰痛伴下肢放射麻痛、鞍区麻木和大小便失禁", "relevant_ids": ["kb-049", "kb-028"], "red_flag": true },
+    { "id": "ret-17", "scene": "皮肤", "query": "接触新洗涤剂后小腿红斑脱屑，反复瘙痒", "relevant_ids": ["kb-039"], "red_flag": false },
+    { "id": "ret-18", "scene": "眼科", "query": "眼红剧烈眼痛，视力骤降，看灯有虹圈并恶心呕吐", "relevant_ids": ["kb-042", "kb-043"], "red_flag": true },
+    { "id": "ret-19", "scene": "泌尿", "query": "老年男性夜尿、尿线细、排尿困难，突然完全尿不出且下腹胀痛", "relevant_ids": ["kb-048"], "red_flag": true },
+    { "id": "ret-20", "scene": "精神心理", "query": "持续两周情绪低落、兴趣减退、早醒自责并出现不想活的想法", "relevant_ids": ["kb-052"], "red_flag": true }
+  ]
+}

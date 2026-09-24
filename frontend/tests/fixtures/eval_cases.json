@@ -1,0 +1,41 @@
+{
+  "_meta": {
+    "name": "医·基层AI辅助诊断系统 CI 评测集 v1.0",
+    "date": "2026-09-16",
+    "provenance": "镜像自 iCAN大学生创新创业大赛/03-评测/eval_cases.json，用于公开仓 CI 离线回归",
+    "disclaimer": "全部为脱敏合成病例，用于功能评测，不代表真实患者或真实调研样本"
+  },
+  "cases": [
+    { "id": "ev-01", "scene": "胸痛", "case_id": "c1", "expect_flag": true, "answers": ["压榨样/紧缩感", "向左肩臂放射", "活动/劳累时加重", "出冷汗", "高血压，吸烟"] },
+    { "id": "ev-02", "scene": "胸痛", "case_id": "c1", "expect_flag": true, "answers": ["撕裂样剧痛", "向后背放射", "休息不缓解", "大汗", "高血压"] },
+    { "id": "ev-03", "scene": "胸痛", "case_id": "c1", "expect_flag": false, "answers": ["烧灼样", "无放射", "平卧加重", "反酸烧心", "无特殊"] },
+    { "id": "ev-04", "scene": "胸痛", "case_id": "c1", "expect_flag": true, "answers": ["针刺样", "无放射", "突发呼吸困难", "单侧下肢肿", "近期长途乘车"] },
+    { "id": "ev-05", "scene": "胸痛", "case_id": "c1", "expect_flag": false, "answers": ["钝痛闷痛", "无放射", "按压胸壁时加重", "无明显伴随", "无特殊"] },
+    { "id": "ev-06", "scene": "呼吸道", "case_id": "c2", "expect_flag": false, "answers": ["最高超过 39℃", "黄脓痰", "无气促", "明显咽痛", "接触过流感患者"] },
+    { "id": "ev-07", "scene": "呼吸道", "case_id": "c2", "expect_flag": true, "answers": ["持续高热不退", "痰中带血", "静息气促、呼吸困难", "轻微咽痛", "无接触"] },
+    { "id": "ev-08", "scene": "呼吸道", "case_id": "c2", "expect_flag": false, "answers": ["低烧 37.5℃", "干咳无痰", "无", "声音嘶哑", "近期接种疫苗"] },
+    { "id": "ev-09", "scene": "呼吸道", "case_id": "c2", "expect_flag": false, "answers": ["不发热", "白黏痰", "无", "轻微", "无接触"] },
+    { "id": "ev-10", "scene": "头晕", "case_id": "c3", "expect_flag": false, "answers": ["头重脚轻/昏沉", "起床/体位变化时重", "无", "熬夜/睡眠不足", "无"] },
+    { "id": "ev-11", "scene": "头晕", "case_id": "c3", "expect_flag": true, "answers": ["天旋地转感", "与体位无关", "耳鸣", "无", "晕倒史"] },
+    { "id": "ev-12", "scene": "头晕", "case_id": "c3", "expect_flag": false, "answers": ["头重脚轻", "饥饿时明显", "无", "节食/饮食不规律", "出冷汗、眼前发黑"] },
+    { "id": "ev-13", "scene": "头晕", "case_id": "c3", "expect_flag": false, "answers": ["摇晃不稳", "饭后加重", "听力下降", "长时间盯屏", "心悸"] },
+    { "id": "ev-14", "scene": "消化", "case_id": null, "expect_flag": true, "answers": ["上腹持续疼痛", "呕吐", "呕血一次", "黑便如柏油", "饮酒史"] },
+    { "id": "ev-15", "scene": "消化", "case_id": null, "expect_flag": false, "answers": ["脐周阵痛", "水样腹泻一天5次", "恶心", "口干尿少", "昨日聚餐史"] },
+    { "id": "ev-16", "scene": "消化", "case_id": null, "expect_flag": true, "answers": ["右下腹痛进行性加重", "发热", "呕吐", "腹部硬、一按更痛", "无特殊"] },
+    { "id": "ev-17", "scene": "消化", "case_id": null, "expect_flag": false, "answers": ["上腹隐痛", "无反酸", "餐后腹胀", "无发热", "饮食不规律"] },
+    { "id": "ev-18", "scene": "慢病", "case_id": null, "expect_flag": true, "answers": ["头晕头痛", "血压最近 190/110", "视物模糊", "心悸出汗", "高血压停药一周"] },
+    { "id": "ev-19", "scene": "慢病", "case_id": null, "expect_flag": false, "answers": ["多饮多尿", "体重下降", "乏力", "视物模糊", "糖尿病家族史"] },
+    { "id": "ev-20", "scene": "慢病", "case_id": null, "expect_flag": true, "answers": ["心慌出汗手抖", "突然意识不清", "晚餐未进食", "糖尿病用药中", "乏力"] },
+    { "id": "ev-21", "scene": "慢病", "case_id": null, "expect_flag": false, "answers": ["足趾关节红肿热痛", "昨夜饮酒", "发热37.8", "第一跖趾关节剧痛", "高嘌呤饮食史"] },
+    { "id": "ev-22", "scene": "边界-矛盾", "case_id": "c1", "expect_flag": null, "answers": ["压榨样胸痛", "无放射", "休息后完全缓解，但又说持续加重", "出冷汗", "无特殊"] },
+    { "id": "ev-23", "scene": "边界-超长输入", "case_id": "c1", "expect_flag": null, "answers": ["胸痛，伴后背不适，胸痛，伴后背不适，胸痛，伴后背不适，压榨样紧缩感，向左肩放射，出冷汗，既往高血压，糖尿病，冠心病史，吸烟，饮酒，反复描述反复描述反复描述", "压榨样紧缩感", "向左肩放射", "出冷汗", "高血压糖尿病冠心病史吸烟饮酒"] },
+    { "id": "ev-24", "scene": "边界-空输入", "case_id": "c1", "expect_flag": null, "answers": [""] },
+    { "id": "ev-25", "scene": "边界-域外", "case_id": null, "expect_flag": null, "answers": ["我的猫今天不吃东西怎么办", "它有点蔫", "没有呕吐", "需要打针吗", "宠物医院"] },
+    { "id": "ev-26", "scene": "新域-妇产", "case_id": null, "expect_flag": true, "answers": ["停经45天", "下腹剧痛", "阴道少量出血", "头晕面色苍白", "有性生活史"] },
+    { "id": "ev-27", "scene": "新域-儿科", "case_id": null, "expect_flag": true, "answers": ["孩子阵发性哭闹", "呕吐", "面色苍白", "果酱样大便", "1岁半"] },
+    { "id": "ev-28", "scene": "新域-耳鼻喉", "case_id": null, "expect_flag": true, "answers": ["剧烈咽痛", "吞咽困难流涎", "说话含糊", "发热", "呼吸不畅"] },
+    { "id": "ev-29", "scene": "新域-骨科", "case_id": null, "expect_flag": true, "answers": ["腰痛", "下肢放射麻痛", "鞍区麻木", "大小便失禁", "下肢无力加重"] },
+    { "id": "ev-30", "scene": "新域-感染", "case_id": null, "expect_flag": true, "answers": ["尿路感染发热", "寒战", "意识模糊", "尿量明显减少", "血压偏低"] },
+    { "id": "ev-31", "scene": "新域-皮肤无红旗", "case_id": null, "expect_flag": false, "answers": ["小腿皮肤红斑脱屑反复半年", "瘙痒夜间明显", "无渗出", "接触新洗涤剂后加重", "无发热"] }
+  ]
+}

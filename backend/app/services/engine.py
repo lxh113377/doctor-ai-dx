@@ -5,10 +5,12 @@ mode：live（LLM 生成）/ rule-fallback（规则降级，明确标注）。
 """
 from .. import mock, rag, rules
 from ..knowledge import KNOWLEDGE_BASE
+from ..retriever import get_retriever
 from ..config import llm_available
 from . import llm as llm_svc
 
 _BY_ID = {k["id"]: k for k in KNOWLEDGE_BASE}
+_RETRIEVER = get_retriever()
 
 
 class UnknownCase(Exception):
@@ -110,7 +112,7 @@ def _llm_followup(history: list[dict], c: dict) -> dict | None:
 # ---------- 辅助诊断 ----------
 def build_diagnosis(case_id: str, history: list[dict] | None = None) -> dict:
     state = extract_state(case_id, history)
-    evidence = rag.search(state["transcript"], 5)
+    evidence = _RETRIEVER.search(state["transcript"], 5)
     evidence_ids = [e["id"] for e in evidence]
 
     live = _llm_diagnosis(state, evidence)
@@ -247,7 +249,7 @@ def _reuse_or_build(state: dict, history, provided_dx: dict | None) -> dict:
         dx["flag_details"] = state["red_flag_details"]
         ev = dx.get("evidence")
         valid = [e for e in ev if isinstance(e, dict) and isinstance(e.get("id"), str) and rag.has_evidence(e["id"])] if isinstance(ev, list) else []
-        dx["evidence"] = valid if valid else rag.search(state["transcript"], 5)
+        dx["evidence"] = valid if valid else _RETRIEVER.search(state["transcript"], 5)
         if not dx.get("trace"):
             dx["trace"] = {"evidence_ids": [e["id"] for e in dx["evidence"]],
                            "rounds": state["rounds"], "symptoms": state["symptoms"]}
@@ -259,7 +261,7 @@ def build_workup(case_id: str, history: list[dict] | None = None, provided_dx: d
     state = extract_state(case_id, history)
     dx = _reuse_or_build(state, history, provided_dx)
     first_name = dx["primary"][0].get("name", "") if dx.get("primary") else ""
-    evidence = rag.search(state["transcript"] + " " + first_name, 5)
+    evidence = _RETRIEVER.search(state["transcript"] + " " + first_name, 5)
     live = _llm_workup(state, dx, evidence)
     if live:
         out, mode, reason = live, "live", ""

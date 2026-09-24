@@ -11,9 +11,10 @@ backend/    FastAPI —— 同一链路的 Python 镜像（可选本地运行，
 ```
 
 - **线上 = Functions**：`https://doctor-ai-dx.pages.dev`，前端 dist + functions/ 单次部署。
-- **两端镜像**：`backend/app/{knowledge,rules,rag}.py` 与 `functions/lib/{knowledge,rules,rag}.js` 逻辑一致；`knowledge.py` 由 `../iCAN大学生创新创业大赛/03-评测/export_kb.mjs` 从 `knowledge.js` 自动生成，保证知识库数据零漂移。
+- **两端镜像**：`backend/app/{knowledge,rules,rag,retriever}.py` 与 `functions/lib/{knowledge,rules,rag,retriever}.js` 逻辑一致；`knowledge.py` 由 `../iCAN大学生创新创业大赛/03-评测/export_kb.mjs` 从 `knowledge.js` 自动生成，保证知识库数据零漂移。
 - `rules` 危险信号规则引擎（不依赖 LLM，可解释可测试，命中即强制转诊，**优先级高于模型不可覆盖**）
 - `rag` BM25 + 医学术语同义词扩展检索，输出带 `id/source/year/url/scope` 的证据
+- `retriever` 检索器适配边界；当前默认且唯一启用原 BM25，后续可增加混合检索，BM25 始终保留为安全回退
 - `engine` 确定性校验：非法 `evidence_id` 直接拒绝；无 Key / 超时 / JSON 非法 → 明确标注 `mode=rule-fallback` 降级
 - `llm` DeepSeek（OpenAI 兼容）；单次硬超时 8s
 
@@ -33,6 +34,22 @@ cd ../frontend && npm install && npm run dev                 # :5173，/api 代�
 
 > 无 DeepSeek Key 时两端均自动进入**规则引擎降级模式**并在界面明确标注，功能完整可演示（AC-OBS-07）。
 
+## 自动化验证（无需 LLM Key）
+
+```bash
+cd frontend
+npm test       # 22 项冒烟 + 31 例引擎评测 + 检索分层回归
+npm run build  # Vite 生产构建
+
+cd ../backend
+python tests/smoke_engine.py
+```
+
+- CI 使用 Node 22 与 Python 3.12；Pull Request 只验证，`main` 分支通过全部门禁后才允许部署。
+- `frontend/tests/fixtures/eval_cases.json` 为 31 例脱敏合成 CI 镜像，来源记录在 `_meta.provenance`。
+- `frontend/tests/retrieval_eval.mjs` 对 20 条 silver 查询计算 Recall@1/3/5/10、MRR、nDCG@5/10；当前 BM25 基线为 Recall@5=0.95、MRR=0.95、nDCG@5=0.90727。
+- 检索指标用于工程回归，不代表诊断准确率或真实临床有效性。
+
 ## 部署上线（已上线 ✅）
 
 **线上地址：`https://doctor-ai-dx.pages.dev`**（Cloudflare Pages：前端 dist + functions/ 单次部署，对齐超市web模式）
@@ -48,7 +65,7 @@ cd ../frontend && npm install && npm run dev                 # :5173，/api 代�
 
 ## 演示脚本与参赛素材
 
-> 注：本仓库为公开源码仓，下列 `../` 相对路径（iCAN 参赛材料、评测脚本、项目叙事）指向工作区内的参赛素材目录，**随提交包（ZIP）提供，公开仓内不含**——评委如需评测脚本与素材，见提交包或联系作者。
+> 公开仓内已包含 `frontend/tests/` 的无密钥冒烟、31 例引擎评测和 20 例检索分层评测；下列 `../` 相对路径指向工作区中的完整 iCAN 材料与历史报告，随最终提交包提供。
 
 - **iCAN 参赛材料（主）** —— 见 `../iCAN大学生创新创业大赛/`：应用方案 PDF（20页·官方九类）、来源台账、评审差距矩阵、31例评测、五步截图、视频分镜脚本；冻结交付副本在 `../交付物/iCAN-参赛交付物/`
 - `archive/` —— 旧商业计划书与旧 3 分钟路演稿，**均为非 iCAN 提交材料**；保留仅作历史记录，不用于答辩或评审
@@ -73,7 +90,7 @@ curl http://127.0.0.1:8000/health
 | GET  | /api/health | — | {status, llm_mode: live\|mock-fallback} |
 
 > `dx?` 为前端已生成的诊断结果，workup/report 复用它以消除冗余 LLM 串行调用；**红旗一律由后端规则重算，不信任前端**。
-> 契约封板于 2026-09-16，两端（Functions / FastAPI）同步实现，冒烟与评测脚本见 `../iCAN大学生创新创业大赛/03-评测/`。
+> 契约基线于 2026-09-24 完成 E2E 复核，两端（Functions / FastAPI）同步实现；公开仓门禁见 `frontend/tests/`，完整线上评测见工作区 `../iCAN大学生创新创业大赛/03-评测/`。
 
 ## 安全定位（评审叙事）
 
@@ -83,7 +100,7 @@ AI 辅助参考 · 医生终审 · 危险信号规则层强制拦截 · RAG 引�
 
 - 本仓库公开可查阅，用于 **2026年iCAN大学生创新创业大赛 AI 应用创新挑战赛（软件赛道·高校组）** 参赛评审与学术交流；授权声明见 `LICENSE`（默认保留全部权利）。
 - 线上演示：https://doctor-ai-dx.pages.dev （评委浏览器可直接访问）
-- 评测可复现：`../iCAN大学生创新创业大赛/03-评测/`（31 例合成病例 + 离线/线上评测脚本与原始输出）
+- 评测可复现：`frontend/tests/`（31 例引擎回归 + 20 例检索分层评测）；完整线上评测与原始报告见工作区 `../iCAN大学生创新创业大赛/03-评测/`
 - 模型依赖：DeepSeek（OpenAI 兼容 API，Key 自备）；无 Key 或超时 8s 自动进入**规则引擎降级模式**并在界面明确标注，功能完整可演示。
 - 演示病例均为脱敏合成数据，不代表真实患者或真实调研样本。
 
