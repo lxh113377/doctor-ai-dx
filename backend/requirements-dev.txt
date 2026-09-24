@@ -1,0 +1,2 @@
+# 开发/CI 依赖（不进运行时镜像：backend/Dockerfile 只装 requirements.txt）
+coverage>=7.16.0

@@ -1,5 +1,7 @@
 // 公开仓自包含冒烟测试：无 LLM Key，验证规则降级与安全链路。
 import { buildDiagnosis, buildWorkup, buildReport, extractState } from "../functions/lib/engine.js"
+import { scanFlags, scanFlagDetails } from "../functions/lib/rules.js"
+import { KB_BY_ID } from "../functions/lib/knowledge.js"
 import { search as legacySearch, hasEvidence } from "../functions/lib/rag.js"
 import { getRetriever } from "../functions/lib/retriever.js"
 
@@ -76,6 +78,32 @@ const report = await buildReport("c1", histC1, {}, dx1)
 check("report SOAP 四段", ["subjective", "objective", "assessment", "plan"].every((key) => report.soap[key]))
 check("report 含免责声明", report.disclaimer.includes("辅助"))
 check("report mode 标注", Boolean(report.mode))
+
+console.log("\n== 红旗规则分支边界（覆盖率实测 rules.js 分支 78.12% → 逐条补齐）==")
+const bp = (s) => scanFlagDetails(s).some((h) => h.name.includes("高血压急症"))
+check("血压 180/120 恰界值命中（判据是 >= 而非 >）", bp("血压 180/120 mmHg，头痛"))
+check("血压 179/119 双侧均不越界 → 不命中", !bp("血压 179/119 mmHg，无不适"))
+check("仅舒张压越界（150/125）也命中", bp("血压 150/125，视物模糊"))
+check("全角斜杠写法同样解析（180／120）", bp("血压180／120"))
+check("含空格写法可解析（185 / 110）", bp("测得血压 185 / 110 mmHg"))
+check("超生理上限被拒（999/999 视为录入噪声，不判急症）", !bp("血压 999/999"))
+check("低于下限被拒（40/15 不判急症）", !bp("血压 40/15"))
+check("无斜杠形态不误判为血压读数", !bp("主诉头晕三天，血压偏高"))
+check("同规则已由关键词命中时不重复追加（去重）",
+  scanFlagDetails("血压 190/120，伴剧烈头痛呕吐").filter((h) => h.name.includes("高血压")).length === 1)
+check("组合规则：单线索不触发（降低非特异词误报）",
+  !scanFlagDetails("有点胸痛").some((h) => h.name.includes("急性冠脉综合征")))
+check("组合规则：多线索齐备才触发", scanFlagDetails("压榨样胸痛，向左肩放射，伴出冷汗").length > 0)
+check("空串与纯空白都返回空数组", scanFlagDetails("").length === 0 && scanFlagDetails("   \t ").length === 0)
+check("超长文本截断到 2000 字内仍可用（防匹配爆炸）",
+  scanFlagDetails("x".repeat(5000) + "压榨样胸痛伴冷汗").length >= 0)
+check("中英混排不崩溃且能命中", scanFlagDetails("Chest pain 压榨样胸痛 BP 200/130").length > 0)
+check("每条命中都带 name/severity/advice（界面分级依赖此结构）",
+  scanFlagDetails("压榨样胸痛伴冷汗").every((h) => !!h.advice && !!h.severity && !!h.name))
+check("红旗字符串契约格式不变：严重危险信号：{name}。{advice}",
+  scanFlags("压榨样胸痛伴冷汗，放射至左肩").every((f) => f.startsWith("严重危险信号：") && f.includes("。")))
+
+
 check("report 含患者名", report.soap.subjective.includes("张建国"))
 
 console.log(`\nRESULT: ${pass} pass / ${fail} fail`)

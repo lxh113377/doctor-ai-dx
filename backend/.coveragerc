@@ -1,0 +1,16 @@
+# 覆盖率配置（对标 phlox 的 .coveragerc 形态；工具 = coverage.py 7.16.0，无外部件）
+[run]
+source = app
+omit =
+    */tests/*
+    */__pycache__/*
+    .venv/*
+    venv/*
+
+[report]
+exclude_lines =
+    pragma: no cover
+    if __name__ == .__main__.:
+    raise NotImplementedError
+    if TYPE_CHECKING:
+    del 

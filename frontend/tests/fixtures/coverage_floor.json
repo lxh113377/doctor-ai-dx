@@ -1,0 +1,91 @@
+{
+  "_meta": {
+    "purpose": "覆盖率地板棘轮（只准收紧，不准放宽）——对标实测：成熟层项目 3/3 有覆盖率基建（phlox .coveragerc + Makefile / OpenEMR codecov.yml + jest.config / ragflow codecov.yml），我方此前为零。",
+    "tool_js": "c8 12.0.0（V8 coverage，无外部件；刻意不接 Codecov——与本项目「零外部依赖」架构一致）",
+    "tool_py": "coverage.py 7.16.0 + --fail-under（单一阈值，见 CI backend-test 步骤）",
+    "measured_at": "2026-09-25",
+    "measured_headroom_note": "floor 取自实测值下调 2~4pt 作为棘轮起点；收紧须在覆盖率上升后同步改本文件，放宽须在 _meta 写明原因。",
+    "delta_this_round": {
+      "js_all_branch_pct": [
+        67.04,
+        74.02
+      ],
+      "js_all_stmts_pct": [
+        92.12,
+        94.75
+      ],
+      "js_all_funcs_pct": [
+        91.42,
+        94.28
+      ],
+      "js_engine_branch_pct": [
+        53.12,
+        69.23
+      ],
+      "js_rules_branch_pct": [
+        78.12,
+        88.88
+      ],
+      "js_fhir_branch_pct": [
+        66.21,
+        76.92
+      ],
+      "py_total_pct": [
+        73.33,
+        87.0
+      ],
+      "py_llm_pct": [
+        37,
+        90
+      ],
+      "py_engine_pct": [
+        61,
+        74
+      ],
+      "py_retriever_pct": [
+        37,
+        98
+      ]
+    },
+    "why_per_module": "全局地板会掩盖红线模块单独退化（如 rules.js 掉到 60% 而总量仍达标），因此按模块设地板。",
+    "measured_note": "JS 数值取 c8 12.0.0 实测；PY 取 coverage.py 7.16.0 实测（.coveragerc 排除 del/无语义行后为 87.0%，未排除口径为 88.79%，两者皆高于地板 85）"
+  },
+  "js_modules": {
+    "lib/rules.js": {
+      "statements": 98,
+      "branches": 85,
+      "functions": 98
+    },
+    "lib/engine.js": {
+      "statements": 86,
+      "branches": 65,
+      "functions": 88
+    },
+    "lib/fhir.js": {
+      "statements": 98,
+      "branches": 72,
+      "functions": 98
+    },
+    "lib/rag.js": {
+      "statements": 90,
+      "branches": 74,
+      "functions": 84
+    },
+    "lib/retriever.js": {
+      "statements": 85,
+      "branches": 80,
+      "functions": 86
+    },
+    "lib/knowledge.js": {
+      "statements": 98,
+      "branches": 68,
+      "functions": 98
+    }
+  },
+  "js_total": {
+    "statements": 93,
+    "branches": 72,
+    "functions": 92
+  },
+  "py_total_fail_under": 85
+}

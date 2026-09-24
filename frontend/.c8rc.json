@@ -1,0 +1,8 @@
+{
+  "all": true,
+  "include": ["functions/**/*.js"],
+  "exclude": ["functions/lib/semantic_neighbors.js"],
+  "clean": true,
+  "reporter": ["text", "json-summary"],
+  "temp-directory": ".c8-tmp"
+}

@@ -1,7 +1,7 @@
 {
   "name": "doctor-ai-dx-frontend",
   "private": true,
-  "version": "1.9.0",
+  "version": "1.10.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -16,13 +16,16 @@
     "test:route": "node tests/route_guard.mjs",
     "test:api": "node tests/api_contract_guard.mjs",
     "test:bundle": "node tests/bundle_size_guard.mjs",
-    "test": "npm run test:smoke && npm run test:engine && npm run test:retrieval && npm run test:retrieval-parity && npm run test:semantic && npm run test:contract && npm run test:fhir && npm run test:kb && npm run test:route && npm run test:api && npm run test:components && npm run test:version",
+    "test": "npm run test:smoke && npm run test:engine && npm run test:retrieval && npm run test:retrieval-parity && npm run test:semantic && npm run test:live && npm run test:contract && npm run test:fhir && npm run test:kb && npm run test:route && npm run test:api && npm run test:components && npm run test:version",
     "test:retrieval-parity": "node tests/retriever_parity.mjs",
     "test:components": "vitest run",
     "test:version": "node tests/version_guard.mjs",
     "gen:openapi": "python ../scripts/gen_openapi.py",
     "test:links": "node tests/link_health.mjs",
-    "test:semantic": "node tests/semantic_guard.mjs"
+    "test:semantic": "node tests/semantic_guard.mjs",
+    "test:live": "node tests/live_path_guard.mjs",
+    "coverage:js": "c8 npm test && node tests/coverage_floor_guard.mjs",
+    "coverage:py": "cd ../backend && rm -f .coverage && python -m coverage run --append --source=app tests/smoke_engine.py && python -m coverage run --append --source=app tests/test_api_observe.py && python -m coverage run --append --source=app tests/test_fhir.py && python -m coverage run --append --source=app tests/test_live_path.py && python -m coverage run --append --source=app tests/test_retriever_channels.py && python -m coverage report --fail-under=85"
   },
   "dependencies": {
     "react": "^19.3.0",
@@ -33,6 +36,7 @@
     "@testing-library/react": "^16.3.3",
     "@testing-library/user-event": "^14.6.7",
     "@vitejs/plugin-react": "^4.5.0",
+    "c8": "^12.0.0",
     "happy-dom": "^20.14.5",
     "vite": "^6.3.0",
     "vitest": "^5.0.1",

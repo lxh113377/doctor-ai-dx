@@ -27,3 +27,12 @@ _bak/
 # 系统
 .DS_Store
 Thumbs.db
+
+# 覆盖率产物（c8 / coverage.py，本地与 CI 生成，禁入库）
+coverage/
+.c8-tmp/
+.coverage
+.coverage
+*.cover
+htmlcov/
+.coverage.json

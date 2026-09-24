@@ -33,8 +33,9 @@ jobs:
         run: npm ci --no-audit --no-fund
       - name: Install backend deps (for contract parity)
         run: python -m pip install -r ../backend/requirements.txt
-      - name: Test (smoke + engine + retrieval + dual-end contract)
-        run: npm test
+      - name: Test + coverage floor ratchet (JS)
+        # c8 包住整条 npm test（套件只跑一次），随后按模块级地板对账；刻意不接 Codecov 等外部服务
+        run: npm run coverage:js
       - name: Build (production)
         run: npm run build
       - name: OpenAPI drift check (derived spec vs backend)
@@ -69,12 +70,28 @@ jobs:
           cache-dependency-path: backend/requirements.txt
       - name: Install
         run: python -m pip install -r requirements.txt
+      - name: Install dev deps (coverage instrumentation, not in runtime image)
+        run: python -m pip install -r requirements-dev.txt
       - name: Test rule-fallback engine
         run: python tests/smoke_engine.py
       - name: Test API observability contract
         run: python tests/test_api_observe.py
       - name: Test FHIR-light export contract
         run: python tests/test_fhir.py
+      - name: Test live-path red lines (stubbed httpx, zero network)
+        run: python tests/test_live_path.py
+      - name: Test retriever channels (stubbed httpx, zero network)
+        run: python tests/test_retriever_channels.py
+      - name: Coverage floor ratchet (Python)
+        # 地板值记录在 frontend/tests/fixtures/coverage_floor.json 的 py_total_fail_under，只准收紧
+        run: |
+          rm -f .coverage
+          python -m coverage run --append --source=app tests/smoke_engine.py
+          python -m coverage run --append --source=app tests/test_api_observe.py
+          python -m coverage run --append --source=app tests/test_fhir.py
+          python -m coverage run --append --source=app tests/test_live_path.py
+          python -m coverage run --append --source=app tests/test_retriever_channels.py
+          python -m coverage report --fail-under=85
 
   deploy:
     needs: [build-and-test, backend-test]

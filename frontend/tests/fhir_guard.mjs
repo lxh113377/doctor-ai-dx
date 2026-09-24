@@ -148,6 +148,71 @@ for (const f of CASE_IDS) {
 }
 
 // 反例实测（R238：判据必须被违例样本喂过，否则「0 命中」可能只是判据没接线）
+// ---- FHIR 条件分支补测（覆盖率实测 fhir.js 分支 66.21% → 逐条打点）----
+const mkDx = (over = {}) => ({
+  state: { case_id: "c1", patient: { name: "测试", age: 40, gender: "男", chief: "测试主诉" }, symptoms: ["胸痛"], transcript: "测试" },
+  primary: [{ name: "A", prob: "高优先级", strength: "high", reasons: ["r1"], evidence_ids: ["kb-028"], refs: ["x"] }],
+  differential: [{ name: "B", note: "", evidence_ids: ["kb-001"] }],
+  evidence: [{ id: "kb-028", title: "T", source: "S", year: "2020", url: "", scope: "骨科", section: "", text: "正文" }],
+  flags: [], flag_details: [], mode: "rule-fallback", fallback_reason: "stub", ...over,
+})
+const resOf = (b, type, id) => b.entry.map((e) => e.resource).find((r) => r.resourceType === type && (!id || r.id === id))
+
+const gUnknown = toFhirBundle(mkDx({ state: { ...mkDx().state, patient: { name: "甲", age: 30, gender: "其他", chief: "x" } } }))
+check("分支·性别非二元时落 unknown（不臆造 male/female）",
+  resOf(gUnknown, "Patient").gender === "unknown", resOf(gUnknown, "Patient").gender)
+const gFemale = toFhirBundle(mkDx({ state: { ...mkDx().state, patient: { name: "乙", age: 30, gender: "女", chief: "x" } } }))
+check("分支·性别「女」映射 female", resOf(gFemale, "Patient").gender === "female")
+
+const multi = resOf(toFhirBundle(mkDx()), "Condition", "cond-primary-1")
+const codes = (multi.code.coding || []).map((c) => c.code)
+check("分支·组合 icd 按分号拆成多条 coding（kb-028 = M54.2; M75.0）",
+  codes.length === 2 && codes.includes("M54.2") && codes.includes("M75.0"), codes.join(","))
+check("分支·全部 coding 使用 ICD-10 系统 URI",
+  (multi.code.coding || []).every((c) => c.system === CS.icd10))
+
+const icdBad = toFhirBundle(mkDx({ evidence: [{ id: "kb-028", title: "T", source: "S", url: "", text: "x" }], primary: [{ name: "A", prob: "需鉴别", strength: "mid", reasons: [], evidence_ids: ["kb-028"], refs: [] }] }))
+check("分支·无 note 的鉴别诊断 note 为空数组而非 [undefined]",
+  resOf(toFhirBundle(mkDx()), "Condition", "cond-differential-1").note.length === 0)
+check("分支·reasons 为空时 note 仍生成（不出现 undefined 文本）",
+  String(resOf(icdBad, "Condition", "cond-primary-1").note[0].text).includes("优先级"))
+
+const noUrl = toFhirBundle(mkDx({ evidence: [{ id: "kb-001", title: "无链接条目", source: "S", year: "", url: "", text: "正文" }] }))
+check("分支·证据无 url 时不产 presentForm（不编造链接）",
+  noUrl.entry.map((e) => e.resource).find((r) => r.resourceType === "DiagnosticReport").presentForm === undefined)
+const badUrl = toFhirBundle(mkDx({ evidence: [{ id: "kb-001", title: "T", source: "S", url: "ftp://nope", text: "x" }] }))
+check("分支·非 http 链接被排除出 presentForm",
+  badUrl.entry.map((e) => e.resource).find((r) => r.resourceType === "DiagnosticReport").presentForm === undefined)
+
+const many = toFhirBundle(mkDx({
+  primary: Array.from({ length: 6 }, (_, i) => ({ name: `P${i}`, prob: "需鉴别", strength: "mid", reasons: ["r"], evidence_ids: ["kb-001"], refs: [] })),
+  differential: Array.from({ length: 8 }, (_, i) => ({ name: `D${i}`, note: "n", evidence_ids: ["kb-001"] })),
+}))
+check("分支·首要诊断最多 4 条 Condition（与 dx 契约上限一致）",
+  many.entry.filter((e) => e.resource.id.startsWith("cond-primary-")).length === 4)
+check("分支·鉴别诊断最多 6 条",
+  many.entry.filter((e) => e.resource.id.startsWith("cond-differential-")).length === 6)
+
+const manyFlags = toFhirBundle(mkDx({
+  flags: Array.from({ length: 12 }, (_, i) => `红旗${i}`),
+  flag_details: Array.from({ length: 12 }, (_, i) => ({ name: `F${i}`, severity: "高", advice: "a".repeat(120) })),
+}))
+check("分支·红旗明细截断到 8 条 component",
+  resOf(manyFlags, "Observation", "flag-summary").component.length === 8)
+check("分支·红旗摘要文本截断且非空",
+  resOf(manyFlags, "Observation", "flag-summary").valueCodeableConcept.text.length <= 200)
+
+const manySym = toFhirBundle(mkDx({ state: { ...mkDx().state, symptoms: Array.from({ length: 20 }, (_, i) => `症状${i}`) } }))
+check("分支·症状 Observation 截断到 12 条",
+  manySym.entry.filter((e) => e.resource.id.startsWith("symptom-")).length === 12)
+
+const noPatientName = toFhirBundle(mkDx({ state: { ...mkDx().state, patient: { age: 20, gender: "男", chief: "" } } }))
+check("分支·患者无姓名时不产出 name 字段（不写空串占位）",
+  noPatientName.entry.map((e) => e.resource).find((r) => r.resourceType === "Patient").name === undefined)
+check("分支·降级且无红旗时结论含降级原因",
+  /降级/.test(resOf(noPatientName, "DiagnosticReport").conclusion))
+
+
 const clone = (o) => JSON.parse(JSON.stringify(o))
 const res = (b, type, id) => b.entry.find((e) => e.resource.resourceType === type && (!id || e.resource.id === id)).resource
 const poisons = [

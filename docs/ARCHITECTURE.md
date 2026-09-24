@@ -84,10 +84,12 @@
 
 | 层 | 命令 | 覆盖 |
 |---|---|---|
-| 前端十二件套 | `cd frontend && npm test` | smoke 27 · engine 31 · retrieval 50 例双档地板 · **retriever parity 3 档 × 50 例** · **semantic 22（含 7 组反例 + 语料指纹防陈旧）** · 双端契约 31:31 · fhir 30（含 6 组反例）· kb 17 · route 14 · api 契约 6 端点 · vitest 7 · version 五方 |
+| 前端十三件套 | `cd frontend && npm test` | smoke 43（含红旗规则分支边界 16 项）· engine 31 · retrieval 50 例双档地板 · retriever parity 3 档 × 50 例 · semantic 22（含 7 组反例 + 语料指纹防陈旧）· **live_path 36（注入 fetch 桩验三条红线，零网络）** · 双端契约 31:31 · fhir 45（含 6 组反例 + 分支补测）· kb 17 · route 14 · api 契约 6 端点 · vitest 7 · version 五方 |
+| 覆盖率地板（JS） | `cd frontend && npm run coverage:js` | c8 12.0.0 包住整条 npm test（套件只跑一次）→ `coverage_floor_guard.mjs` **按模块级**地板对账（rules/engine/fhir/rag/retriever/knowledge + 全局）；三条硬判据：输入非空证明、模块级地板、地板清单与产物改名对账；反例实测 3 组（summary 缺失／地板抬高／模块改名）均判红。刻意不接 Codecov 等外部服务（与零外部件架构一致） |
+| 覆盖率地板（Py） | `cd frontend && npm run coverage:py`（CI 同命令） | coverage.py 7.16.0 + `backend/.coveragerc`；5 套脚本合并统计后 `--fail-under=85`。dev 依赖走 `requirements-dev.txt`，实测**不进运行时镜像**（容器内 `import coverage` 报 ImportError） |
 | 构建体积 | `npm run build && npm run test:bundle` | 主 chunk gzip ≤77500B / assets 合计 ≤86500B（地板线，防膨胀也防假瘦身） |
-| 后端 | `python tests/smoke_engine.py` / `tests/test_api_observe.py` / `tests/test_fhir.py` | 规则降级 19 项 · 可观测与脱敏 15 项 · FHIR 导出 17 项 |
-| 容器（从零启动自证） | `docker compose up -d` + `docker compose run --rm selftest` | 镜像构建成功 + HEALTHCHECK `healthy` + 镜像内 19/15/16 项 exit 0（源码树级检查在容器内显式 SKIP，不计通过也不计失败） |
+| 后端 | `smoke_engine` / `test_api_observe` / `test_fhir` / `test_live_path` / `test_retriever_channels` | 规则降级 19 · 可观测脱敏 15 · FHIR 17 · **live 路径红线 25**（桩 httpx 零网络）· **检索通道 25**（三档纯函数与 RRF 语义） |
+| 容器（从零启动自证） | `docker compose up -d` + `docker compose run --rm selftest` | 镜像构建成功 + HEALTHCHECK `healthy` + 镜像内 **19/15/16/25/25 五套** exit 0（源码树级检查在容器内显式 SKIP，不计通过也不计失败；coverage 等 dev 件实测不在镜像内） |
 | 契约派生件 | `python scripts/gen_openapi.py --check` | openapi 版本与后端单一源一致（只同步版本行，禁全量重写） |
 | CI | `.github/workflows/ci.yml`（3 job）+ `codeql.yml` + `dep-audit.yml` | 上述全量 + 每周 npm/pip 漏洞扫描 |
 | 引用链健康（唯一联网门禁） | `cd frontend && npm run test:links` | 知识库全部 url 逐条可达性核验：DEAD 即红、412/403 类反爬按 BLOCKED 只报不红；CI `link-health.yml` 每周跑（观察期） |

@@ -5,6 +5,27 @@
 
 ## [Unreleased]
 
+## [1.10.0] - 2026-09-25
+
+### Added（维护/质量基建：把"测试通过"升级为"哪些分支被执行过"）
+- **覆盖率度量基建**：对标实测成熟层项目 3/3 已有覆盖率配置（`phlox` `.coveragerc`+Makefile、`OpenEMR` `codecov.yml`+jest.config、`ragflow` `codecov.yml`），我方此前为零。本轮引入 **c8 12.0.0**（JS/Functions 面）与 **coverage.py 7.16.0**（Py 镜像面，配置 `backend/.coveragerc`，形态借鉴 phlox），并**刻意不接 Codecov 等外部服务**——与本项目"零外部件/零密钥离线可复现"的架构口径一致；dev 依赖独立到 `backend/requirements-dev.txt`，实测容器运行时镜像内 `import coverage` 仍报 ImportError（dev 未泄漏进生产镜像）
+- `tests/coverage_floor_guard.mjs`（25 项）：**按模块级**地板（rules/engine/fhir/rag/retriever/knowledge + 全局），因全局均值会掩盖红线模块单独退化。三条硬判据：输入非空证明（summary 缺失即红）、模块级地板、**地板清单与产物改名对账**（模块被改名/删除不得静默失效）。反例三组实测均判红：移走 summary → `1 pass/1 fail`；地板抬到 99.5 → `24 pass/1 fail`；模块改名 → 同时触发"改名对账"与"红线模块在册"两条 FAIL
+- `frontend/tests/live_path_guard.mjs`（36 项，入 npm test 为第十三件套之首链）：注入 `globalThis.fetch` 桩 + 占位 Key，**离线覆盖生产实际走的 live 分支**——① 模型编造白名单外 `evidence_id` 被确定性校验剔除并回填合法引用 ② 模型返回 `flags: []` 仍被规则层重算覆盖（红旗不可被模型推翻）③ 模型自带 `evidence` 清单被检索结果覆盖 ④ 7 类降级（非法 JSON／primary 空／HTTP 500／429／缺 choices／json() 抛错／fetch reject）逐条断言 `rule-fallback` + `fallback_reason` + 红旗不削弱 + 仍产出 FHIR Bundle ⑤ 无 Key 零外呼 ⑥ 报告缺 `disclaimer` 时注入「医生终审」默认文案 ⑦ 系统提示词红线关键词在册
+- `backend/tests/test_live_path.py`（25 项）与 `backend/tests/test_retriever_channels.py`（25 项）：后端镜像面同判据（桩 `httpx.post`）。后者回应实测盲点——`app/retriever.py` 仅 37%：hybrid/semantic 通道过去**只被 parity 经 subprocess 比对**，"比对保证两端一致，不保证两端都对"
+
+### Changed（覆盖率提升为实测结果，非声称）
+- `engine_smoke.mjs` 27 → **43 项**：补红旗规则分支边界——血压 180/120 恰界（判据是 `>=`）、179/119 不命中、仅舒张压越界、全角斜杠 `／`、空格写法 `185 / 110`、超生理上限 999/999 与下限 40/15 拒收、无斜杠不误判、同规则去重、组合规则单线索不触发/多线索才触发、空串与纯空白、超长文本截断、中英混排、命中结构含 `name/severity/advice`、红旗字符串契约格式不变
+- `fhir_guard.mjs` 30 → **45 项**：补 FHIR 条件分支——性别非二元落 `unknown`、`女`→female、组合 `icd` 按分号拆成多条 coding（实测 kb-028 = `M54.2; M75.0`）、`icd=null` 只出 text、鉴别诊断无 note 时出空数组、证据无 url / 非 http 链接时不产 `presentForm`、首要诊断截断 4 条与鉴别截断 6 条、红旗明细截断 8 条 component、症状截断 12 条、患者无姓名时不产出空 `name` 占位
+- `docker-compose.yml` 的 `selftest` 由 3 套扩为 **5 套**（容器内实测 19/15/16/25/25 全绿 exit 0）；`.gitignore` 增覆盖率产物忽略项
+- 文档：`ARCHITECTURE.md` §7 门禁行改十三件套并新增 JS/Py 覆盖率地板两行、容器行更新；`EVAL_CARD.md` §2 新增覆盖率指标行、§5 增复现命令；`README.md` 自动化验证段更新
+
+### 实测覆盖率涨幅（本轮全部为实跑取数）
+- JS/Functions 面：语句 92.12→**94.75%**，分支 67.04→**74.02%**，函数 91.42→**94.28%**；其中红线相关 `engine.js` 分支 53.12→**69.23%**、`rules.js` 78.12→**88.88%**、`fhir.js` 66.21→**76.92%**
+- Py 镜像面：总覆盖 73.33→**87%**（`.coveragerc` 排除无语义行口径；未排除口径 88.79%，两者均高于地板 85）；`llm.py` 37→**90%**、`retriever.py` 37→**98%**、`engine.py` 61→**74%**
+
+### 红线影响
+无。新增的是**测试与度量**，未改任何判定逻辑；三条红线在 live 分支上首次获得自动化保护（此前只被 rule-fallback 路径测过）。默认检索档仍 bm25，客户端产物 hash 零变化。
+
 ## [1.9.0] - 2026-09-25
 
 ### Added（可扩展性：语义通道，含实测负面结论）

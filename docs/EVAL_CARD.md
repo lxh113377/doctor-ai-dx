@@ -24,6 +24,7 @@
 | 检索质量 · 主口径（BM25+同义词，silver **50** 例） | R@1 0.547 / R@3 0.793 / **R@5 0.850** / MRR 0.867 / nDCG@5 0.789 | 2026-09-24 扩充为 v2.0 集（新增 30 例口语化改写，刻意避开 keywords 书面术语）。原 20 例口径下 R@5=0.95；扩集后回落至 0.85 是**评测集变严**，不是检索退化（同集同码复跑）。红旗子集(23) R@5 0.848；CI 基线按检索器分档锁定不回归 |
 | 检索质量 · 备选口径（hybrid 加权 RRF，同 50 例） | R@5 0.870（+2.0pt）/ MRR 0.825（−4.2pt）/ **红旗子集 R@5 0.891（+4.4pt）** | **未启用**（`RETRIEVER` 可切换，默认 bm25）。权重在同集标定存在自标定过拟合风险，**2026-09-24 已完成留出集验证**：`tests/fixtures/retrieval_holdout.json` 20 例患者口语集（刻意避开 keywords，silver-draft 待复核）上 hybrid vs bm25 **ΔR@5 = 0.0、ΔMRR −1.3pt、红旗子集持平** → 标定增益未泛化，**维持 opt-in、默认口径不变** |
 | 检索质量 · 备选口径（semantic 语义近邻通道，同 50 例 + 20 例留出集） | 标定集 R@5 0.830~0.840 / MRR 0.494~0.863；留出集 **无任何组合严格优于 bm25**（0/54 组），9 组逐位等值、45 组劣化（ΔMRR 最差 −0.328） | **未启用**（`RETRIEVER=semantic` 可切，默认 bm25）。邻接表由本地 BAAI/bge-small-zh-v1.5 离线蒸馏（512 维余弦，权重 sha256 与语料指纹写入产物头），运行时零模型零网络。结论：条目↔条目语义相似**不能**替代查询编码——真正的语义召回需向量服务（同类项目均外挂 Milvus/Chroma/FAISS/TEI）。复现 `node work/sweep_semantic_weights.mjs`（工作区侧），防陈旧门禁 `npm run test:semantic` |
+| 测试覆盖率（本轮新增度量，非新增功能） | JS Functions 面：语句 **94.75%** / 分支 **74.02%** / 函数 94.28%（c8 12.0.0）；Py 镜像面：**87%**（coverage.py 7.16.0，`.coveragerc` 排除无语义行口径） | 2026-09-25 实测。本轮补测涨幅：分支 67.04→74.02、engine.js 53.12→69.23、rules.js 78.12→88.88、fhir.js 66.21→76.92；Py llm.py 37→90、retriever.py 37→98、engine.py 61→74。**地板按模块设**（防红线模块单独退化被全局均值掩盖），`npm run coverage:js` / `coverage:py` 强制 |
 | 延迟（线上诊断链路） | p50 4.1s / **p95 4.73s** / max 4.9s（n=31） | 2026-09-16 live 报告；约束 p95 ≤10s、单次模型硬超时 8s |
 | 双端一致性（Functions JS ↔ FastAPI Py） | 引擎 31/31 逐字段；检索器 **3 档（bm25/hybrid/semantic）各 50/50** 逐字段；语义邻接表双端同值 + provenance 同值 | 契约测试 CI 常跑；取整规则两端统一为 half-up（`round_half_up`），不用放宽容差掩盖漂移 |
 | 知识库入库门禁 | 55 条逐条 schema + 引用完整性 + 孤儿条目 0（症状线索覆盖 100%）+ 双端数据全等 | `frontend/tests/kb_guard.mjs`，17 项断言入 CI |
@@ -53,7 +54,10 @@
 ## 5. 复现命令
 
 ```bash
-cd frontend && npm test                 # 十二件套：smoke 27 + 引擎 31 例 + 检索双档地板 + 检索器 3 档双端 50/50 + 语义表守卫 22（含 7 组反例）+ 双端契约 31:31 + FHIR 导出 30 项（含 6 组反例）+ KB 守卫 17 + 路由守卫 14 + API 契约对账 + vitest 组件 + 版本真值五方对账
+cd frontend && npm test                 # 十三件套：smoke 27 + 引擎 31 例 + 检索双档地板 + 检索器 3 档双端 50/50 + 语义表守卫 22（含 7 组反例）+ 双端契约 31:31 + FHIR 导出 30 项（含 6 组反例）+ KB 守卫 17 + 路由守卫 14 + API 契约对账 + vitest 组件 + 版本真值五方对账
+node tests/coverage_floor_guard.mjs     # 覆盖率模块级地板（先跑 npm run coverage:js 生成 coverage/coverage-summary.json）
+cd frontend && npm run coverage:js      # JS 覆盖率 + 地板棘轮（实测：全局分支 74.02%，红线模块单独设地板）
+cd frontend && npm run coverage:py      # Py 覆盖率（实测 87%，--fail-under=85；dev 件不进运行时镜像）
 node tests/semantic_guard.mjs          # 语义邻接表：结构/白名单/无自环/降序整数千分比/弱对称 + 语料指纹防陈旧 + 双端同值 + 7 组反例
 node tests/retrieval_eval.mjs --retriever=semantic                              # 语义档检索读数（默认 bm25）
 node ../../work/sweep_semantic_weights.mjs   # 2026-09-25 起工作区侧：语义通道权重标定 + 留出集泛化判定（0 组严格优于 bm25）

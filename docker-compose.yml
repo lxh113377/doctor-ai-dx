@@ -31,6 +31,8 @@ services:
       - >
         python tests/smoke_engine.py &&
         python tests/test_api_observe.py &&
-        python tests/test_fhir.py
+        python tests/test_fhir.py &&
+        python tests/test_live_path.py &&
+        python tests/test_retriever_channels.py
     healthcheck:
       disable: true
