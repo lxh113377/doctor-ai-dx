@@ -26,12 +26,17 @@ async function req(path, opts, timeoutMs = DEFAULT_TIMEOUT) {
     if (e && e.name === 'AbortError') throw new Error('请求超时或网络中断，请稍后重试')
     throw new Error('网络连接失败，请检查网络后重试')
   }
-  if (!res.ok) throw new Error(`服务暂时不可用，请稍后重试（${res.status}）`)
+  // 先读体再判状态：服务端错误响应里的 message 已含可对账的故障编号，优先用它
+  const reqId = res.headers.get("x-request-id") || ""
   let body = null
   try {
     body = await res.json()
   } catch {
-    throw new Error("服务返回异常，请稍后重试")
+    body = null
+  }
+  if (!res.ok) {
+    const serverMsg = body && typeof body.message === "string" ? body.message : ""
+    throw new Error(serverMsg || `服务暂时不可用，请稍后重试（${res.status}${reqId ? ` · 故障编号 ${reqId}` : ""}）`)
   }
   if (!body || body.data === undefined) throw new Error("服务返回异常，请稍后重试")
   return body.data

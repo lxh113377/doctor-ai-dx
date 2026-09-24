@@ -24,3 +24,8 @@ def get_settings() -> dict:
 def llm_available() -> bool:
     """无 API Key 时返回 False，全链路降级为内置演示数据（保证 demo 可跑）。"""
     return bool(get_settings()["deepseek_api_key"])
+
+
+def current_api_key() -> str:
+    """实时读进程环境的密钥（不走 lru_cache 快照）：供日志脱敏使用，防缓存后新写入的密钥漏脱敏。"""
+    return os.getenv("DEEPSEEK_API_KEY", "").strip()

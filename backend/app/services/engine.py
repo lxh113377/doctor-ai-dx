@@ -4,7 +4,7 @@
 mode：live（LLM 生成）/ rule-fallback（规则降级，明确标注）。
 """
 from .. import mock, rag, rules
-from ..knowledge import KNOWLEDGE_BASE
+from ..knowledge import KNOWLEDGE_BASE, SYMPTOM_TO_KB
 from ..retriever import get_retriever
 from ..config import llm_available
 from . import llm as llm_svc
@@ -37,10 +37,8 @@ SLOT_LEXICON = {
     "既往史": ["高血压", "糖尿病", "冠心病", "吸烟", "饮酒", "贫血", "手术", "过敏"],
     "起病时间": ["小时", "天", "周", "月", "年", "突发", "反复"],
 }
-_SYMPTOM_PROBES = ["胸痛", "胸闷", "呼吸困难", "头晕", "眩晕", "眼前发黑", "发热", "咳嗽", "咽痛", "腹痛",
-                   "腹泻", "呕吐", "腰痛", "关节痛", "头痛", "乏力", "心悸", "冷汗", "呕血", "黑便", "意识",
-                   "皮疹", "瘙痒", "眼红", "视力下降", "耳痛", "牙痛", "阴道出血", "停经", "排尿困难", "尿频",
-                   "吞咽困难", "情绪低落", "消瘦", "怕热", "多汗", "哭闹", "跌倒", "外伤", "肢体麻木", "夜尿"]
+# 线索探针单一源：探针清单即 SYMPTOM_TO_KB 的键，与 JS 端同源（防「命中线索却无证据映射」的词表漂移）
+_SYMPTOM_PROBES = list(SYMPTOM_TO_KB.keys())
 
 
 def _detect_symptoms(text: str) -> list[str]:

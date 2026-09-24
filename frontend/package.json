@@ -11,7 +11,9 @@
     "test:engine": "node tests/engine_eval.mjs",
     "test:retrieval": "node tests/retrieval_eval.mjs",
     "test:contract": "node tests/contract_parity.mjs",
-    "test": "npm run test:smoke && npm run test:engine && npm run test:retrieval && npm run test:contract"
+    "test:kb": "node tests/kb_guard.mjs",
+    "test:route": "node tests/route_guard.mjs",
+    "test": "npm run test:smoke && npm run test:engine && npm run test:retrieval && npm run test:contract && npm run test:kb && npm run test:route"
   },
   "dependencies": {
     "react": "^19.1.0",

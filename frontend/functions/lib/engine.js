@@ -8,7 +8,7 @@ import { CASES, INTAKE_DONE_REPLY } from "./data.js"
 import { scanFlags, scanFlagDetails } from "./rules.js"
 import { evidenceByIds, hasEvidence, evidenceForSymptoms } from "./rag.js"
 import { getRetriever } from "./retriever.js"
-import { KNOWLEDGE_BASE, KB_BY_ID, kbTitleOf, kbConditionOf } from "./knowledge.js"
+import { KNOWLEDGE_BASE, KB_BY_ID, SYMPTOM_TO_KB, kbTitleOf, kbConditionOf } from "./knowledge.js"
 
 const retriever = getRetriever()
 const kbTitle = (id) => kbTitleOf(id)
@@ -65,10 +65,10 @@ function missingSlots(c, answers) {
   return missing
 }
 
+// 线索探针单一源：探针清单即 SYMPTOM_TO_KB 的键，杜绝「命中线索却无证据映射」的词表漂移
 function detectSymptoms(text) {
+  const probes = Object.keys(SYMPTOM_TO_KB)
   const found = []
-  const probes = ["胸痛", "胸闷", "呼吸困难", "头晕", "眩晕", "眼前发黑", "发热", "咳嗽", "咽痛", "腹痛", "腹泻", "呕吐", "腰痛", "关节痛", "头痛", "乏力", "心悸", "冷汗", "呕血", "黑便", "意识",
-    "皮疹", "瘙痒", "眼红", "视力下降", "耳痛", "牙痛", "阴道出血", "停经", "排尿困难", "尿频", "吞咽困难", "情绪低落", "消瘦", "怕热", "多汗", "哭闹", "跌倒", "外伤", "肢体麻木", "夜尿"]
   for (const p of probes) if (text.includes(p)) found.push(p)
   return found
 }
