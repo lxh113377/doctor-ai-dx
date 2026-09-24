@@ -74,4 +74,5 @@ CI 会跑同样的东西；`main` 分支保护要求 `build-and-test` 与 `backe
 - **patch/minor**：可直接对 Dependabot PR 开 auto-merge（仓库已启用；required checks = build-and-test + backend-test，绿后自动 squash 合入）。
 - **同文件多 PR 积压**：按"聚合批"处理——自开分支一次覆盖 N 包，PR 描述引用被覆盖编号，合入后关闭原 PR（留言可 `/rerun` 重建）。
 - **major**：先查 peer（`npm i` 干跑看 ERESOLVE），框架级升级（如 vite 大版本）单独立项，不混入依赖批；结论写入 PR 评论留痕。
+- 自动审计：`.github/workflows/dep-audit.yml` 每周一 npm audit（high 即红）+ pip-audit（观察期报告制，删 `continue-on-error` 一行即转硬门禁）；依赖文件变更的 PR 也会触发。注：本机镜像 registry 无 audit 端点，本地 `npm audit` 不可用属环境限制，以 CI 为准（2026-09-24 实测）。
 - 任何依赖变更后：`npm test` 九件套 + `npm run build` + `npm run test:bundle`（体积地板线）全绿方可合。
