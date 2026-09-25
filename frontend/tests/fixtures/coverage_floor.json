@@ -19,8 +19,8 @@
         94.28
       ],
       "js_engine_branch_pct": [
-        69.23,
-        70.0
+        70.0,
+        69.5
       ],
       "js_rules_branch_pct": [
         78.12,
@@ -31,16 +31,16 @@
         76.92
       ],
       "py_total_pct": [
-        73.33,
-        87.0
+        90.53,
+        92.78
       ],
       "py_llm_pct": [
-        37,
-        90
+        85.71,
+        87.5
       ],
       "py_engine_pct": [
-        61,
-        74
+        77.22,
+        84.9
       ],
       "py_retriever_pct": [
         37,
@@ -75,8 +75,8 @@
         74.18
       ],
       "js_total_branch_pct": [
-        74.18,
-        75.65
+        75.65,
+        75.24
       ],
       "js_observe_branch_pct": [
         69.23,
@@ -86,7 +86,9 @@
     "why_per_module": "全局地板会掩盖红线模块单独退化（如 rules.js 掉到 60% 而总量仍达标），因此按模块设地板。",
     "measured_note": "JS 数值取 c8 12.0.0 实测；PY 取 coverage.py 7.16.0 实测（.coveragerc 排除 del/无语义行后为 87.0%，未排除口径为 88.79%，两者皆高于地板 85）",
     "py_metric_note": "2026-09-25 第十四轮：.coveragerc 开启 branch=True，口径由「仅语句」改为「语句+分支弧」。同口径实测 91%（旧语句-only 口径为 87%）⇒ 更严口径 + 更高地板（85→88），属收紧非放宽。",
-    "js_floor_note": "地板=实测−2pt（棘轮起点）。本轮随覆盖率上升同步收紧：engine 分支 65→68、fhir 72→74、rag 74→75、retriever 80→81、rules 85→86、knowledge 68→69、全局 72→74；并新增 observe.js（脱敏层，实测 100/100/100，地板 98）——此前它不在清单内，属地板盲区。"
+    "js_floor_note": "地板=实测−2pt（棘轮起点）。本轮随覆盖率上升同步收紧：engine 分支 65→68、fhir 72→74、rag 74→75、retriever 80→81、rules 85→86、knowledge 68→69、全局 72→74；并新增 observe.js（脱敏层，实测 100/100/100，地板 98）——此前它不在清单内，属地板盲区。",
+    "py_floor_note_r15": "第十五轮：追问 live 分支（_llm_followup 18 行）补测后 engine.py 77→85%、llm.py 86→88%，地板按实测-2/3 收紧为 82/85。",
+    "js_floor_note_r15": "第十五轮如实登记回落：JS 全局分支 75.65→75.24、engine.js 分支 70→69.5，起因是把「续问硬上限」从 LLM 调用后前移到调用前（删掉一个恒真的三元条件、新增一个提前返回）——属真实修复的度量副作用，**地板不降**（engine.js 分支地板仍 68，余量 1.5pt）。"
   },
   "js_modules": {
     "lib/rules.js": {
@@ -139,7 +141,7 @@
     "app/services/fhir.py": 95,
     "app/rag.py": 90,
     "app/retriever.py": 94,
-    "app/services/engine.py": 74,
-    "app/services/llm.py": 83
+    "app/services/engine.py": 82,
+    "app/services/llm.py": 85
   }
 }

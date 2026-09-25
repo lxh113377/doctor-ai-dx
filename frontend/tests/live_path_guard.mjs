@@ -3,7 +3,7 @@
 // 根因是**无 Key 时所有测试只走 rule-fallback 分支**，而线上生产跑的是 live 分支。
 // 也就是说：三条产品红线在"模型参与生成"这条真实路径上，此前从未被任何自动化测试执行过。
 // 本套件用桩喂出 live 分支的各种输出形态（含恶意/畸形），逐条验证红线仍然成立。
-import { buildDiagnosis, buildWorkup, buildReport } from "../functions/lib/engine.js"
+import { buildDiagnosis, buildReport, buildWorkup, nextIntakeQuestion } from "../functions/lib/engine.js"
 import { KB_ID_SET } from "../functions/lib/knowledge.js"
 
 let pass = 0
@@ -122,6 +122,43 @@ await buildDiagnosis("c1", CHEST_PAIN, ENV)
 const sys = calls[0]?.body?.messages?.[0]?.content || ""
 check("系统提示词含「辅助参考/不替代」与「不得推翻红旗」约束",
   sys.includes("不替代") && sys.includes("红旗") && sys.includes("禁止编造"), sys.slice(0, 80))
+
+
+// 11) 追问 live 分支（第十五轮补：llmFollowup 此前在双端均零执行）
+//     判据与 backend/tests/test_live_path.py 第 8 段逐条对位——权威面先测，镜像面同表。
+const FULL5 = [
+  { role: "user", content: "压榨样/紧缩感" }, { role: "user", content: "向左肩臂放射" },
+  { role: "user", content: "活动/劳累时加重" }, { role: "user", content: "出冷汗" },
+  { role: "user", content: "高血压，吸烟" },
+]
+stubFetch(() => okJson({ question: "是否有晕厥或黑视？", chips: ["有", "无"], done: false }))
+const qLive = await nextIntakeQuestion("c1", FULL5, ENV)
+check("脚本本题答完 → 追问由 LLM 接管（mode=live）",
+  qLive.mode === "live" && qLive.done === false && !!qLive.question, JSON.stringify({ m: qLive.mode, d: qLive.done }))
+check("LLM 追问带快选 chips 且 reply 与 question 同文",
+  Array.isArray(qLive.chips) && qLive.chips.length > 0 && qLive.reply === qLive.question, JSON.stringify(qLive.chips))
+check("追问请求仍走同一 /chat/completions 端点", calls.length === 1 && /\/chat\/completions$/.test(calls[0].url), String(calls[0]?.url))
+
+stubFetch(() => okJson({ done: true }))
+const qDone = await nextIntakeQuestion("c1", FULL5, ENV)
+check("模型判定信息足够 → 收敛为 done 且回落规则口径",
+  qDone.done === true && qDone.mode === "rule" && !!qDone.reply, String(qDone.mode))
+
+stubFetch(() => okJson({ question: "", done: false }))
+const qEmpty = await nextIntakeQuestion("c1", FULL5, ENV)
+check("空追问（question 为空串）不返回假 live，按 done 收敛",
+  qEmpty.done === true && qEmpty.mode === "rule", String(qEmpty.mode))
+
+stubFetch(() => httpErr(500))
+const qErr = await nextIntakeQuestion("c1", FULL5, ENV)
+check("追问 HTTP 500 → 异常被兜住并收敛（不影响接口可用性）",
+  qErr.done === true && qErr.mode === "rule", String(qErr.mode))
+
+// 续问硬上限：答完脚本题后最多再问 3 轮（防不收敛的无限外呼），第 4 轮起强制收敛
+stubFetch(() => okJson({ question: "继续追问？", chips: [], done: false }))
+const qCap = await nextIntakeQuestion("c1", [...FULL5, ...Array.from({ length: 3 }, (_, k) => ({ role: "user", content: `补充${k + 1}` }))], ENV)
+check("追问硬上限 3 轮生效（超出即收敛，不再外呼）",
+  qCap.done === true && qCap.mode === "rule" && calls.length === 0, `calls=${calls.length} mode=${qCap.mode}`)
 
 globalThis.fetch = REAL_FETCH
 console.log(`\nLIVE PATH SUMMARY: 分支用例=${fallbackCases.length} 组 · 实际外呼拦截=0 · fetch 调用记录=${calls.length}`)

@@ -85,12 +85,12 @@ def encode(rows: list[dict], engine_dir: str):
     return vec @ vec.T
 
 
-def build_table(rows: list[dict], sim) -> dict[str, list[list]]:
+def build_table(rows: list[dict], sim) -> dict[str, list[list[str | int]]]:
     ids = [r["id"] for r in rows]
-    table: dict[str, list[list]] = {}
+    table: dict[str, list[list[str | int]]] = {}
     for i, kid in enumerate(ids):
         order = sorted(range(len(ids)), key=lambda j: (-float(sim[i, j]), ids[j]))
-        pairs = []
+        pairs: list[list[str | int]] = []
         for j in order:
             if i == j:
                 continue                      # 禁自环

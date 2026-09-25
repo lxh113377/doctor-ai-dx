@@ -48,6 +48,13 @@ repos:
         pass_filenames: false
         files: \.py$
 
+      - id: type-gate
+        name: Python 类型门禁（mypy，阈值单一源 fixtures/type_floor.json）
+        entry: python scripts/type_gate.py --quiet
+        language: system
+        pass_filenames: false
+        files: \.py$
+
       - id: text-hygiene
         name: 全仓文本控制字符扫描（防"正则里的词边界被转义成裸退格符"类死判据）
         entry: python scripts/check_text_hygiene.py --quiet

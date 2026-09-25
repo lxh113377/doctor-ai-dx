@@ -15,7 +15,10 @@ ROOT = Path(__file__).resolve().parents[1]
 SPEC = ROOT / "docs" / "openapi.json"
 
 _VERSION_SRC = (ROOT / "backend" / "app" / "version.py").read_text(encoding="utf-8")
-APP_VERSION = re.search(r'APP_VERSION = "([^"]+)"', _VERSION_SRC).group(1)
+_ver = re.search(r'APP_VERSION = "([^"]+)"', _VERSION_SRC)
+if not _ver:  # fail-closed：单一源被改动时报可读错误，而非 AttributeError（第十五轮 mypy union-attr 抓出）
+    raise SystemExit('FAIL: backend/app/version.py 未匹配到 APP_VERSION = "x.y.z"（版本单一源被改坏）')
+APP_VERSION = _ver.group(1)
 
 
 def main() -> int:

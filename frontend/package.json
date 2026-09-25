@@ -1,7 +1,7 @@
 {
   "name": "doctor-ai-dx-frontend",
   "private": true,
-  "version": "1.12.0",
+  "version": "1.13.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -10,6 +10,7 @@
     "lint:js": "eslint . --max-warnings=0",
     "lint:py": "cd .. && ruff check backend/app backend/tests scripts",
     "lint": "npm run lint:js && npm run lint:py",
+    "typecheck": "cd .. && python scripts/type_gate.py",
     "test:smoke": "node tests/engine_smoke.mjs",
     "test:engine": "node tests/engine_eval.mjs",
     "test:retrieval": "node tests/retrieval_eval.mjs",

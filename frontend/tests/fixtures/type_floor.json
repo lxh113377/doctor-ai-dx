@@ -1,0 +1,27 @@
+{
+  "_meta": {
+    "purpose": "Python 类型门禁阈值单一权威源（scripts/type_gate.py 读它；CI 与 pre-commit 只调脚本，不各自硬编码）。",
+    "borrowed_from": "OpenEMR 实测用 phpstan `level: 10` + 三个 phpstan 工作流（phpstan.yml / phpstan-types.yml / phpstan-baseline-diff.yml），即『高严格档 + 存量入基线 + 只拦新增』；phlox 有 tsc 但 strict:false / checkJs:false（装了不用）；ragflow 只配 ruff；medical-rag 零配置。",
+    "why_no_baseline": "我方首跑实测 26 error，其中 19 条是生成物未标注导致的推断噪声（正解是标注生成器，不是豁免下游），真缺陷 7 条全部修掉 ⇒ 存量清零 ⇒ 直接钉 expected_errors=0，比基线豁免更强。将来确需豁免时须在本文件新增 baseline 段并写明理由，禁止无声放行。",
+    "measured_at": "2026-09-25",
+    "tool": "mypy 2.3.1（compiled），配置钉在仓根 mypy.ini，严格档 check_untyped_defs=True；实跑 23 个源文件（backend/app 18 + scripts 5）",
+    "delta_this_round": {
+      "first_run_errors": 26,
+      "after_generator_annotation": 5,
+      "final_errors": 0,
+      "files_checked": 22,
+      "real_defects_fixed": [
+        "llm.py BaseProvider 无构造契约 ⇒ get_provider 传 4 个关键字参数被判 call-arg ×4（新增 Provider 签名不一致原本只能运行时炸）",
+        "rules.py 两张异构规则表未标注 ⇒ 复用同名循环变量触发 assignment 冲突（红旗表加字段会静默漂移的类型层暴露）",
+        "fhir.py GENDER_BY_TEXT.get(p.get('gender')) 可能以 None 作键（check_untyped_defs 抓出）",
+        "gen_openapi.py 对 re.search 结果直接 .group(1) ⇒ 单一源被改坏时抛 AttributeError 而非可读错误（union-attr 抓出）",
+        "build_semantic_neighbors.py 空列表 pairs 无元素类型（var-annotated 抓出，生成器侧真实形状为 list[list[str|int]]）"
+      ]
+    },
+    "ratchet_note": "只准收紧：expected_errors 下调需实测；上调必须写明原因并交用户决策（自动化任务不代决）。files_checked_min 同理由只升不降——它是『mypy 真的检查了东西』的输入非空证明（R247），掉下去说明 scope 或配置坏了。"
+  },
+  "min_version": "2.3.1",
+  "config": "mypy.ini",
+  "files_checked_min": 23,
+  "expected_errors": 0
+}

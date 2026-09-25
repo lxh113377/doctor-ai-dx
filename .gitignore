@@ -36,3 +36,4 @@ coverage/
 htmlcov/
 .coverage.json
 coverage-py.json
+.mypy_cache/

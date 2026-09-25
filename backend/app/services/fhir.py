@@ -60,7 +60,7 @@ def _patient_entry(dx):
     }
     if p.get("name"):
         res["name"] = [{"text": _s(p["name"], 60)}]
-    res["gender"] = GENDER_BY_TEXT.get(p.get("gender"), "unknown")
+    res["gender"] = GENDER_BY_TEXT.get(str(p.get("gender") or ""), "unknown")
     return res
 
 

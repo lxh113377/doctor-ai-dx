@@ -3,8 +3,13 @@
 设计：关键词须特异（防"出冷汗"等词单独误触发）；支持血压数值解析；命中即强制转诊。
 """
 import re
+from typing import Any
 
-DANGER_RULES = [
+# 两张规则表都是异构字面量表（keywords: list[str] 与 all: list[list[str]] 并存），
+# 第十五轮 mypy 实测：不标注 ⇒ 两个 for 循环复用同名变量被推断成 dict[str, Sequence[str]]，
+# 第二条表的赋值即判不兼容（[assignment]），这正是"红旗表加字段就静默漂移"的类型层暴露。
+# 与生成物 knowledge.py 同一口径：数据表标 Any，逻辑函数标具体类型。
+DANGER_RULES: list[dict[str, Any]] = [
     {"name": "疑似急性冠脉综合征（ACS）红旗",
      "keywords": ["压榨", "紧缩", "胸痛放射", "胸痛向左肩", "胸痛向后背", "向左肩臂放射", "心前区闷痛"],
      "severity": "高",
@@ -60,7 +65,7 @@ DANGER_RULES = [
 ]
 
 # 组合规则：多线索同时命中才触发（表达临床组合逻辑，降低单一非特异词误报）
-COMBO_RULES = [
+COMBO_RULES: list[dict[str, Any]] = [
     {"name": "异位妊娠（宫外孕）破裂红旗",
      "all": [["停经", "闭经", "月经没来"], ["阴道出血", "下腹剧痛", "腹痛", "腹部疼痛"], ["晕厥", "头晕", "面色苍白", "血压下降", "肩部放射痛"]],
      "severity": "高",

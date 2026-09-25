@@ -49,8 +49,9 @@ docker compose run --rm selftest   # 镜像内自带 19+15+16 项断言，全绿
 
 ```bash
 cd frontend
-npm test       # 十四件套：49 冒烟(含双端同表红旗探针) + 31 例引擎评测 + 检索分层回归 + 检索器 3 档双端一致 + 语义表守卫 + live 路径红线 36 项 + 双端契约 31:31 + FHIR 导出 45 项 + 隐私声明对账 59 项（契约需本机 Python）
-npm run lint     # 静态检查：ESLint（frontend，--max-warnings=0）+ ruff（backend，规则集钉在 仓根 ruff.toml）
+npm test       # 十四件套：49 冒烟(含双端同表红旗探针) + 31 例引擎评测 + 检索分层回归 + 检索器 3 档双端一致 + 语义表守卫 + live 路径红线 43 项（含追问 live 分支与续问上限零外呼） + 双端契约 31:31 + FHIR 导出 45 项 + 隐私声明对账 59 项（契约需本机 Python）
+npm run lint     # 静态检查：ESLint（frontend，--max-warnings=0）+ ruff（backend 与 scripts，规则集钉在仓根 ruff.toml）
+npm run typecheck  # Python 类型门禁：mypy 严格档（check_untyped_defs）+ 阈值单一源，实测 23 文件 0 error
 npm run coverage:js   # c8 覆盖率 + 模块级地板棘轮（红线模块退化会被单独拦下）
 npm run coverage:py   # coverage.py（语句+分支弧）汇总 5 套后端测试 → scripts/coverage_gate.py 按模块地板对账
 npm run build  # Vite 生产构建
@@ -66,7 +67,7 @@ python tests/smoke_engine.py
 - `frontend/tests/contract_parity.mjs` 用同一 31 组黄金输入分别跑 Functions(JS) 与 FastAPI 镜像(Python)，逐字段比对 dx/workup/report，拦截双端静默漂移。
 - **评测卡 / 安全卡**：[`docs/EVAL_CARD.md`](docs/EVAL_CARD.md) —— 能力边界、病种覆盖清单（55 条 · 19 域）、红旗与安全口径、指标日期一页可查。
 - **架构与不变式**：[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) —— 六段链路图、三条产品红线的代码插入点、JS/Py 双端镜像对账矩阵、检索层实测参数、环境变量与门禁清单（数字均为磁盘实测）。
-- **提交前快检**：[`.pre-commit-config.yaml`](.pre-commit-config.yaml) —— `pre-commit install` 后复用仓内既有守卫（版本真值 / 知识库零漂移 / 契约对账 / OpenAPI 漂移 / ESLint / ruff / 文本控制字符 七钩子），秒级；全量十四件套仍由 CI 兜底。
+- **提交前快检**：[`.pre-commit-config.yaml`](.pre-commit-config.yaml) —— `pre-commit install` 后复用仓内既有守卫（版本真值 / 知识库零漂移 / 契约对账 / OpenAPI 漂移 / ESLint / ruff / 类型门禁 / 文本控制字符 八钩子），秒级；全量十四件套仍由 CI 兜底。
 - **安全边界与未保障项**：[`SECURITY.md`](SECURITY.md) —— 已实现的控制、明确未提供的保障（无认证/无审计/日志不留存）、漏洞报告渠道。
 - **数据留存与隐私**：[`docs/PRIVACY.md`](docs/PRIVACY.md) —— 服务端零持久化、日志不落请求体、脱敏形态清单、唯一出站为 LLM 供应商（必然携带问诊文本）、明确未提供项；**声明与代码一致性由 `npm run test:privacy` 机器核对**（漂移即判红，非纯文档承诺）。
 - **接手与贡献**：[`CONTRIBUTING.md`](CONTRIBUTING.md) —— 双端同步矩阵、提交前必跑门禁、知识库条目与评测集变更规范。

@@ -80,8 +80,13 @@ def next_intake_question(case_id: str, history: list[dict] | None = None) -> dic
         item = c["answers"][idx]
         return {"reply": item["q"], "question": item["q"], "source": "intake-question",
                 "chips": item["chips"], "done": False, "state": state, "mode": "rule"}
+    # LLM 续问硬上限 3 轮，防不收敛。上限必须在调用前判（与 engine.js 同步修复：
+    # 原实现"先外呼、后判上限、再丢弃"，超限那一轮仍产生一次完整请求）。
+    if idx >= len(c["answers"]) + 3:
+        return {"reply": mock.INTAKE_DONE_REPLY, "source": "intake-done", "chips": [], "done": True,
+                "state": state, "mode": "rule"}
     live = _llm_followup(history, c)
-    if live and live.get("question") and idx < len(c["answers"]) + 3:
+    if live and live.get("question"):
         return {"reply": live["question"], "question": live["question"], "source": "intake-question-llm",
                 "chips": live.get("chips", []), "done": False, "state": state, "mode": "live"}
     return {"reply": mock.INTAKE_DONE_REPLY, "source": "intake-done", "chips": [], "done": True,

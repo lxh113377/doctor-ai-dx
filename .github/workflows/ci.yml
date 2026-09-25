@@ -89,6 +89,9 @@ jobs:
         run: python -m pip install -r requirements-dev.txt
       - name: Static analysis (ruff，规则集钉在仓根 ruff.toml)
         run: ruff check app tests ../scripts
+      - name: Type gate (mypy，阈值单一源 = frontend/tests/fixtures/type_floor.json)
+        # 不直接看 mypy 退出码：还核对「检查文件数下限」与「devDep 是否钉版」，防静默空跑
+        run: python ../scripts/type_gate.py
       - name: Test rule-fallback engine
         run: python tests/smoke_engine.py
       - name: Test API observability contract

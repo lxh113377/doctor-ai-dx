@@ -82,8 +82,13 @@ export async function nextIntakeQuestion(caseId, history = [], env = {}) {
     const item = c.answers[idx]
     return { reply: item.q, question: item.q, source: "intake-question", chips: item.chips, done: false, state, mode: "rule" }
   }
+  // LLM 续问硬上限 3 轮，防不收敛。**上限必须在调用前判**：
+  // 实测原实现是"先外呼、后判上限、再丢弃"，超限那一轮仍产生一次完整请求（白花 8s 超时窗口与 token）。
+  if (idx >= c.answers.length + 3) {
+    return { reply: INTAKE_DONE_REPLY, source: "intake-done", chips: [], done: true, state, mode: "rule" }
+  }
   const live = await llmFollowup(history, c, env)
-  if (live && live.question && idx < c.answers.length + 3) { // LLM 续问硬上限 3 轮，防不收敛
+  if (live && live.question) {
     return { reply: live.question, question: live.question, source: "intake-question-llm", chips: live.chips || [], done: false, state, mode: "live" }
   }
   return { reply: INTAKE_DONE_REPLY, source: "intake-done", chips: [], done: true, state, mode: "rule" }

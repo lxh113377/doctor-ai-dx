@@ -25,7 +25,22 @@ class LLMUnavailable(Exception):
 
 
 class BaseProvider:
+    """Provider 抽象基类。
+
+    __init__ 是**构造契约的显式声明**：PROVIDERS 的值类型是 type[BaseProvider]，
+    get_provider() 以关键字参数实例化它。此前基类没有 __init__，mypy 实测判
+    「Unexpected keyword argument base_url/api_key/model/timeout for BaseProvider」4 条——
+    即"新增 Provider 若签名不一致，运行时才炸"这一真实缺口，类型层现在静态就能拦住。
+    子类各自实现自己的 __init__（与 JS 端 llm.js 保持同构），本方法只承载契约。
+    """
+
     name = "base"
+
+    def __init__(self, base_url: str, api_key: str, model: str, timeout: float = HARD_TIMEOUT_S) -> None:
+        self.base_url = base_url
+        self.api_key = api_key
+        self.model = model
+        self.timeout = timeout
 
     def chat(self, messages: list[dict], json_mode: bool = False, temperature: float = 0.3) -> str:
         raise NotImplementedError

@@ -5,6 +5,34 @@
 
 ## [Unreleased]
 
+## [1.13.0] - 2026-09-25
+
+### Added（类型层门禁：对标 OpenEMR 的 phpstan level 10 + baseline-diff，我方直接钉零错误档）
+- 对标取证（`raw.githubusercontent` 逐文件实测）：**OpenEMR** `phpstan.neon.dist` 为 `level: 10`（最高档）且配三个工作流（`phpstan.yml` / `phpstan-types.yml` / `phpstan-baseline-diff.yml`，即"高严格 + 存量入基线 + 只拦新增"）；**phlox** 有 `tsconfig.json` 但 `strict:false`、`allowJs:true` + `checkJs:false`（装了不用）；**ragflow** 只有 `[tool.ruff]`（无 mypy/pyright）；**medical-rag** 根目录零配置。**CDSS-RAG-Chatbot 连续两轮 404 ⇒ 锚点退役**，本轮按 4 个活体锚点计。类型层门禁现状：2/4 有，我方此前为零。
+- `mypy.ini`（仓根，与 `ruff.toml` 同构）：`files = backend/app, scripts`、**`check_untyped_defs = True`**（连未标注函数的函数体也查，取向与 phlox 的 `strict:false` 相反）、`warn_unused_ignores`、`no_implicit_optional`、`show_error_codes`。刻意**不含任何 per-module 豁免段**——实测把唯一候选（生成物 `var-annotated`）关掉后仍是 23 文件 0 error，留着就是"以后也许用得上"的暗门；`ignore_missing_imports` 是唯一全局放宽并写明理由（第三方缺 stub 不算本仓缺陷）。
+- `scripts/type_gate.py` + 阈值单一源 `frontend/tests/fixtures/type_floor.json`：除 mypy 退出码外还核对三件事——**实跑检查文件数 ≥ 22**（R247 输入非空证明：mypy 静默检查 0 个文件也会报成功）、**`requirements-dev.txt` 是否钉住 mypy 版本区间**（换版本=换判据）、**实跑版本 ≥ 阈值最低版本**。`expected_errors: 0` 只准收紧。四组反例实测：阈值下限抬到 999 → rc=1；注入 `data["k"]`（str 当下标）→ 报 2 条 error 且 rc=1；去掉钉版行 → rc=1；阈值文件缺失 → rc=2（fail-closed）。
+- `npm run typecheck` 与 pre-commit 第 8 钩；CI `backend-test` 作业新增 `Type gate` 步骤（与 ruff 同 job，devDep 已具备）。
+
+### 首跑 26 条告警的逐条处置（关键判断：**不为凑绿而加豁免**）
+1. **19 条是推断噪声，正解在生成器不在下游**：`backend/app/knowledge.py` 由 `03-评测/export_kb.mjs` 生成且无任何标注 ⇒ mypy 推断为 `dict[str, object]`，下游 `rag.py` / `retriever.py` / `engine.py` 成片报"object 不可下标"。修法=在**生成器**里注入 `from typing import Any` 与四行精确标注后重新生成；并用 AST 逐结构深度比对证明**数据零改动**（55 条目 / 60 症状键 / 32 红旗词 / 34 同义词全等），`kb_guard` 17 项双端对账仍绿。
+2. 🔴 `llm.py` **`BaseProvider` 没有构造契约**：`PROVIDERS: dict[str, type[BaseProvider]]` 以 4 个关键字参数实例化基类 ⇒ mypy 判 `call-arg` ×4。这不是"标注补一下"：它意味着**新增 Provider 若签名不一致，只能运行时炸**。补基类 `__init__` 契约（子类保持自身实现，与 JS 端 `llm.js` 同构），并加三条断言（四参数落字段 / 基类 `chat` 必抛 `NotImplementedError` / 未知 provider 名抛 `LLMUnavailable` 而非静默回退默认供应商）。
+3. 🔴 `rules.py` 两张异构规则表未标注 ⇒ 两个循环复用同名变量即触发 `[assignment]` 冲突。**红旗表加字段会静默漂移**，这一条正是类型层对红线的暴露。与生成物同口径标注（数据表 `Any`、逻辑函数具体类型）。
+4. 🔴 `fhir.py` 以 `p.get("gender")`（可能 `None`）作 `GENDER_BY_TEXT` 的键——`check_untyped_defs` 抓出；改为显式归一，行为逐值不变。
+5. 🔴 `scripts/gen_openapi.py` 对 `re.search(...)` 结果直接 `.group(1)`：版本单一源被改坏时抛 `AttributeError` 而非可读错误（`union-attr` 抓出）⇒ 改 fail-closed 显式报错。
+6. `scripts/build_semantic_neighbors.py` 空列表 `pairs` 无元素类型 ⇒ 按真实形状 `list[list[str | int]]` 标注（顺带把返回类型从裸 `list[list]` 收紧）。
+
+### 由新测试暴露并修掉的产品级缺陷（🔴 双端同步）
+- **追问"续问硬上限 3 轮"原本形同虚设地漏钱**：`engine.js` / `engine.py` 都是 `live = await llmFollowup(...)` **之后**才判 `idx < answers.length + 3` ⇒ 超限那一轮仍完整付一次 LLM 请求（最长 8s 超时窗口 + token）再把它丢弃。把上限前移到调用之前，并补三条对位断言：超限即 `done/mode=rule`、**超限轮零外呼**（实测 `calls=0`）、上限前一轮仍走 live（证明没把可用路径一起砍掉）。
+- 顺带补上从未执行的 `nextIntakeQuestion` live 分支：脚本本题答完后 LLM 接管（`mode=live`、`reply===question`、chips 透传、仍走同一 `/chat/completions`）、`{done:true}` 收敛、空 `question` 不返回假 live、HTTP 500 异常被兜住。`live_path_guard.mjs` 36→**43 项**、`test_live_path.py` 25→**37 项**，两端逐条对位。
+
+### 度量（涨跌都记）
+- Python：`engine.py` 77→**85%**、`llm.py` 86→**88%**，全局 **90.53→92.78%**（口径仍是 r14 起的"语句+分支弧"）；模块地板随实测收紧 `engine.py` 74→82、`llm.py` 83→85。
+- JS：**如实登记回落** —— 全局分支 75.65→**75.24%**、`engine.js` 分支 70→69.5%。起因是上限前移（删掉一个三元里的恒真条件、新增一个提前返回）改变了分支计数，属真实修复的度量副作用；**地板不降**（`engine.js` 分支地板仍 68，余量 1.5pt，已在 fixture `_meta.js_floor_note_r15` 写明）。
+- 新增受控文件 3 个：`mypy.ini`、`frontend/tests/fixtures/type_floor.json`、`scripts/type_gate.py` ⇒ 受版本控制文件数 115→**118**。
+
+### 红线影响
+红旗规则层逻辑零改动（`rules.py` 只加类型标注与注释）；引用白名单与"辅助参考 · 医生终审"文案零触碰；默认检索档仍 bm25；评测口径仍是同一批 31 例。唯一行为变化是**追问超限轮不再外呼**（收敛结果与原先逐字段一致，仅省掉一次被丢弃的请求）。
+
 ## [1.12.0] - 2026-09-25
 
 ### Added（静态质量门禁：对标实测同类 5 家中 3 家有 linter，我方此前全仓零静态检查）
