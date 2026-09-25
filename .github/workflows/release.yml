@@ -77,9 +77,13 @@ jobs:
           node tests/sbom_guard.mjs --sbom docs/sbom/backend.cdx.json --manifest pip
 
       - name: 源码包 = tag 内容（可复现，git archive 不含未跟踪文件）
+        # --mtime 钉成 tag 提交时间：实测两次 `git archive --mtime` 逐字节相同（sha ded085dc…），
+        # 不带 --mtime 时 CI 与本地构建的 zip sha 不同（zip 容器写入时间差异）⇒ 加上才能主张
+        # "任何人独立构建得到同一字节序列"，而不是只主张内容集合相同。
         run: |
           mkdir -p dist-release
-          git archive --format=zip -o "dist-release/doctor-ai-dx-source-${TAG}.zip" HEAD
+          MT=$(git log -1 --format=%ct "$TAG")
+          git archive --format=zip --mtime="$MT" -o "dist-release/doctor-ai-dx-source-${TAG}.zip" HEAD
           python - <<'PY'
           import hashlib, os, zipfile
           p = os.path.join("dist-release", f"doctor-ai-dx-source-{os.environ['TAG']}.zip")
