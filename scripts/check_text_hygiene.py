@@ -9,6 +9,7 @@ r"""文本卫生门禁：全仓受版本控制的文本文件不得含 C0 控制
 
 用法：
   python scripts/check_text_hygiene.py                # 扫 git ls-files 的文本文件（CI/提交前）
+  python scripts/check_text_hygiene.py --root ..      # 同一门禁扫工作区级父仓（AGENTS.md/memory/ 等）
   python scripts/check_text_hygiene.py --check-file P # 只扫单文件（反例自证与手工复查用）
   python scripts/check_text_hygiene.py --quiet
 退出码：0 干净 / 1 发现控制字符 / 2 环境或参数错误（含"清单为空"，禁止静默通过）。
@@ -48,20 +49,22 @@ def scan_file(path: Path) -> list[str]:
     return problems
 
 
-def tracked_text_files() -> list[Path]:
-    out = subprocess.run(["git", "-C", str(REPO), "ls-files", "-z"],
+def tracked_text_files(root: Path) -> list[Path]:
+    out = subprocess.run(["git", "-C", str(root), "ls-files", "-z"],
                          capture_output=True, text=True, encoding="utf-8")
     if out.returncode != 0:
         print(f"git ls-files 失败：{out.stderr.strip()}", file=sys.stderr)
         raise SystemExit(2)
     names = [n for n in out.stdout.split("\0") if n]
-    return [REPO / n for n in names
+    return [root / n for n in names
             if Path(n).suffix in TEXT_SUFFIXES or Path(n).name == ".gitignore"]
 
 
 def main() -> int:
     ap = argparse.ArgumentParser(description="全仓文本控制字符门禁")
     ap.add_argument("--check-file", default="", help="只扫这一个文件（反例自证用）")
+    ap.add_argument("--root", default=str(REPO),
+                    help="受版本控制的仓根（默认本仓；工作区级文件可指向其父仓）")
     ap.add_argument("--quiet", action="store_true")
     args = ap.parse_args()
 
@@ -73,7 +76,8 @@ def main() -> int:
         problems = scan_file(target)
         scanned = 1
     else:
-        files = tracked_text_files()
+        root = Path(args.root).resolve()
+        files = tracked_text_files(root)
         if len(files) < MIN_FILES:
             print(f"[GATE:text-hygiene-fail] 清单仅 {len(files)} 个文本文件（<{MIN_FILES}）"
                   "——清单来源异常时零命中属假通过", file=sys.stderr)

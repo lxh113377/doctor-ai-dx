@@ -94,7 +94,7 @@
 | 容器（从零启动自证） | `docker compose up -d` + `docker compose run --rm selftest` | 镜像构建成功 + HEALTHCHECK `healthy` + 镜像内 **25/40/16/25/25 五套** exit 0（源码树级检查在容器内显式 SKIP，不计通过也不计失败；coverage 等 dev 件实测不在镜像内） |
 | 契约派生件 | `python scripts/gen_openapi.py --check` | openapi 版本与后端单一源一致（只同步版本行，禁全量重写） |
 | CI | `.github/workflows/ci.yml`（4 job）+ `codeql.yml` + `dep-audit.yml` | 上述全量（含两枚 lint 步骤）+ 每周 npm/pip 漏洞扫描。**CodeQL 第十四轮补 `push: [main]`**：实测此前 30 次分析全在 `refs/pull/*/merge`、`refs/heads/main` 为零 ⇒ 生产分支从未被扫描（与 round9「判据挂在长期 skipped 的作业上」同族缺陷） |
-| 文本卫生（第十四轮补） | `python scripts/check_text_hygiene.py` | 105 个受控文本文件禁 C0 控制字符与 DEL（tab/换行/回车除外）。立论依据：同类「词边界 `\b` 被转义成裸 `0x08`」事故实测三次（v1.11.0 隐私判据 3 条、本轮文档 2 处、CHANGELOG 6 处），本门禁首跑即全部抓出；受控清单条目数 <40 直接判红，防「清单来源坏掉导致零违规」假通过 |
+| 文本卫生（第十四轮补） | `python scripts/check_text_hygiene.py`（工作区父仓加 `--root ..`） | 本仓 110 个受控文本文件禁 C0 控制字符与 DEL（tab/换行/回车除外）。立论依据：同类「词边界 `\b` 被转义成裸 `0x08`」事故**四次复发**（v1.11.0 隐私判据 3 条 → 本轮文档 2 处 → CHANGELOG 6 处 → AGENTS.md 1 处），每次均由该门禁当场抓出；受控清单条目数 <40 直接判红，防「清单来源坏掉 ⇒ 零违规」假通过 |
 | 提交前 | `pre-commit run --all-files` | 7 钩子：版本五方 · kb · api 契约 · openapi 漂移 · ESLint · ruff · 文本控制字符扫描（与 CI 同源判据；`repo: local` 不支持 hook 级 `cwd`，实测 4.6.2 只告警不生效，故前端经 `frontend/lint.mjs` 钉目录） |
 | 隐私声明一致性 | `cd frontend && npm run test:privacy` | `docs/PRIVACY.md` 的 13 项可机器化条款 ↔ 代码对账：持久化原语/第三方遥测为 0、日志字段白名单、双端脱敏模式与用例输出逐字相同、文档锚点无死链；5 组反例实测可拦（判据曾漏 `@sentry/browser` 形态，由反例驱动补全） |
 | 引用链健康（唯一联网门禁） | `cd frontend && npm run test:links` | 知识库全部 url 逐条可达性核验：DEAD 即红、412/403 类反爬按 BLOCKED 只报不红；CI `link-health.yml` 每周跑（观察期） |
