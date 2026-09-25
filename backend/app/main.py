@@ -46,7 +46,7 @@ async def request_identity(request: Request, call_next):
             limits.check_declared_size(declared)
         except RequestTooLarge as exc:
             return JSONResponse(status_code=exc.status,
-                                content={"code": exc.status, "message": str(exc)},
+                                content={"code": exc.status, "message": exc.public_message},
                                 headers={"X-Request-Id": request.state.request_id})
     response = await call_next(request)
     response.headers["X-Request-Id"] = request.state.request_id
