@@ -28,10 +28,9 @@ const REPO = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..")
 const TOOL_MAJOR = { npm: 6, pip: 7 }
 // 组件数下限同样按 manifest 分列：npm 是整棵 lock（实测 362）；pip 侧 CI 只装本仓两份
 // requirements（闭包约 30），换环境数字会大幅浮动 ⇒ 下限取"足以证明非空"的量级，不取实测值。
-const MIN_COMPONENTS = { npm: 50, pip: 15 }
+const MIN_COMPONENTS = { npm: 50, pip: 22 }  // pip 侧下限＝锁内条目数（第十八轮实测 22；只许升不许降）
 const LOCK = resolve(REPO, "frontend/package-lock.json")
 const PKG = resolve(REPO, "frontend/package.json")
-const REQS = [resolve(REPO, "backend/requirements.txt"), resolve(REPO, "backend/requirements-dev.txt")]
 
 const argv = process.argv.slice(2)
 const opt = (name, def = "") => {
@@ -92,13 +91,25 @@ if (manifest === "npm") {
     }
   }
 } else {
-  for (const f of REQS) {
-    if (!existsSync(f)) continue
-    for (const line of readFileSync(f, "utf8").split(/\r?\n/)) {
-      const m = line.trim().match(/^([A-Za-z0-9][A-Za-z0-9._-]*)\s*(?:[<>=!~].*)?$/)
-      if (m && !line.startsWith("#")) declared.push({ name: m[1], wantVersion: null, field: "requirements" })
-    }
+  // pip 侧自第二十轮起改由 `backend/requirements.lock` 生成（cyclonedx-py requirements 模式），
+  // 所以这里的对账从"声明 ⊆ 清单"升级为"**锁 ↔ 清单双向全等**"：
+  //   正向＝锁内每个钉版条目都必须在清单里且版本一致（原来因声明是区间而"自然通过"，现在真有牙）；
+  //   反向＝清单里不得出现锁外组件（出现即说明这份清单不代表运行时镜像）。
+  // 为什么弃用 environment 模式：它报的是"这台机器装了 282 个包"（含 pip/setuptools/cyclonedx-bom 自身），
+  // 随 CI 环境漂移；而镜像内恰好只装锁中的 22 个包 ⇒ 只有锁生成的清单才等于交付物。
+  const pipLock = readFileSync(resolve(REPO, "backend/requirements.lock"), "utf8")
+  const pins = new Map()
+  for (const line of pipLock.split(/\r?\n/)) {
+    if (!line || line.startsWith("#") || line.startsWith("-") || /^\s/.test(line) || !line.includes("==")) continue
+    const name = line.split("==")[0].split("[")[0].trim()
+    const ver = line.split("==")[1].trim().split(/\s/)[0]
+    if (name && ver) pins.set(name.toLowerCase().replace(/[_.]+/g, "-"), ver)
   }
+  check(`锁内钉版条目数 ≥ ${MIN_COMPONENTS.pip}（防"锁变空 ⇒ 零缺失"假通过）`, pins.size >= MIN_COMPONENTS.pip, `实测 ${pins.size}`)
+  for (const [name, ver] of pins) declared.push({ name, wantVersion: ver, field: "lock" })
+  const bomNames = new Set(comps.map((c) => String(c.name).toLowerCase().replace(/[_.]+/g, "-")))
+  const extra = [...bomNames].filter((n) => !pins.has(n))
+  check("清单无锁外组件（反向对账：SBOM 必须等于镜像内容）", extra.length === 0, `多出 ${extra.slice(0, 6)}`)
 }
 check(`本仓声明的依赖数 ≥ 5（${manifest}，防"声明侧为空⇒零缺失"假通过）`, declared.length >= 5, `实测 ${declared.length}`)
 // 名字必须按**消费者口径归一化**后再比（PEP 503：小写、`_`/`.` 折叠为 `-`）。
@@ -111,7 +122,7 @@ for (const d of declared) d.key = canonName(d.name)
 const missing = declared.filter((d) => !norm.has(d.key))
 check("每个声明依赖都出现在清单里（名字按 PEP 503 归一后比对）", missing.length === 0, missing.slice(0, 5).map((d) => d.name).join(","))
 const verBad = declared.filter((d) => d.wantVersion && norm.has(d.key) && !norm.get(d.key).includes(d.wantVersion))
-check("每个声明依赖的锁定版本与清单一致（仅 npm 侧有 lock 解析版本；pip 侧声明为区间故自然通过）", verBad.length === 0,
+check("每个声明条目的版本与清单一致（npm 取 package-lock 解析版本；pip 取 requirements.lock 钉版）", verBad.length === 0,
   verBad.slice(0, 5).map((d) => `${d.name}: lock ${d.wantVersion} vs bom [${norm.get(d.key)?.join("|")}]`).join(" ; "))
 
 console.log(`\nSBOM GUARD SUMMARY: 文件=${sbomPath} 组件=${comps.length} 声明依赖=${declared.length} 判据通过=${pass} `

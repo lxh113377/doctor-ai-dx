@@ -91,6 +91,8 @@ CI 会跑同样的东西；`main` 分支保护要求 `build-and-test` 与 `backe
 - **版本真值链（升版本必做四步）**：① 同改 `backend/app/version.py` + `functions/lib/version.js` + `frontend/package.json` 三处 → ② `python scripts/gen_openapi.py`（外科同步契约版本，禁手改/全量重写 `docs/openapi.json`）→ ③ `npm run test:version` 五方对账绿 → ④ 打 tag `vX.Y.Z`。`/api/health` 的 `version` 字段即以此链为源。
   - ④ **必须是附注 tag**（`git tag -a vX.Y.Z -m "…"`）：`git push --follow-tags` **只推附注 tag**，轻量 tag 会静默留在本机——实测这样"推送成功"后 `git ls-remote --tags` 查不到本轮 tag，且 `release.yml`（tag 触发）根本没被唤起。发布后自查两行：`git ls-remote --tags origin refs/tags/vX.Y.Z` 有输出、`gh run list --workflow "Release artifacts (tag)"` 有该 tag 的 run。
   - 本机复现 CI 出包（跨环境逐字节一致，实测 SHA256 全等）：`TZ=UTC0 git -c core.autocrlf=false archive --format=zip --mtime=$(git log -1 --format=%ct <tag>) -o out.zip <tag>`，再用 `python scripts/release_repro_check.py --ref <tag> --against out.zip` 判定。行尾与时区两个成因的来龙去脉见 `docs/ARCHITECTURE.md` 门禁表同名行。
+- **后端测试套件清单**：唯一源是 `backend/tests/suite.json`；执行一律走 `python backend/selftest.py`（`--coverage` 供覆盖率链）。**不要在 CI/compose/package.json 里再抄一份清单**——`scripts/suite_guard.py` 会把漏挂与回潮都判红（第十八轮真实踩过：新增 `test_limits.py` 后镜像 selftest 与 coverage:py 各抄的旧清单都没挂上）。
+- **发布镜像**：打 tag 后由 `release.yml` 推 `ghcr.io/lxh113377/doctor-ai-dx:<tag>` 与 `:latest`；作业内还有一步匿名读 manifest 的实证，包可见性不是 public 就判红（评审要能一条命令拉下来）。改 Dockerfile 后必须本地 `docker build backend && docker run --rm doctor-ai-dx-backend python selftest.py` 复验。
 - **线上部署口径（2026-09-25 实测）**：CI 的 deploy 作业受仓库变量 `AUTO_DEPLOY` 控制——未设时作业 **显式 skipped**（不冒充已部署，也不误红徽章）；
   配好 `CLOUDFLARE_API_TOKEN` secret 后置 `AUTO_DEPLOY=true` 即由 CI 接管，届时缺 Token 会 **判红**（fail-closed 已实测，禁止改回静默跳过）。
   部署后 CI 会校验 `线上 /api/health 的 version == backend/app/version.py`（10 次重试），把「作业绿」升级为「线上真值绿」。

@@ -38,8 +38,9 @@ python -m pip install -r requirements.txt && python run.py   # :8000（本机开
 cd ../frontend && npm install && npm run dev                 # :5173，/api 代理到 8000
 
 # 方式C（容器）：只需 Docker，不装 Python/Node
+docker run --rm -p 8000:8000 ghcr.io/lxh113377/doctor-ai-dx:latest   # 直接拉发布镜像（第十九轮起由 tag 触发推 GHCR）
 docker compose up -d          # :8000 起 FastAPI 镜像面（无 Key ⇒ 按设计降级 rule-fallback）
-docker compose run --rm selftest   # 镜像内自带 19+15+16 项断言，全绿 exit 0 即自证镜像可用
+docker compose run --rm selftest   # 镜像内全套离线断言（清单由 backend/tests/suite.json 单源驱动）
 ```
 > 容器只编排 FastAPI 镜像面：生产权威面是 Cloudflare Pages + Functions（serverless，不是可自托管的容器），故不入 compose。
 

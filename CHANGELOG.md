@@ -5,6 +5,23 @@
 
 ## [Unreleased]
 
+## [1.18.0] - 2026-09-25
+
+### Added（第二十轮：交付物的"可拉取"与"单一清单"）
+- 🔴 **缺口一：发布物不可拉取**。对标当轮实测：`gh api users/bloodworks-io/packages?package_type=container` 查到公开 container 包 `phlox`，而 `gh api users/lxh113377/packages?package_type=container` 返回 **0 个包**——我方镜像只在 CI 里临时 build 做 selftest，评审与用户仍然必须自己装 Python/Node 或手工 build。本轮在 `release.yml` 门禁全绿之后增加镜像发布链：`docker/setup-buildx-action@v3` → `docker/login-action@v3`（用工作流自带 `GITHUB_TOKEN`，**不引入额外凭据**）→ `docker/build-push-action@v6` 推 `ghcr.io/<owner>/doctor-ai-dx:<tag>` 与 `:latest`，`permissions` 补 `packages: write`。
+- **顺序与判据**：镜像步骤排在所有门禁与源码包/SBOM **之后**（任一判据红就不产出镜像）；随后一步 `放开包可见性`（best-effort PATCH，失败不硬拦）+ **匿名可拉取实证**：不带任何凭据向 `ghcr.io/token?scope=repository:<pkg>:pull` 换 token 再读 manifest，非 200 即判红并给出可读的修法提示。理由＝"认证后可读"是最低要求，**"评审一条命令拉得下来"才是交付标准**；只推成功却仍是私有包，等于没发布。
+- 🔴 **缺口二：同一份清单被抄了两遍**。第十九轮新增 `backend/tests/test_limits.py` 后实测发现：`docker-compose.yml` 的 selftest 与 `frontend/package.json` 的 `coverage:py` **各自硬编码同一份五件套清单**，新套件两边都没挂上 ⇒ 发布出去的镜像自证的是**过期套件**（那段注释还写着"三套"，数字早失真）。本轮改为单一源驱动：
+  - 新增清单 `backend/tests/suite.json`（6 条，按依赖代价升序，fail-fast）+ 新增 runner `backend/selftest.py`（`--coverage` 供覆盖率链复用；清单缺失/为空/条目不存在一律 exit 2，**绝不静默当通过**）；CI 后端作业、compose selftest、`coverage:py` 三处全部改为调用 runner。
+  - 新增门禁 `scripts/suite_guard.py`（`npm run test:suite` + CI `Suite manifest gate` + pre-commit 第 10 钩）九条判据：清单非空且 ≥6／每条真实存在（防改名后静默跳过）／**枚举 `tests/test_*.py` + `smoke_engine.py` 反向核对全部已登记**（新增测试忘记挂清单即判红）／无幽灵条目／无重复／**三处消费方必须已改为 runner 驱动**（再抄一份硬编码清单即判红）／runner 存在。**三组反例实测 rc=1**：新建未登记的 `test_zz_probe.py` → 报「漏登记 ['tests/test_zz_probe.py']」；清单里塞幽灵条目 → 同时打中"条目存在"与"无幽灵"两条；compose 回潮硬编码 → 报「仍在硬编码逐条套件＝第二真值」。还原后 rc=0（runner 实跑 6/6 套件 exit0）。
+- **SBOM pip 侧回到声明式（关闭台账#27）**：v1.14.0 当时只能走 `environment` 模式（本仓无钉版 ⇒ `requirements` 模式只出 5 条空壳）。第十八轮锁落地后前提消失，本轮改由 `cyclonedx-py requirements backend/requirements.lock` 生成，判据随之升级为**锁 ↔ 清单双向全等**：正向逐包版本一致（原来因区间声明"自然通过"，现在真有牙）、反向「清单无锁外组件」、条目数 ≥22 非空证明。实测弃用 `environment` 的理由：它报的是"这台 CI 机器装了 282 个包"（含 flask、pip、cyclonedx-bom 自身等与镜像无关者），随环境漂移；而运行时镜像里恰好只有锁中的 22 个包 ⇒ **只有锁生成的清单才等于交付物**。两组反例实测 rc=1：删一个组件 → 「组件数 ≥22」+「uvloop 缺失」双红；加一个锁外假组件 → 反向判据指名 `somebotpkg`。另：`MIN_COMPONENTS.pip` 由 15 抬到 22（＝实测锁内条目数，只升不降）。
+- README「方式C」补一条 `docker run --rm -p 8000:8000 ghcr.io/lxh113377/doctor-ai-dx:latest`；`docs/ARCHITECTURE.md` 门禁表补「测试套件单源对账」行并改写发布工件行；`CONTRIBUTING.md` 写明清单与镜像两条新口径。
+
+### Fixed（本轮自查）
+- 写工作流时把 `sed` 的回引用 `\1` 经 Python 字符串落地成裸 `0x01` 控制字符（**同族第七次复发**，前六次是 `\b`→`0x08`）；`check_text_hygiene.py` 在提交前抓出（`unacceptable character #x0001` 也让 YAML 解析直接失败），按字节还原为字面 `\1` 并复验。教训同前：**凡带反斜杠的字面量一律用 Write/Edit 工具落地，不穿 bash+python 两层转义。**
+
+### 度量与红线
+运行时行为零改动：`npm test` 仍十六件套 exit 0（`limits_guard` 34 / `privacy` 59 / 其余同 v1.17.0）、`suite_guard` 九项、`sbom_guard` 11 项、ESLint + ruff + 文本卫生 + mypy（受控 28 文件）全绿、pre-commit **10 钩** Passed。三条产品红线逻辑零改动、默认检索档仍 bm25、评测仍是同一批 31 例。
+
 ## [1.17.0] - 2026-09-25
 
 ### Added（第十九轮：判据的强制层 + 入站滥用护栏）

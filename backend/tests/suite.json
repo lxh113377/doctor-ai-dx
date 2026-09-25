@@ -1,0 +1,14 @@
+{
+  "_source": "后端测试套件清单的唯一真相源（第二十轮）。CI、docker compose 的 selftest 一次性作业、覆盖率采集链三处一律从本文件驱动执行，禁止在任何一处再手写第二份清单。",
+  "_why": "第十九轮新增 tests/test_limits.py 后实测发现：镜像内 selftest 与 package.json 的 coverage:py **各自硬编码了同一份五件套清单**，新套件两边都没挂上 ⇒ 发布出去的镜像自证的是过期套件，注释里还写着「三套」（数字也早失真）。一份清单两处抄＝漂移的开端，改由枚举器驱动并让漏挂直接判红。",
+  "_ordering": "按依赖代价升序排列（纯函数断言在前，起 TestClient 的在后），任一失败即中止后续（fail-fast）。",
+  "suites": [
+    "tests/smoke_engine.py",
+    "tests/test_fhir.py",
+    "tests/test_retriever_channels.py",
+    "tests/test_api_observe.py",
+    "tests/test_live_path.py",
+    "tests/test_limits.py"
+  ],
+  "_invariants": "suite_guard 会反向断言：本清单不得为空、每条必须真实存在、且 tests/ 下所有 test_*.py 与 smoke_engine.py 必须**全部**被本清单覆盖（新增测试文件忘记登记即判红）。"
+}

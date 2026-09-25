@@ -21,18 +21,14 @@ services:
     restart: unless-stopped
 
   selftest:
-    # 一次性作业：镜像内自带的三套离线断言全绿即证明这份镜像可用（评审从零启动的自证入口）。
-    # 三套均为进程内 TestClient / 纯函数断言，不依赖 backend 服务在线，故不设 depends_on。
+    # 一次性作业：镜像内自带的全套离线断言全绿即证明这份镜像可用（评审从零启动的自证入口）。
+    # 均为进程内 TestClient / 纯函数断言，不依赖 backend 服务在线，故不设 depends_on。
+    # 套件清单**不在这里抄第二份**：由 backend/tests/suite.json 单源驱动（漏挂新套件由 scripts/suite_guard.py 判红）。
     build:
       context: ./backend
     image: doctor-ai-dx-backend
     entrypoint: ["sh", "-c"]
     command:
-      - >
-        python tests/smoke_engine.py &&
-        python tests/test_api_observe.py &&
-        python tests/test_fhir.py &&
-        python tests/test_live_path.py &&
-        python tests/test_retriever_channels.py
+      - python selftest.py
     healthcheck:
       disable: true

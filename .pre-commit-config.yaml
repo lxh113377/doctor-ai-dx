@@ -62,6 +62,13 @@ repos:
         pass_filenames: false
         files: ^(backend/(requirements|Dockerfile)|backend/requirements\.lock)
 
+      - id: suite-guard
+        name: 测试套件单源对账（清单↔磁盘↔CI/compose/覆盖率三处消费方）
+        entry: python scripts/suite_guard.py --quiet
+        language: system
+        pass_filenames: false
+        files: ^(backend/(tests/|selftest)|backend/tests/suite\.json|docker-compose\.yml|\.github/workflows/ci\.yml|frontend/package\.json|scripts/suite_guard\.py)
+
       - id: text-hygiene
         name: 全仓文本控制字符扫描（防"正则里的词边界被转义成裸退格符"类死判据）
         entry: python scripts/check_text_hygiene.py --quiet

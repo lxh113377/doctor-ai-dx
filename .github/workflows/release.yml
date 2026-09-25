@@ -18,6 +18,7 @@ on:
 
 permissions:
   contents: write
+  packages: write   # 第二十二项：镜像推 GHCR 需要（只在本工作流的出包之后才用）
 
 jobs:
   verify-and-package:
@@ -58,6 +59,7 @@ jobs:
           ruff check backend/app backend/tests scripts
           python scripts/type_gate.py --quiet
           python scripts/check_text_hygiene.py --quiet
+          python scripts/suite_guard.py --quiet
           cd frontend
           npm run lint:js
           npm test
@@ -73,13 +75,14 @@ jobs:
           npm run sbom
           node tests/sbom_guard.mjs --sbom docs/sbom/frontend.cdx.json --manifest npm
 
-      - name: SBOM · pip 侧（cyclonedx-bom 钉版 + 与 requirements 对账）
-        # 用 environment 模式而非 requirements 模式：实测 `cyclonedx-py requirements backend/requirements.txt`
-        # 只出 5 条且全部无版本（本仓 requirements 用区间不钉死），SBOM 就成了空壳。
-        # CI 里环境 = 本仓两份 requirements 的解析结果 ⇒ environment 模式给出解析版本与传递闭包。
+      - name: SBOM · pip 侧（由 requirements.lock 声明式产出 + 与锁逐包对账）
+        # 第十八轮把这份 SBOM 从 `environment` 模式改回**声明式**：environment 模式报的是"这台机器装了 282 个什么"
+        # （含 pip/setuptools/cyclonedx-bom 自身等与镜像无关的组件），对审计是假面；
+        # 而运行时镜像里恰好只装锁中的 22 个包 ⇒ 只有从 requirements.lock 生成的 SBOM 才等于交付物本身。
+        # 历史：v1.14.0 当时只能走 environment，因为本仓 pip 侧没有钉版（声明式只出 5 条空壳）——该前提已由 r18 消除。
         run: |
           python -m pip install --quiet "cyclonedx-bom==7.4.0"
-          cyclonedx-py environment --of JSON --output-reproducible -o docs/sbom/backend.cdx.json
+          cyclonedx-py requirements backend/requirements.lock --of JSON --output-reproducible -o docs/sbom/backend.cdx.json
           cd frontend
           node tests/sbom_guard.mjs --sbom docs/sbom/backend.cdx.json --manifest pip
 
@@ -110,6 +113,57 @@ jobs:
         # 只跑一次出包不算"可复现"——本步把主张变成判据：同一 ref 连出两个包必须同 sha，
         # 且包内文本零 CRLF（防 .gitattributes 被删或被 tree 外因素绕过）。
         run: python scripts/release_repro_check.py --ref "$TAG"
+
+      - name: 准备构建器（buildx；build-push-action 的前置）
+        if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+        uses: docker/setup-buildx-action@v3
+
+      - name: 登录 GHCR（用工作流自带 GITHUB_TOKEN，不引入额外凭据）
+        if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 镜像发布（GHCR，随 tag 双标签：<版本> + latest）
+        # 对标取证（当轮实测）：`gh api users/bloodworks-io/packages?package_type=container` 查到公开包 phlox，
+        # 而 `gh api users/lxh113377/packages?package_type=container` 返回 **0 个包** ⇒ 我方镜像只在 CI 里临时 build，
+        # 评审与用户仍须自装 Python/Node 或自己 build。本步把 Dockerfile 的产物变成"一条命令可拉取"的交付物。
+        # 顺序刻意排在所有门禁与源码包/SBOM 之后：判据任一红就不推镜像。
+        # ragflow/openemr 的镜像发布走 Docker Hub，本机 hub.docker.com 不可达（实测 http=000/21s 超时）⇒ 未独立核验，只记已知。
+        if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+        uses: docker/build-push-action@v6
+        with:
+          context: ./backend
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/doctor-ai-dx:${{ github.ref_name }}
+            ghcr.io/${{ github.repository_owner }}/doctor-ai-dx:latest
+
+      - name: 放开包可见性（评审要能匿名拉取；失败不在此处硬拦，由下一步 manifest 实测判定）
+        if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh api -X PATCH             "users/${{ github.repository_owner }}/packages/container/doctor-ai-dx/visibility"             --input - <<< '{"visibility":"public"}' ||             echo "可见性接口不接受当前凭据（继续，由 manifest 实测判定是否真的可匿名拉取）"
+
+      - name: 镜像可拉取实证（**匿名**走 GHCR token 交换，模拟评审侧视角）
+        if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+        # 刻意不带任何凭据：认证可读是最低要求，"评审能不能一条命令拉下来"才是交付标准。
+        # 匿名 401/403 ⇒ 判红，并显式提示去把包可见性设成 public（上一步已尽力放开）。
+        run: |
+          set -e
+          IMG="${{ github.repository_owner }}/doctor-ai-dx"
+          TOK=$(curl -s --max-time 60 "https://ghcr.io/token?scope=repository:${IMG}:pull" | sed -n 's/.*"token":"\([^"]*\)".*/\1/p')
+          code=$(curl -s -o /tmp/mf.json -w "%{http_code}" --max-time 60             -H "Authorization: Bearer ${TOK}"             -H "Accept: application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.v2+json"             "https://ghcr.io/v2/${IMG}/manifests/${{ github.ref_name }}")
+          echo "匿名 manifest http=$code"
+          if [ "$code" != "200" ]; then
+            echo "::error::镜像无法匿名拉取（包可见性多半仍是 private）。改法：Packages → doctor-ai-dx → Settings → Make public 后重跑本作业。"
+            exit 1
+          fi
+          test -s /tmp/mf.json
 
       - name: SHA256SUMS（三个工件逐一可核验）
         run: |

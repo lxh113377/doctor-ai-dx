@@ -1,6 +1,5 @@
 """开发启动入口：python run.py"""
 import uvicorn
-
 from app.config import get_settings
 
 if __name__ == "__main__":

@@ -126,18 +126,12 @@ jobs:
       - name: Type gate (mypy，阈值单一源 = frontend/tests/fixtures/type_floor.json)
         # 不直接看 mypy 退出码：还核对「检查文件数下限」与「devDep 是否钉版」，防静默空跑
         run: python ../scripts/type_gate.py
-      - name: Test rule-fallback engine
-        run: python tests/smoke_engine.py
-      - name: Test API observability contract
-        run: python tests/test_api_observe.py
-      - name: Test FHIR-light export contract
-        run: python tests/test_fhir.py
-      - name: Test live-path red lines (stubbed httpx, zero network)
-        run: python tests/test_live_path.py
-      - name: Test retriever channels (stubbed httpx, zero network)
-        run: python tests/test_retriever_channels.py
-      - name: Test API abuse guards (入站边界双端同码，零网络)
-        run: python tests/test_limits.py
+      - name: Suite manifest gate（清单↔磁盘↔三处消费方对账，判据 scripts/suite_guard.py）
+        # 第二十轮立论：镜像 selftest 与覆盖率链曾各抄一份硬编码清单，第十九轮新增 test_limits.py 两边都没挂上
+        # ⇒ 发布的镜像自证的是过期套件。现统一由 backend/tests/suite.json 单源驱动，漏挂即判红。
+        run: python ../scripts/suite_guard.py
+      - name: Backend suites (runner 驱动，fail-fast，零网络)
+        run: python selftest.py
       - name: Branch protection gate（分支保护 ↔ 作业图对账，判据 scripts/branch_guard.py）
         # 立论：实测 required checks 只有 2 项而 ci.yml 有 4 个阻断作业 ⇒ 新判据可被绕过。
         # 本步骤在 CI 里静态对账；线上真实配置用 `--remote` 人工/定期核（Actions token 无 admin 读保护会 403，故不在此处强判）。
@@ -147,12 +141,7 @@ jobs:
         # 第十四轮治本：此前本步骤硬编码 --fail-under=85，改 JSON 不影响判定 ⇒ 清单与判据是两套数。
         run: |
           rm -f .coverage
-          python -m coverage run --append --source=app tests/smoke_engine.py
-          python -m coverage run --append --source=app tests/test_api_observe.py
-          python -m coverage run --append --source=app tests/test_fhir.py
-          python -m coverage run --append --source=app tests/test_live_path.py
-          python -m coverage run --append --source=app tests/test_retriever_channels.py
-          python -m coverage run --append --source=app tests/test_limits.py
+          python selftest.py --coverage
           python ../scripts/coverage_gate.py --quiet
 
   # 聚合 required check（对标 OpenEMR 的 `All Checks Passed`）。
