@@ -26,9 +26,10 @@
 ## 提交前必须全绿
 
 ```bash
-cd frontend && npm test                       # 十四件套，含双端契约与知识库门禁
+cd frontend && npm test                       # 十五件套，含双端契约、配置契约(env) 与知识库门禁
 cd frontend && npm run lint                   # 静态检查门禁（ESLint + ruff；警告也算红）
 cd frontend && npm run typecheck              # Python 类型门禁（mypy 严格档，阈值 fixtures/type_floor.json）
+cd frontend && npm run lock                   # 依赖锁定对账（requirements.lock 钉版+哈希 且 Dockerfile 真从锁装）
 cd frontend && npm run build && npm run test:e2e   # 端到端浏览器回归（首次先 npx playwright install --with-deps chromium）
 cd backend && python tests/smoke_engine.py && python tests/test_api_observe.py
 node ../../work/perf_gate.mjs                 # 性能地板线（需 14 天内新鲜 live 报告）
@@ -80,6 +81,13 @@ CI 会跑同样的东西；`main` 分支保护要求 `build-and-test` 与 `backe
 
 - 提交说明写「为什么」，一次提交一件事；`feat` / `fix` / `test` / `docs` / `chore` 前缀。
 - 版本号走 SemVer + tag，并同步 `CHANGELOG.md` 与 `docs/EVAL_CARD.md` 的版本锚点。
+- **依赖口径（第十八轮起）**：`backend/requirements.txt` 是**声明面**（写区间，给人读）；
+  `backend/requirements.lock` 是**安装面**（uv 按 Linux/glibc 解析 + 全量 sha256），容器与 CI 一律从锁安装并开 `--require-hashes`。
+  改声明面后必须重跑锁生成（命令就写在锁文件头注里）：
+  `cd backend && uv pip compile requirements.txt --python-version 3.12 --python-platform x86_64-unknown-linux-gnu --generate-hashes -o requirements.lock`
+  然后 `python scripts/lock_guard.py` 对账。**Windows 本机不要直接装这份锁**（uvloop 无 Windows 轮，属预期失败），本机仍用 `pip install -r requirements.txt`。
+- **环境变量口径**：新增任何 `os.getenv("X")` / `env?.X` 读取，必须同步写进 `backend/.env.example`，
+  否则 `npm run test:env` 判红（反向也一样：示例里留一个代码不读的键同样判红）。
 - **版本真值链（升版本必做四步）**：① 同改 `backend/app/version.py` + `functions/lib/version.js` + `frontend/package.json` 三处 → ② `python scripts/gen_openapi.py`（外科同步契约版本，禁手改/全量重写 `docs/openapi.json`）→ ③ `npm run test:version` 五方对账绿 → ④ 打 tag `vX.Y.Z`。`/api/health` 的 `version` 字段即以此链为源。
   - ④ **必须是附注 tag**（`git tag -a vX.Y.Z -m "…"`）：`git push --follow-tags` **只推附注 tag**，轻量 tag 会静默留在本机——实测这样"推送成功"后 `git ls-remote --tags` 查不到本轮 tag，且 `release.yml`（tag 触发）根本没被唤起。发布后自查两行：`git ls-remote --tags origin refs/tags/vX.Y.Z` 有输出、`gh run list --workflow "Release artifacts (tag)"` 有该 tag 的 run。
   - 本机复现 CI 出包（跨环境逐字节一致，实测 SHA256 全等）：`TZ=UTC0 git -c core.autocrlf=false archive --format=zip --mtime=$(git log -1 --format=%ct <tag>) -o out.zip <tag>`，再用 `python scripts/release_repro_check.py --ref <tag> --against out.zip` 判定。行尾与时区两个成因的来龙去脉见 `docs/ARCHITECTURE.md` 门禁表同名行。
@@ -98,6 +106,6 @@ CI 会跑同样的东西；`main` 分支保护要求 `build-and-test` 与 `backe
 - **同文件多 PR 积压**：按"聚合批"处理——自开分支一次覆盖 N 包，PR 描述引用被覆盖编号，合入后关闭原 PR（留言可 `/rerun` 重建）。
 - **major**：先查 peer（`npm i` 干跑看 ERESOLVE），框架级升级（如 vite 大版本）单独立项，不混入依赖批；结论写入 PR 评论留痕。
 - 自动审计：`.github/workflows/dep-audit.yml` 每周一 npm audit（high 即红）+ pip-audit（观察期报告制，删 `continue-on-error` 一行即转硬门禁）；依赖文件变更的 PR 也会触发。注：本机镜像 registry 无 audit 端点，本地 `npm audit` 不可用属环境限制，以 CI 为准（2026-09-24 实测）。
-- 任何依赖变更后：`npm run lint` + `npm test` 十四件套 + `npm run build` + `npm run test:bundle`（体积地板线）+ `npm run sbom && npm run sbom:check` 全绿。
+- 任何依赖变更后：`npm run lint` + `npm test` 十五件套 + `npm run lock` + `npm run build` + `npm run test:bundle`（体积地板线）+ `npm run sbom && npm run sbom:check` 全绿。
   SBOM 属发布期产物、**刻意不入库**（入库就会造出「陈旧副本 vs 当前 lock」的第二真值）；tag 工作流会重算并连同 SHA256 一起挂到 Release。
   改依赖后本地先跑一遍对账，别等发布期才发现清单漂移。方可合。

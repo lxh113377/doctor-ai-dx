@@ -55,6 +55,13 @@ repos:
         pass_filenames: false
         files: \.py$
 
+      - id: lock-gate
+        name: 依赖锁定对账（requirements.lock 钉版+哈希、且 Dockerfile 真从锁安装）
+        entry: python scripts/lock_guard.py --quiet
+        language: system
+        pass_filenames: false
+        files: ^(backend/(requirements|Dockerfile)|backend/requirements\.lock)
+
       - id: text-hygiene
         name: 全仓文本控制字符扫描（防"正则里的词边界被转义成裸退格符"类死判据）
         entry: python scripts/check_text_hygiene.py --quiet

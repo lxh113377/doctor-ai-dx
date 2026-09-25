@@ -1,3 +1,7 @@
+# 运行时依赖的**声明面**（写区间，给人读、给 lock_guard 对账用）。
+# 实际安装一律走 `requirements.lock`（钉版 + sha256，见 backend/Dockerfile 与 scripts/lock_guard.py）：
+# 改本文件后必须重跑锁生成命令（锁的头注就是命令本身），否则 lock_guard 判红。
+# 生成：uv pip compile requirements.txt --python-version 3.12 --python-platform x86_64-unknown-linux-gnu --generate-hashes -o requirements.lock
 fastapi>=0.141.1
 uvicorn[standard]>=0.53.0
 httpx>=0.28.1

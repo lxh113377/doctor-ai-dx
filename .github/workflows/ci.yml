@@ -108,9 +108,13 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-          cache-dependency-path: backend/requirements.txt
-      - name: Install
-        run: python -m pip install -r requirements.txt
+          cache-dependency-path: |
+            backend/requirements.txt
+            backend/requirements.lock
+      - name: Install（从 requirements.lock 且开 --require-hashes ⇒ 跑测环境 == 运行时镜像环境）
+        run: python -m pip install --require-hashes -r requirements.lock
+      - name: Lock gate（依赖锁定对账 + Dockerfile 接线实证，判据 scripts/lock_guard.py）
+        run: python ../scripts/lock_guard.py
       - name: Install dev deps (coverage instrumentation, not in runtime image)
         run: python -m pip install -r requirements-dev.txt
       - name: Static analysis (ruff，规则集钉在仓根 ruff.toml)

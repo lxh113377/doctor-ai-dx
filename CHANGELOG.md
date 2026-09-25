@@ -5,6 +5,31 @@
 
 ## [Unreleased]
 
+## [1.16.0] - 2026-09-25
+
+### Added（第十八轮：运行环境可复现——依赖锁定 + 配置契约门禁）
+- 对标实测（`gh api repos/<peer>/contents`）：**4/4 同类项目都带锁文件** —— OpenEMR `composer.lock` + `package-lock.json`、ragflow `pyproject.toml` + `uv.lock`、phlox `package-lock.json`、medical-rag `environment.yml`。我方 npm 侧一直有 `package-lock.json`，**pip 侧只有区间声明**（`fastapi>=0.141.1` 等）⇒ 同一个 tag 在不同时间 `pip install` 会装出不同环境，镜像与评测结果都无可审计的依赖真值。这也正是第十六轮 SBOM 的 pip 侧被迫走 `environment` 模式的根因（声明式 `requirements` 模式因无钉版只出 5 条空壳＝假门禁）。
+- 新增 `backend/requirements.lock`：`uv pip compile requirements.txt --python-version 3.12 --python-platform x86_64-unknown-linux-gnu --generate-hashes`（**按运行时镜像的 Linux/glibc 解析**，命令原样写在锁头注里，改声明面照抄即可）。实测：声明 5 条 → 锁内 **22 个包 / 505 条 sha256**。`requirements.txt` 定位为**声明面**（写区间、给人读、供门禁对账），锁为**安装面**；`backend/Dockerfile` 与 CI 一律改从锁安装并开 `--require-hashes`。
+- 新增 `scripts/lock_guard.py`（`npm run lock` + CI `Lock gate` 步骤 + pre-commit 第 9 钩）九条判据：锁内包数下限（**空锁/半截锁不得判绿**）、头注须含 `--generate-hashes` 与目标平台（换平台＝换判据）、声明包逐一钉版、**锁内版本须满足声明区间**（专治"改声明不重锁"）、每条目须带 sha256、**Dockerfile 真从锁安装 + 真开 `--require-hashes` + 不再安装浮动 requirements**。
+- 新增 `frontend/tests/env_guard.mjs`（入十五件套，第 12 项）六条判据：代码读取的环境变量（`os.getenv` / `environ[]` / JS `env?.K`）↔ `backend/.env.example` **双向对账**、示例面密钥类条目必须留空、扫描面与键集合非空证明、**双端扫描面各自非空**。对标 OpenEMR `Check Vendored Contracts` 与 ragflow 的 `*.example` 惯例——把"声明面"钉成判据而不是靠人记。
+
+### Fixed（首跑即抓到真实漂移，且反例抓出门禁自身的假通过）
+- 🔴 **配置面真实漂移 1 条**：`BGE_ENGINE_DIR`（`scripts/build_semantic_neighbors.py` 构建语义邻接表时读）从未出现在 `.env.example` ⇒ 照示例配置的人无法复现构建期链路。已补登记并写明"构建期工具、不参与线上运行时、线上零模型零网络"。
+- **门禁自身的假通过（自查抓到）**：`lock_guard` 初版按 Dockerfile **全文**匹配 `--require-hashes`，而我把这个词写在了 Dockerfile 的**注释**里 ⇒ RUN 行实际是浮动安装时判据仍 PASS。这是"用文档字面量满足代码判据"，与本项目反复复发的 `\b`→`0x08` 死判据同族。修法：先剥注释行、只匹配 `RUN/COPY` 指令，再把该场景写成反例（现测得 3 条 FAIL、rc=1）。
+- **判据覆盖面缺陷（自查抓到）**：`env_guard` 初版正则漏吃 JS 可选链 `env?.K` ⇒ 整个 Functions 权威面命中数为 0，而 Python 侧 8 个键让"总键数"看起来完全健康。修法：`env\s*\??\s*\.` + 新增「双端扫描面各自非空」硬判据（现测 Py 4 文件 / JS 3 文件；把正则改回去立刻 rc=1）。
+- **门禁自身写法被自己的非空证明拦住**：`env_guard` 首版正则要求键名前无引号，实测"读到 0 个环境变量键"→ 非空证明直接判红，当场暴露而不是静默通过（R247 落地即生效）。
+
+### 反例与验证（实测退出码）
+- `lock_guard` 四组反例 rc=1：① 抹掉锁内哈希 → 报「每个条目都带 ≥1 个 sha256」并列首批包名；② Dockerfile 退回 `pip install -r requirements.txt` 且注释保留锁字样 → **3 条 FAIL**（正是上面那条假通过的回归测试）；③ 把声明改成 `fastapi>=0.999.0` 不重锁 → 报「声明 >=0.999.0 但锁内 0.141.1」；④ 还原后 9 项 PASS rc=0。
+- `env_guard` 三组反例 rc=1：注入未登记键 `DX_MAX_STEPS` → 指名 `backend/app/config.py:24`；注入孤儿项 `UNUSED_FLAG` + 给 `DEEPSEEK_API_KEY` 填上值 → 两条 FAIL；破坏 JS 侧匹配 → 「双端各自非空」FAIL。还原后 6 项 PASS rc=0。
+- CI `backend-test` 作业改为**从锁安装**（`pip install --require-hashes -r requirements.lock`）并新增 `Lock gate` 步骤；`release.yml` 出包前置门禁同步加入锁对账 ⇒ 跑测环境、发布门禁环境与运行时镜像环境三者同一。
+- **容器实测（锁生效的最终证据）**：`docker build backend`（镜像内 `pip install --require-hashes -r requirements.lock`）成功，镜像 `sha256:0d814aa98e49b0…`（235,311,696 B），镜像内五套自证全绿 **25 / 40 / 16 / 37 / 25 pass，0 fail** ⇒ 锁定的不只是清单，装出来的环境能跑全部断言。
+
+### 度量与红线
+- 前端由十四件套扩为**十五件套**（新增 `test:env` 6 项），pre-commit 由 8 钩子扩为 **9 钩子**；`mypy` 受控文件 24→25 仍 0 error，ruff / ESLint / 文本卫生全绿，`lock_guard --quiet` 与 `pre-commit run --all-files` 全 Passed。
+- 覆盖率与运行时代码零改动：JS 全局分支 75.24%（地板 74）、Py 92.78%（地板 88）；三条产品红线逻辑零改动、默认检索档仍 bm25、评测仍是同一批 31 例。
+- 口径边界如实登记：锁按 Linux 解析，**Windows 本机 `pip install --require-hashes -r requirements.lock` 会因 uvloop 无 Windows 轮而失败（属预期）**，本机开发继续用声明面；文档与 CONTRIBUTING 均已写明，不做"跨平台万能锁"的假主张。
+
 ## [1.15.1] - 2026-09-25
 
 ### Fixed（发布工件跨环境可复现：给第十六轮的"边界"翻案）

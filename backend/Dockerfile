@@ -8,9 +8,13 @@ ENV PYTHONUNBUFFERED=1 \
 
 WORKDIR /srv/backend
 
-# 依赖层单独缓存：requirements.txt 不变则不重装
-COPY requirements.txt ./
-RUN pip install --no-cache-dir -r requirements.txt
+# 依赖层单独缓存：requirements.lock 不变则不重装。
+# **从锁文件安装且开 --require-hashes**（第十八轮）：此前装的是 requirements.txt 的浮动区间，
+# 同一个 tag 在不同时间会装出不同环境、镜像无法审计。锁由
+# `uv pip compile requirements.txt --python-version 3.12 --python-platform x86_64-unknown-linux-gnu --generate-hashes`
+# 生成（按本镜像的 Linux/glibc 解析），对账判据见 scripts/lock_guard.py。
+COPY requirements.lock ./
+RUN pip install --no-cache-dir --require-hashes -r requirements.lock
 
 COPY app ./app
 COPY run.py ./
