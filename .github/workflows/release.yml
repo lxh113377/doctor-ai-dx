@@ -141,8 +141,12 @@ jobs:
             ghcr.io/${{ github.repository_owner }}/doctor-ai-dx:${{ github.ref_name }}
             ghcr.io/${{ github.repository_owner }}/doctor-ai-dx:latest
 
-      - name: 放开包可见性（评审要能匿名拉取；失败不在此处硬拦，由下一步 manifest 实测判定）
+      - name: 放开包可见性（尽力而为；真判据在下一步的匿名 manifest 实测）
         if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+        # 实测记录：本仓该 PATCH 无论用 GITHUB_TOKEN 还是本机 PAT 都回 404（`users/{login}/packages/...`
+        # 对个人包要求 higher-scope token），而包实际是 **public**（源仓库公开 ⇒ GHCR 默认公开）。
+        # 所以这一步只是"若将来仓库转私有仍能自愈"的尝试，continue-on-error 是故意的：
+        # 不能拿一个已知 404 的接口当发布门禁，也不能因它 404 就断定不可拉取（那是下一步的事）。
         continue-on-error: true
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -152,18 +156,32 @@ jobs:
       - name: 镜像可拉取实证（**匿名**走 GHCR token 交换，模拟评审侧视角）
         if: ${{ startsWith(github.ref, 'refs/tags/v') }}
         # 刻意不带任何凭据：认证可读是最低要求，"评审能不能一条命令拉下来"才是交付标准。
-        # 匿名 401/403 ⇒ 判红，并显式提示去把包可见性设成 public（上一步已尽力放开）。
+        # v1.18.0 首跑本步判红，当时提示语写作"包可见性多半仍是 private"——**归因错了**：
+        # 实测 build-push-action 推的是 OCI **index**（mediaType=application/vnd.oci.image.index.v1+json），
+        # 而本步 Accept 只列了 manifest 两种类型 ⇒ registry 回 404 `MANIFEST_UNKNOWN: OCI index found, but
+        # Accept header does not support OCI indexes`。包始终是 public。教训：判据红先读响应体再改状态，
+        # 猜测式提示语会把下一轮排查带到别的系统上（本机已用同一命令实证两类型 404 / 四类型 200）。
+        # 因此现在按状态码分支报错，并把响应体一起打出来。
         run: |
           set -e
           IMG="${{ github.repository_owner }}/doctor-ai-dx"
           TOK=$(curl -s --max-time 60 "https://ghcr.io/token?scope=repository:${IMG}:pull" | sed -n 's/.*"token":"\([^"]*\)".*/\1/p')
-          code=$(curl -s -o /tmp/mf.json -w "%{http_code}" --max-time 60             -H "Authorization: Bearer ${TOK}"             -H "Accept: application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.v2+json"             "https://ghcr.io/v2/${IMG}/manifests/${{ github.ref_name }}")
+          test -n "$TOK" || { echo "::error::匿名 token 交换失败（GHCR 端点异常）"; exit 1; }
+          ACCEPT="application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.list.v2+json, application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.v2+json"
+          code=$(curl -s -o /tmp/mf.json -w "%{http_code}" --max-time 60 -H "Authorization: Bearer ${TOK}" -H "Accept: ${ACCEPT}" "https://ghcr.io/v2/${IMG}/manifests/${{ github.ref_name }}")
           echo "匿名 manifest http=$code"
           if [ "$code" != "200" ]; then
-            echo "::error::镜像无法匿名拉取（包可见性多半仍是 private）。改法：Packages → doctor-ai-dx → Settings → Make public 后重跑本作业。"
+            echo "--- 响应体 ---"; cat /tmp/mf.json
+            case "$code" in
+              401|403) echo "::error::匿名被拒（$code）=包可见性仍是 private。改法：Packages → doctor-ai-dx → Settings → Make public 后重跑。" ;;
+              404) echo "::error::404 且已带 index 类型 ⇒ 该 tag 未推上去或名字不对（对照上一步 build-push 的 tags 输出）。" ;;
+              *) echo "::error::匿名拉取失败（$code），非预期状态码，按响应体排查。" ;;
+            esac
             exit 1
           fi
           test -s /tmp/mf.json
+          # 只拿到 200 还不够：必须是"有子清单的 index"，否则等于验证了一个空壳。
+          python3 -c "import json,sys; d=json.load(open('/tmp/mf.json')); n=len(d.get('manifests') or ([1] if d.get('config') else [])); print('platforms/children=%d'%n); sys.exit(0 if n>=1 else 1)"
 
       - name: SHA256SUMS（三个工件逐一可核验）
         run: |

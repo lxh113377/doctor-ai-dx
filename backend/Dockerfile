@@ -18,6 +18,9 @@ RUN pip install --no-cache-dir --require-hashes -r requirements.lock
 
 COPY app ./app
 COPY run.py ./
+# 自证 runner 与套件清单必须一起进镜像：runner 从 tests/suite.json 读单源清单，
+# 少 COPY 一个就是"compose selftest 在镜像里报文件不存在"（第二十轮实测踩过一次类似坑）。
+COPY selftest.py ./
 # 测试随镜像提供：`docker compose run --rm backend python tests/smoke_engine.py` 可在容器内自证
 COPY tests ./tests
 
