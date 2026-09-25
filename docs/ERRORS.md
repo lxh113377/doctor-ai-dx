@@ -10,7 +10,7 @@
 |---|---|---|---|---|
 | `200` | 成功，含**降级成功**（LLM 不可用时走规则兜底，`data.mode="rule-fallback"`） | — | — | 读 `data.mode` 决定是否标注"降级"，不要按失败处理 |
 | `400` | 请求体不是合法 JSON 对象（不再静默当空对象继续跑） | `请求内容无法解析，请刷新页面后重试` | `BAD_JSON_MESSAGE` / `BAD_JSON_PUBLIC_MESSAGE` | 提示"请重试"，不重放同一 body |
-| `404` | 病例 id 不存在，或路径未匹配 | `unknown case: {id}` ／ `not found: {path}` | `engine.js` / `engine.py` 抛出后由路由翻译 | 视为调用方参数错误，不重试 |
+| `404` | 病例 id 不存在，或路径未匹配 | `unknown case: {id}` ／ `not found: {path}` | 双端同名异常 `UnknownCase`（`engine.js` 带 `status=404`、`engine.py` 由路由层翻译）；路径未匹配由路由直接回 | 视为调用方参数错误，不重试 |
 | `413` | 入站边界超限（body 64 KiB／history 64 条／单条 2000 字） | `请求内容超出可处理范围，请精简问诊记录后重试` | `TOO_LARGE_MESSAGE` / `TOO_LARGE_PUBLIC_MESSAGE` | 截断或分页后重试；阈值单一源见 `frontend/tests/fixtures/request_limits.json` |
 | `422` | JSON 合法但结构不合契约（`history` 非数组、元素非对象、`content`/`role` 非字符串、`dx` 非对象） | `请求参数不完整，请刷新后重试（故障编号 {id}）` | `BAD_SHAPE_MESSAGE` / `BAD_SHAPE_PUBLIC_MESSAGE` | 修参数后重试；带编号来咨询可直接定位日志 |
 | `500` | 未预期异常（**只留给真故障**，任何客户端可修正的错误都不落在这一档） | `服务暂时不可用，请稍后重试（故障编号 {id}）` | `main.py` / `functions/api/[[route]].js` 兜底 | 带 `X-Request-Id` 退避重试（指数退避，最多 2 次） |
@@ -32,4 +32,6 @@
 
 - 不会返回框架默认的 `{"detail": [...]}`（FastAPI 校验错误已被翻译，第十四轮起由测试钉住）。
 - 不会把客户端错误记成服务端 `error` 级日志（第十九轮起 4xx 一律 `warn`，防滥用流量淹没真故障）。
+  第二十二轮把这条承诺**从文档升级成判据**：`error_parity_guard` 按 `X-Request-Id` 对矩阵里 34 条 4xx 用例
+  逐条归因，任一条落 `error` 即判红（当时的现形用例就是 `unknown case` 404——先落 error 再靠文案前缀翻译成 404）。
 - 不会用 `500` 表示"你传的参数不对"（第二十一轮收敛台账#28 后由 `422` 承担）。

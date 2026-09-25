@@ -63,13 +63,27 @@ function buildBody(c) {
 
 console.log("== 权威面（Functions/Node 直接调 onRequest）==")
 const jsRows = []
-for (const c of cases) {
-  const res = await onRequest({ request: new Request(`https://dx.test${c.path}`, {
-    method: "POST", headers: { "content-type": "application/json" }, body: buildBody(c),
-  }), env: {}, waitUntil() {} })
-  let msg = null
-  try { msg = (JSON.parse(await res.text())).message } catch { msg = null }
-  jsRows.push({ name: c.name, status: res.status, message: msg })
+// 日志级别与响应码**必须同源**：r19 立的口径是"4xx 不得记 error 级"（否则刷滥用流量就能淹没真故障），
+// 但第二十二轮跑本守卫时从 stdout 里看见 `{lvl:"error",msg:"unknown case: (未提供)"}` —— 未知病例回的是
+// 404，日志却先按"未预期异常"落了 error 级，再靠 catch 比对 message 前缀翻译成 404。根因＝权威面抛**裸 Error**
+// （镜像面 `engine.py` 早就有带类型的 `UnknownCase`）。本判据把"每条 4xx 用例都不得出现在 error 行里"钉进矩阵。
+const logged = []
+const realWarn = console.warn
+const realError = console.error
+console.warn = (...a) => { logged.push(a.join(" ")) }
+console.error = (...a) => { logged.push(a.join(" ")) }
+try {
+  for (const c of cases) {
+    const res = await onRequest({ request: new Request(`https://dx.test${c.path}`, {
+      method: "POST", headers: { "content-type": "application/json" }, body: buildBody(c),
+    }), env: {}, waitUntil() {} })
+    let msg = null
+    try { msg = (JSON.parse(await res.text())).message } catch { msg = null }
+    jsRows.push({ name: c.name, status: res.status, message: msg, req: res.headers.get("x-request-id") })
+  }
+} finally {
+  console.warn = realWarn
+  console.error = realError
 }
 
 console.log("== 镜像面（FastAPI TestClient，由 backend/tests/error_parity_dump.py 取样）==")
@@ -117,6 +131,21 @@ check("4xx 响应体仍是 {code,message} 同形且 message 非空",
     .filter((r) => r.status >= 400 && r.status < 500)
     .every((r) => typeof r.message === "string" && r.message.length > 4),
   "空 message＝对外等于没说话")
+
+// —— 日志级别与响应码同源（本守卫同时是"4xx 不得落 error"的判据，见上方权威面捕获）——
+const parsedLogs = logged.map((l) => { try { return JSON.parse(l) } catch { return null } }).filter(Boolean)
+const fourXx = cases.filter((c) => c.status >= 400 && c.status < 500)
+const reqOf = (c) => js.get(c.name)?.req
+const withLog = fourXx.filter((c) => parsedLogs.some((p) => p.req === reqOf(c)))
+// 正向对照：捕获链没接上时 0 条日志会让下面的"零 error"判据**恒真**，所以先证明日志确实被收到。
+// 按下限＝"每条 4xx 用例都要留下一条能按 req 归因的行"（实测 34/34 全中：矩阵里 404 都经异常出口，
+// 而"路径未匹配"的 404 不在矩阵内、不产生日志 ⇒ 用全等而不是拍的数字，分母由 fixture 现算）。
+check(`日志捕获链有效（${fourXx.length} 条 4xx 用例逐条留下可归因行）`,
+  withLog.length === fourXx.length, `实测 ${withLog.length}/${fourXx.length}：不足＝sink 没接上或用例不再产生日志`)
+const crossed = fourXx.filter((c) => parsedLogs.some((p) => p.lvl === "error" && p.req === reqOf(c)))
+  .map((c) => `${c.name}→${c.status}`)
+check("4xx 用例零 error 级日志（按 X-Request-Id 逐条归因，客户端错误不得伪装成服务端故障）",
+  crossed.length === 0, `越级：${crossed.join(" | ")}`)
 
 console.log(`\nRESULT: ${pass} pass / ${fail} fail`)
 process.exit(fail ? 1 : 0)

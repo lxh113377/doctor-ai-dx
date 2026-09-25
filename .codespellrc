@@ -8,5 +8,8 @@ skip = node_modules,.wrangler,dist,build,archive,docs/sbom,package-lock.json,req
 #   ehr —— 电子健康档案（Electronic Health Record）是本项目的核心领域词，
 #            codespell 词典把 EHR 当成 HER 的拼写错误。实测：全仓唯一一条命中就是这个（docs/EVAL_CARD.md）。
 ignore-words-list = ehr
+# 段级豁免（不是关检查）：只允许包住**故意写出来的错拼样本**（如证明本判据会咬的反例说明），
+# 包住整段=滥用，评审时看 diff 就能发现。用法：<!-- codespell:ignore-begin 原因 --> … <!-- codespell:ignore-end -->
+ignore-multiline-regex = codespell:ignore-begin.*?codespell:ignore-end
 count = true
 quiet-level = 3

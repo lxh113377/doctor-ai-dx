@@ -20,8 +20,10 @@ WORKDIR /srv/backend
 # 再保持单一安装入口 `-r requirements.lock`，避免"两条安装命令只有一条开 require-hashes"的形态。
 COPY requirements.lock requirements.arm64.lock ./
 ARG TARGETARCH
-RUN if [ "$TARGETARCH" = "arm64" ]; then cp requirements.arm64.lock requirements.lock; fi
-RUN pip install --no-cache-dir --require-hashes -r requirements.lock
+# 选锁与安装合成**一条 RUN**：连续两条 RUN 会被 hadolint 的 info 档按 DL3059 判红
+# （第二十二轮 CI 实测：`.hadolint.yaml` 的 failure-threshold=info 就为这个把作者拦下两次）。
+RUN if [ "$TARGETARCH" = "arm64" ]; then cp requirements.arm64.lock requirements.lock; fi \
+    && pip install --no-cache-dir --require-hashes -r requirements.lock
 
 COPY app ./app
 COPY run.py ./

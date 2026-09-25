@@ -122,6 +122,13 @@
 - 症状：`history:"boom"` 权威面 500、镜像面 422，且差异被测试**钉住**而不是修掉。
 - 处置：入站定码（4xx），500 只留给真故障；4xx 一律 warn 级日志（滥用流量不得刷 error 日志）。
 - 判据：`frontend/tests/error_parity_guard.mjs` + `frontend/tests/fixtures/error_parity.json` 做**三方**对账（期望 ↔ JS ↔ Py）。只比"两端互相等"不够——两边一起错就永远绿。
+- **同一族的第二个出口（第二十二轮现形）**：状态码对上了，**日志级别还是错的**——未知病例 id 抛裸 `Error`，
+  catch 先按"未预期异常"落 `error` 级、事后才用 `message.startsWith("unknown case")` 翻译成 404。
+  守卫只比响应码，所以这条 404 一直**合法地**往 error 日志里灌噪声（任何人拿随机 id 打 `/api/dx/*` 就能刷）。
+  修法＝权威面补带类型的 `UnknownCase`（`status=404`，与镜像面 `engine.py.UnknownCase` 同名），
+  4xx 分支统一按 `e.status` 分流，删掉前缀匹配；**"是什么码"与"落什么级别"必须同源**，靠字符串比对续命迟早再错一次。
+- 判据（本轮补）：`error_parity_guard.mjs` 按 `X-Request-Id` 逐条归因断言"34 条 4xx 用例零 error 级日志"，
+  并配**正向对照**（同批用例必须真留下 34 条可归因行，否则"零 error"是恒真——实测拔掉捕获即 rc=1）。
 
 ### E3 错误处理路径自身抛异常
 - 症状：医生看到平台错误页而不是承诺过的可读文案（破"API 失败只显示可读文案"红线）。
@@ -164,6 +171,34 @@
 - 处置：改成实测 87 → 取下限 80（留删改余量），并在注释里写"本轮实测 87"。
 - 常驻判据：`.github/workflows/ci.yml` infra-lint 的 codespell 步骤（`受检文件数` 先算再断言）。
 
+### G5 改了 Dockerfile 却没重扫 hadolint（第二十二轮 CI 抓到）
+- 症状：CI 里 `backend/Dockerfile:24 DL3059 info: Multiple consecutive RUN instructions`，`infra-lint` 与聚合检查双双判红。
+- 根因：本机那次 hadolint 是在**改文件之前**跑的（当时确实 0 findings）；为多架构选锁新加了一条 RUN，
+  两条相邻 RUN 就违反了 info 档。判据没变，**是我用了一次过期结论**。
+- 处置：合并成一条 `RUN if ...; then cp ...; fi && pip install ...`，不放宽阈值、不给规则加豁免。
+- 常驻判据：`ci.yml` 的 `infra-lint` 每次 push 重扫（本机跑过不等于 CI 会放过）；
+  改 Dockerfile 后的本地复扫命令就写在下面 §F 的清单项里。
+
+### G6 `--platform` 配了但没人证明两个架构都真的发布了
+- 症状：README 写"一条命令可拉取运行"，arm 机器上 `docker run` 报 `exec format error`；
+  而 manifest HTTP 200、看起来"发布成功"。
+- 根因：buildx 缺 QEMU、或 `--load` 与多平台互斥被静默降级；只断言"有子清单"看见的是数量不是覆盖面。
+- 处置：`docker/setup-qemu-action@v3` + `platforms: linux/amd64,linux/arm64`；本机验证时先
+  `docker pull --platform linux/arm64 <base>` 预热（buildkit 自己取 `auth.docker.io` token 的路径可能被网络挡住）。
+- 常驻判据：`.github/workflows/release.yml` 推之后读 index 断言 `{linux/amd64, linux/arm64}` 全在（`[GATE:multiarch-pass]`）；
+  镜像层 CVE 按平台各扫一次，arm64 不许漏扫。
+
+### G7 文档里的"反例样本"被拼写检查当成笔误
+- 症状：`.github/workflows/ci.yml` 的 codespell 步骤报 <!-- codespell:ignore-begin 这里是它**引用**的报错原文，不是本文件的笔误 -->`CHANGELOG.md: recieve ==> receive`<!-- codespell:ignore-end -->，而那两个词是
+  我为了说明"注入反例会红"**故意写进去的样本**。
+- 根因：拼写检查不区分"写错的词"和"举例用的错词"。靠 `ignore-words-list` 收编会**永久瞎掉**这个常见错拼；
+  从文档里删掉样本又会让证据变得不可复算。
+- 处置：用**段级豁免** `<!-- codespell:ignore-begin 原因 --> … <!-- codespell:ignore-end -->`
+  （由 `.codespellrc` 的 `ignore-multiline-regex` 启用），并且只允许圈住"故意写的错拼样本"、必须紧邻写原因。
+  禁用词表扩容和整文件 skip——那两类"为凑绿关闸"的做法与 B1 同族。
+- 常驻判据：`.github/workflows/ci.yml` infra-lint 的 codespell 步骤（豁免段落在 diff 里一眼可见，评审即可查）；
+  机制本身由 `docs/PITFALLS.md` §F 的本地复扫命令验证（实测：不加豁免 rc=65 点名两条，加豁免 rc=0）。
+
 ## F. 提交前自检顺序（照抄即可）
 
 ```bash
@@ -176,6 +211,12 @@ python scripts/branch_guard.py                      # 分支保护 ↔ 作业图
 python scripts/lock_guard.py                        # 依赖锁 ↔ 声明 ↔ Dockerfile 接线
 (cd frontend && npm run coverage:js && npm run coverage:py)   # 双端覆盖率地板（只升不降）
 MSYS_NO_PATHCONV=1 docker run --rm -v "$PWD":/work:ro -w /work rhysd/actionlint:1.7.7   # 工作流自身（Windows 本机需前缀，CI 不用）
+MSYS_NO_PATHCONV=1 docker run --rm -v "$PWD":/work:ro -w /work ghcr.io/hadolint/hadolint:v2.14.0-alpine hadolint backend/Dockerfile   # 改过 Dockerfile 必跑（G5 的教训）
+docker compose -f docker-compose.yml config -q                                          # 改过 compose 必跑
+PYTHONPATH="$TEMP/csenv" python -m codespell_lib                                        # 拼写看守（本地需先装 codespell==2.4.1）
+docker build -t probe:amd64 ./backend && docker run --rm probe:amd64 python selftest.py # 改过 Dockerfile/锁：镜像内自证
+docker buildx build --platform linux/arm64 --load --provenance=false -t probe:arm64 ./backend \
+  && docker run --rm --platform linux/arm64 probe:arm64 python selftest.py              # arm64 侧同样要实跑
 ```
 
 推送之后（只看远端，别拿本机绿当发出）：

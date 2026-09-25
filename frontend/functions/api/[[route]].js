@@ -68,13 +68,12 @@ export async function onRequest(context) {
       const msg = e.withFailureId ? `${e.message}（故障编号 ${requestId}）` : e.message
       return fail(e.status, msg, requestId)
     }
-    // 只落归因最小集：不写 stack、不写请求体（可能含病例文本）
+    // 到这里才是"真故障"档：日志级别与响应码同源（4xx 已在上面分流，不会走到这条 error）
     logEvent("error", {
       req: requestId, path, method, ms,
       kind: e?.name || "Error",
       msg: redact(e?.message, env),
     })
-    if (e?.message && e.message.startsWith("unknown case")) return fail(404, e.message, requestId)
     return fail(500, `服务暂时不可用，请稍后重试（故障编号 ${requestId}）`, requestId)
   }
 }

@@ -5,6 +5,42 @@
 
 ## [Unreleased]
 
+## [1.20.1] - 2026-09-25
+
+### Fixed（`v1.20.0` 的 CI 被上一轮刚装上的判据拦下——这次轮到拦作者本人）
+- 🔴 **`infra-lint` 作业在 CI 里判红**：`backend/Dockerfile:24 DL3059 info: Multiple consecutive RUN instructions`。
+  起因就是本轮多架构改动本身——为按 `TARGETARCH` 选锁写成了**两条相邻 RUN**（选锁 + 安装），而
+  `.hadolint.yaml` 钉的是 `failure-threshold: info`（第二十一轮"当前 0 findings 才敢用最严档"的那条决定）。
+  本机跑 hadolint 时我扫的是**改动前**的 Dockerfile（当时确实 0 findings），改完没有在提交前复扫一次。
+  修法＝合并成一条 `RUN if ...; then cp ...; fi && pip install ...`，而不是放宽阈值或给 DL3059 加豁免；
+  并把"改 Dockerfile 后必须复扫 hadolint"写进 `docs/PITFALLS.md`（见 G5）。
+  CI 聚合检查同时判红（`All Checks Passed` 覆盖 5 个阻断作业 ⇒ 一条 infra 红就拦住整条链），
+  `deploy` 按设计未跑，**没有任何下游可见物被这条红污染**——除了镜像：`v1.20.0` 的 Release 作业是先于 CI 完成且成功的，
+  `ghcr.io/...:v1.20.0` 与 `:latest` 已公开可拉 ⇒ 按"零下游可见物才可重锚"的既有规矩**不重锚 tag**，改出 `v1.20.1`。
+- 多架构镜像的锁选择逻辑本身经实测是对的：合并 RUN 前后，`linux/amd64` 与 `linux/arm64` 两个镜像内
+  `python selftest.py` 均 `SELFTEST SUMMARY: 6/6 套件 exit0`，arm64 侧 `platform.machine()==aarch64`。
+- 🔴 **修掉一处"承诺在文档里、实现在另一条路上"的日志级别缺陷**（跑本轮新守卫时从 stdout 现形）：
+  未知病例 id 走 `/api/dx/nope` 对外回 `404`，但权威面 `engine.js` 抛的是**裸 `Error`**，catch 先按"未预期异常"
+  落 **`error` 级日志**、事后才用 `message.startsWith("unknown case")` 翻译成 404 —— 与第十九轮"4xx 一律 warn"
+  的口径和 `docs/ERRORS.md` 的**书面承诺**都相反，且任何人拿随机 id 打这条路由就能把 error 日志刷成噪声。
+  既往守卫只比响应码与文案，所以它**合法地**一直漏着。修法＝权威面补带类型的 `UnknownCase`（`status=404`，
+  与镜像面 `engine.py.UnknownCase` 同名同形），4xx 分支按 `e.status` 统一分流，**删除前缀匹配**。
+  归因如实记录：前缀翻译自 MVP 首次提交（`4a2c318`，2026-09-04）就在，"4xx 不得落 error"是第十九轮立的口径——
+  **立新口径时没回头收干净老出口**，这才是根因（不是"错了两个月"）。
+- 判据补两条（`frontend/tests/error_parity_guard.mjs`，10→**12 项**）：① 按 `X-Request-Id` 逐条归因断言
+  34 条 4xx 用例**零 `error` 级日志**；② **正向对照**——同批用例必须真留下 34 条可归因行，否则"零 error"是恒真。
+  两组反例实测 rc=1：把 `UnknownCase` 退回裸 `Error` → 三条判据同红并点名 `intake × 空 body→404`、`未知病例 id→404`；
+  拔掉日志捕获 → 正向对照判红（实测 `0/34`）。分母由 fixture 现算（我先拍了"下限 36"，实测 34，按 B5 改成全等）。
+- `docs/ERRORS.md` 的 404 行改指双端同名异常，并把"不会把客户端错误记成 error 级日志"从**声明**升级为**判据**（写明守卫名）。
+
+### 度量与红线
+运行时行为零改动（只有 Dockerfile 一条 RUN 的写法变化）：`lock_guard` 19 项全绿（含"额外平台的锁必须被 RUN 选用"——
+判据按 RUN 指令解析，续行写法实测仍判绿 ⇒ 收紧判据没有引入假红）、`hadolint` info 档 0 findings、
+`actionlint` `[]`、`npm test` 十八件套 exit 0、`api_contract_guard` 含错误目录双向对账、
+`error_parity_guard` 38 条三方全等、mypy 31 文件 0 error、pre-commit 10 钩 Passed。
+三条产品红线逻辑零改动、默认档仍 bm25、评测仍是同一批 31 例。
+
+
 ## [1.20.0] - 2026-09-25
 
 ### Added（第二十二轮：交付物在**任意架构**都能跑，判据从抽样改成枚举积）
@@ -38,7 +74,7 @@
 - **codespell 进 `infra-lint`（对标 OpenEMR 的 `.codespellrc` + 忽略清单）**。接线前先量误报：全仓唯一命中是
   `EHR`（电子健康档案，被词典当成 `HER` 的拼写错误）⇒ 按原因登记进 `.codespellrc` 的 `ignore-words-list`
   而不是关掉检查；版本钉在 `backend/requirements-dev.txt`（`codespell>=2.4.1,<2.5`，词典随版本变＝判据会漂）。
-  注入反例实测：临时放一个含 `recieve`/`accomodate` 的文件 → rc=65 并逐条点名，删除后 rc=0。
+  注入反例实测：临时放一个含两个常见错拼（<!-- codespell:ignore-begin 这里的字面错拼是**反例样本本身**，不是笔误 -->`recieve`/`accomodate`<!-- codespell:ignore-end -->）的文件 → rc=65 并逐条点名，删除后 rc=0。
   另加"受检文件数 ≥80"的覆盖面下限（本机实测 87）——**这里我第一版拍了 120，实测只有 87，
   分母必须量出来不能猜**，已按实测改。
 

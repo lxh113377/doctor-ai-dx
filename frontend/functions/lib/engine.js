@@ -18,9 +18,21 @@ const retriever = getRetriever()
 const kbTitle = (id) => kbTitleOf(id)
 const kbCondition = (id) => kbConditionOf(id)
 
+// 未知病例＝**客户端**错误：带 status 让路由走 4xx 分支（warn 级日志），而不是靠
+// catch 里比 `message.startsWith("unknown case")` 事后翻译——那样日志级别先落错（error），
+// 且镜像面 `engine.py.UnknownCase` 是带类型的，双端同一机制才对得上。
+export class UnknownCase extends Error {
+  constructor(id) {
+    super(`unknown case: ${id || MISSING_CASE}`)
+    this.name = "UnknownCase"
+    this.status = 404
+    this.reason = `case_id=${id || MISSING_CASE}`
+  }
+}
+
 function caseOf(id) {
   const c = CASES.find((x) => x.id === id)
-  if (!c) throw new Error(`unknown case: ${id || MISSING_CASE}`)
+  if (!c) throw new UnknownCase(id)
   return c
 }
 
