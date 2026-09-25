@@ -7,7 +7,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from . import limits
 from .config import current_api_key, get_settings
+from .limits import RequestTooLarge
 from .observe import SLOW_MS, log_event, new_request_id, redact
 from .routers import api
 from .version import APP_VERSION
@@ -35,12 +37,39 @@ async def request_identity(request: Request, call_next):
     """每请求一个编号：响应头 X-Request-Id 让前端故障编号与服务端日志可对账。"""
     request.state.request_id = new_request_id()
     request.state.started = time.perf_counter()
+    # 入站边界第一道：Content-Length 超限直接 413，不进解析（镜像 Functions 侧 assertDeclaredSize）
+    declared = request.headers.get("content-length")
+    if declared:
+        # 单一实现放 limits.check_declared_size（含"非法值不误拦"的口径），中间件只负责翻译响应体。
+        # 此前这里自己手写 int() 比较，limits 里那份同名函数沦为死代码＝两套实现漂移的开端。
+        try:
+            limits.check_declared_size(declared)
+        except RequestTooLarge as exc:
+            return JSONResponse(status_code=exc.status,
+                                content={"code": exc.status, "message": str(exc)},
+                                headers={"X-Request-Id": request.state.request_id})
     response = await call_next(request)
     response.headers["X-Request-Id"] = request.state.request_id
     ms = int((time.perf_counter() - request.state.started) * 1000)
     if ms > SLOW_MS:
         log_event("warn", req=request.state.request_id, path=request.url.path, method=request.method, ms=ms)
     return response
+
+
+@app.exception_handler(RequestTooLarge)
+async def too_large(request: Request, exc: RequestTooLarge):
+    """入站边界拒绝：客户端错误不得伪装成 500，也不得记成 error 级日志
+    （滥用流量会把错误日志刷成噪声、掩盖真故障）。与 Functions 侧 413/400 同形同码。"""
+    request_id = getattr(request.state, "request_id", None) or new_request_id()
+    started = getattr(request.state, "started", None)
+    log_event("warn", req=request_id, path=request.url.path, method=request.method,
+              ms=int((time.perf_counter() - started) * 1000) if started else None,
+              kind=type(exc).__name__, msg=exc.reason)
+    return JSONResponse(
+        status_code=exc.status,
+        content={"code": exc.status, "message": str(exc)},
+        headers={"X-Request-Id": request_id},
+    )
 
 
 @app.exception_handler(Exception)

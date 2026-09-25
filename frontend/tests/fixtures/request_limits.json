@@ -1,0 +1,11 @@
+{
+  "_source": "医·基层AI辅助诊断 · API 滥用护栏单一源（v1.17.0 第十九轮）。数值必须与 frontend/functions/lib/limits.js 与 backend/app/limits.py 三处逐字段全等，由 frontend/tests/limits_guard.mjs 判红。",
+  "_why": "对标实测：同类项目对请求体一律有显式上界（ragflow docker/nginx/nginx.conf 设 client_max_body_size 1024M；OpenEMR 走 PHP/Apache 侧上传上限）。我方权威面是 Cloudflare Pages，没有边缘 nginx，故上界必须在 Functions 应用层实现；此前双端**零上限**，且 readBody 用 catch 把解析失败静默吞成 {}。",
+  "_measured": "2026-09-25 实测本仓真实峰值：最大合法请求体 510 B、最长 history 5 条（eval_cases 31 例 + 前端五步链路）。取 **128x 余量**定上限，既不误伤真实链路也挡住恶意大包（不是随手取的整数）。",
+  "max_body_bytes": 65536,
+  "max_history_items": 64,
+  "max_content_chars": 2000,
+  "max_dx_json_bytes": 65536,
+  "http_status": { "too_large": 413, "bad_json": 400 },
+  "_status_note": "413/400 沿用 HTTP 语义；响应体仍走双端同形 {code,message}，message 只出医生可理解文案，不含内部路径/大小计算细节以外的实现信息。"
+}

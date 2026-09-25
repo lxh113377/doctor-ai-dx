@@ -4,6 +4,7 @@
 import { getCases, nextIntakeQuestion, buildDiagnosis, buildWorkup, buildReport } from "../lib/engine.js"
 import { newRequestId, redact, logEvent, withRequestId, SLOW_MS } from "../lib/observe.js"
 import { APP_VERSION } from "../lib/version.js"
+import { assertDeclaredSize, parseBoundedBody } from "../lib/limits.js"
 
 function json(data, status = 200, requestId) {
   return new Response(JSON.stringify({ code: 0, data }), {
@@ -16,8 +17,11 @@ function fail(status, msg, requestId) {
   })
 }
 
+// 滥用护栏：先看 Content-Length（第一道，可伪造），读出正文后按实际字节与条数复核。
+// 此前这里是 `catch { return {} }`——坏 JSON 被静默接受并继续消耗引擎与 LLM 窗口，现在显式 400/413。
 async function readBody(context) {
-  try { return await context.request.json() } catch { return {} }
+  assertDeclaredSize(context.request.headers.get("content-length"))
+  return parseBoundedBody(await context.request.text())
 }
 
 export async function onRequest(context) {
@@ -56,6 +60,12 @@ export async function onRequest(context) {
     return response
   } catch (e) {
     const ms = Date.now() - startedAt
+    // 入站边界拒绝：客户端错误**不得**记成服务端 error（否则滥用流量会把错误日志刷成噪声，掩盖真故障）。
+    // 对外只出医生可理解文案；reason 只进日志，且只含数值与字段名，不含病例文本。
+    if (e?.status === 413 || e?.status === 400) {
+      logEvent("warn", { req: requestId, path, method, ms, kind: e.name, msg: e.reason })
+      return fail(e.status, e.message, requestId)
+    }
     // 只落归因最小集：不写 stack、不写请求体（可能含病例文本）
     logEvent("error", {
       req: requestId, path, method, ms,

@@ -88,7 +88,8 @@
     "py_metric_note": "2026-09-25 第十四轮：.coveragerc 开启 branch=True，口径由「仅语句」改为「语句+分支弧」。同口径实测 91%（旧语句-only 口径为 87%）⇒ 更严口径 + 更高地板（85→88），属收紧非放宽。",
     "js_floor_note": "地板=实测−2pt（棘轮起点）。本轮随覆盖率上升同步收紧：engine 分支 65→68、fhir 72→74、rag 74→75、retriever 80→81、rules 85→86、knowledge 68→69、全局 72→74；并新增 observe.js（脱敏层，实测 100/100/100，地板 98）——此前它不在清单内，属地板盲区。",
     "py_floor_note_r15": "第十五轮：追问 live 分支（_llm_followup 18 行）补测后 engine.py 77→85%、llm.py 86→88%，地板按实测-2/3 收紧为 82/85。",
-    "js_floor_note_r15": "第十五轮如实登记回落：JS 全局分支 75.65→75.24、engine.js 分支 70→69.5，起因是把「续问硬上限」从 LLM 调用后前移到调用前（删掉一个恒真的三元条件、新增一个提前返回）——属真实修复的度量副作用，**地板不降**（engine.js 分支地板仍 68，余量 1.5pt）。"
+    "js_floor_note_r15": "第十五轮如实登记回落：JS 全局分支 75.65→75.24、engine.js 分支 70→69.5，起因是把「续问硬上限」从 LLM 调用后前移到调用前（删掉一个恒真的三元条件、新增一个提前返回）——属真实修复的度量副作用，**地板不降**（engine.js 分支地板仍 68，余量 1.5pt）。",
+    "r19_note": "第十九轮：新增 app/limits.py 地板 97（实测 100%，其余量与既有模块同为 3pt 量级）；全局地板 88→90，依据是实测总覆盖 92.78→93.51%（成因：删掉 limits.check_payload 死代码与中间件里重复的 Content-Length 解析，并补 12 条模块级分支用例）。地板只升不降是棘轮本意，降地板必须写理由。"
   },
   "js_modules": {
     "lib/rules.js": {
@@ -132,7 +133,7 @@
     "branches": 74,
     "functions": 93
   },
-  "py_total_fail_under": 88,
+  "py_total_fail_under": 90,
   "py_modules": {
     "app/rules.py": 95,
     "app/routers/api.py": 100,
@@ -142,6 +143,7 @@
     "app/rag.py": 90,
     "app/retriever.py": 94,
     "app/services/engine.py": 82,
-    "app/services/llm.py": 85
+    "app/services/llm.py": 85,
+    "app/limits.py": 97
   }
 }

@@ -31,5 +31,19 @@ for (const p of Object.keys(spec.paths)) {
 for (const kw of ["医生终审", "不可被模型覆盖", "白名单"]) {
   if (!JSON.stringify(spec.info).includes(kw)) { console.log(`FAIL info 缺安全口径: ${kw}`); fail++ }
 }
+// 声明↔实现双向对账（v1.17.0 滥用护栏）：spec 里给 POST 声明的 400/413，源码必须真发得出来，
+// 否则 openapi 就退化成"许愿式契约"（写了但没人实现），这正是本仓 privacy_guard 同类的判据方向。
+const GUARD_STATUSES = ["400", "413"]
+const routeHasGuard = routeSrc.includes("e?.status === 413") && routeSrc.includes("e?.status === 400")
+for (const [path, method] of Object.entries(spec.paths)) {
+  if (!method.post) continue
+  for (const code of GUARD_STATUSES) {
+    const declared = method.post.responses?.[code] != null
+    const ok = declared && routeHasGuard
+    if (!ok) { console.log(`FAIL POST ${path} 声明 ${code}=${declared} 实现有分支=${routeHasGuard}`); fail++ }
+  }
+}
+if (fail === 0) console.log(`PASS 入站边界响应码：4 个 POST 均声明并实现 400/413`)
+
 console.log(`API 契约守卫: ${fail === 0 ? "ALL PASS" : `FAIL(${fail})`}（${CONTRACT.length} 端点双向对账）`)
 process.exit(fail === 0 ? 0 : 1)

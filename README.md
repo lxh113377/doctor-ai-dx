@@ -49,7 +49,7 @@ docker compose run --rm selftest   # 镜像内自带 19+15+16 项断言，全绿
 
 ```bash
 cd frontend
-npm test       # 十五件套：49 冒烟(含双端同表红旗探针) + 31 例引擎评测 + 检索分层回归 + 检索器 3 档双端一致 + 语义表守卫 22 + live 路径红线 43 项（含追问 live 分支与续问上限零外呼） + 双端契约 31:31 + FHIR 导出 45 项 + 隐私声明对账 59 项 + 配置契约对账 6 项（契约需本机 Python）
+npm test       # 十六件套：49 冒烟(含双端同表红旗探针) + 31 例引擎评测 + 检索分层回归 + 检索器 3 档双端一致 + 语义表守卫 22 + live 路径红线 43 项（含追问 live 分支与续问上限零外呼） + 双端契约 31:31 + FHIR 导出 45 项 + 隐私声明对账 59 项 + 配置契约对账 6 项 + 滥用护栏对账 33 项（契约需本机 Python）
 npm run lint     # 静态检查：ESLint（frontend，--max-warnings=0）+ ruff（backend 与 scripts，规则集钉在仓根 ruff.toml）
 npm run typecheck  # Python 类型门禁：mypy 严格档（check_untyped_defs）+ 阈值单一源，实测 23 文件 0 error、抑制项 0（零豁免有机器判据）
 npm run sbom       # 生成前端 CycloneDX SBOM（钉版 @cyclonedx/cyclonedx-npm）；属发布期产物，不入库

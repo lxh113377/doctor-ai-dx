@@ -1,7 +1,7 @@
 {
   "name": "doctor-ai-dx-frontend",
   "private": true,
-  "version": "1.16.0",
+  "version": "1.17.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -23,7 +23,7 @@
     "test:route": "node tests/route_guard.mjs",
     "test:api": "node tests/api_contract_guard.mjs",
     "test:bundle": "node tests/bundle_size_guard.mjs",
-    "test": "npm run test:smoke && npm run test:engine && npm run test:retrieval && npm run test:retrieval-parity && npm run test:semantic && npm run test:live && npm run test:contract && npm run test:fhir && npm run test:kb && npm run test:route && npm run test:privacy && npm run test:env && npm run test:api && npm run test:components && npm run test:version",
+    "test": "npm run test:smoke && npm run test:engine && npm run test:retrieval && npm run test:retrieval-parity && npm run test:semantic && npm run test:live && npm run test:contract && npm run test:fhir && npm run test:kb && npm run test:route && npm run test:privacy && npm run test:env && npm run test:limits && npm run test:api && npm run test:components && npm run test:version",
     "test:retrieval-parity": "node tests/retriever_parity.mjs",
     "test:components": "vitest run",
     "test:version": "node tests/version_guard.mjs",
@@ -34,8 +34,9 @@
     "test:env": "node tests/env_guard.mjs",
     "lock": "cd .. && python scripts/lock_guard.py",
     "coverage:js": "c8 npm test && node tests/coverage_floor_guard.mjs",
-    "coverage:py": "cd ../backend && rm -f .coverage && python -m coverage run --append --source=app tests/smoke_engine.py && python -m coverage run --append --source=app tests/test_api_observe.py && python -m coverage run --append --source=app tests/test_fhir.py && python -m coverage run --append --source=app tests/test_live_path.py && python -m coverage run --append --source=app tests/test_retriever_channels.py && python ../scripts/coverage_gate.py",
-    "test:privacy": "node tests/privacy_guard.mjs"
+    "coverage:py": "cd ../backend && rm -f .coverage && python -m coverage run --append --source=app tests/smoke_engine.py && python -m coverage run --append --source=app tests/test_api_observe.py && python -m coverage run --append --source=app tests/test_fhir.py && python -m coverage run --append --source=app tests/test_live_path.py && python -m coverage run --append --source=app tests/test_retriever_channels.py && python -m coverage run --append --source=app tests/test_limits.py && python ../scripts/coverage_gate.py",
+    "test:privacy": "node tests/privacy_guard.mjs",
+    "test:limits": "node tests/limits_guard.mjs"
   },
   "dependencies": {
     "react": "^19.3.0",

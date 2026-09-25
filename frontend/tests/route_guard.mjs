@@ -68,6 +68,38 @@ check("服务端日志落了一条 error 且 req 与故障编号一致",
 check("日志不含请求体原文（防病例文本入日志）",
   logs.every((line) => !line.includes("boom")))
 
+console.log("== 入站边界（v1.17.0 滥用护栏）==")
+const big = JSON.stringify({ case_id: "c1", history: Array.from({ length: 70 }, () => ({ role: "user", content: "腹" })) })
+const over = await onRequest(ctx("/api/dx/c1", {
+  method: "POST", headers: { "Content-Type": "application/json" }, body: big,
+}))
+const overBody = await readJson(over)
+check("history 超条数 → 413（不再是 200）", over.status === 413, `实测 ${over.status}`)
+check("413 仍带 X-Request-Id（可对账）", ID_RE.test(over.headers.get("x-request-id") || ""))
+check("413 code 等于状态码且文案医生可读", overBody.code === 413 && /请精简问诊记录后重试/.test(overBody.message) && !overBody.message.includes(">"),
+  JSON.stringify(overBody))
+
+const broken = await onRequest(ctx("/api/dx/c1", {
+  method: "POST", headers: { "Content-Type": "application/json" }, body: "{oops",
+}))
+const brokenBody = await readJson(broken)
+check("坏 JSON → 400（此前被 catch 静默吞成 {} 继续跑引擎）", broken.status === 400 && brokenBody.code === 400, `实测 ${broken.status}`)
+
+const logs413 = []
+const realErr2 = console.error
+const realWarn2 = console.warn
+console.error = (...a) => logs413.push(a.join(" "))
+console.warn = (...a) => logs413.push(a.join(" "))
+try {
+  await onRequest(ctx("/api/dx/c1", {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ history: Array.from({ length: 70 }, () => ({ role: "user", content: "腹" })) }),
+  }))
+} finally { console.error = realErr2; console.warn = realWarn2 }
+check("413 不得产生 error 级日志（滥用流量不得淹没真故障）",
+  !logs413.some((l) => { try { return JSON.parse(l).lvl === "error" } catch { return false } }), logs413.slice(0, 1).join(" | "))
+check("413 日志只含数值与字段名，不含请求体原文",
+  logs413.every((l) => !l.includes("腹")), "日志里出现了病例文本即隐私外泄")
+
 console.log("== 脱敏函数 ==")
 check("sk- 形态密钥被脱敏", !/sk-[A-Za-z0-9]{8,}/.test(redact("header: sk-abcdefghijklmnopqrstuvwxyz")))
 check("环境密钥原文被脱敏", redact("failed with abcdef123456", { DEEPSEEK_API_KEY: "abcdef123456" }).includes("[已脱敏]"))

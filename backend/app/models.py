@@ -1,5 +1,7 @@
 """Pydantic 数据契约（= 前后端接口契约 + api.js 存根已按此 shape）"""
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
+
+from . import limits
 
 
 class Vital(BaseModel):
@@ -23,6 +25,20 @@ class IntakeAskRequest(BaseModel):
     answer: str = ""
     history: list[dict] = []   # [{role: "user"|"assistant", content: ...}] 由前端随请求携带（stateless）
     dx: dict | None = None     # 前端已生成的诊断结果（workup/report 复用，省一次 LLM 串行调用）
+
+    @field_validator("history")
+    @classmethod
+    def _bound_history(cls, v: list[dict]) -> list[dict]:
+        """入站边界：条数与单条字数上限（数值单一源 = frontend/tests/fixtures/request_limits.json）。
+        必须在契约层挡住：越界的请求若进到引擎，会白付一次 LLM 窗口（8s + token）。"""
+        limits.check_history(v)
+        return v
+
+    @field_validator("dx")
+    @classmethod
+    def _bound_dx(cls, v: dict | None) -> dict | None:
+        limits.check_dx(v)
+        return v
 
 
 class IntakeAskResp(BaseModel):

@@ -132,6 +132,12 @@ jobs:
         run: python tests/test_live_path.py
       - name: Test retriever channels (stubbed httpx, zero network)
         run: python tests/test_retriever_channels.py
+      - name: Test API abuse guards (入站边界双端同码，零网络)
+        run: python tests/test_limits.py
+      - name: Branch protection gate（分支保护 ↔ 作业图对账，判据 scripts/branch_guard.py）
+        # 立论：实测 required checks 只有 2 项而 ci.yml 有 4 个阻断作业 ⇒ 新判据可被绕过。
+        # 本步骤在 CI 里静态对账；线上真实配置用 `--remote` 人工/定期核（Actions token 无 admin 读保护会 403，故不在此处强判）。
+        run: python ../scripts/branch_guard.py
       - name: Coverage floor ratchet (Python)
         # 阈值单一源 = frontend/tests/fixtures/coverage_floor.json（py_total_fail_under + py_modules）。
         # 第十四轮治本：此前本步骤硬编码 --fail-under=85，改 JSON 不影响判定 ⇒ 清单与判据是两套数。
@@ -142,10 +148,38 @@ jobs:
           python -m coverage run --append --source=app tests/test_fhir.py
           python -m coverage run --append --source=app tests/test_live_path.py
           python -m coverage run --append --source=app tests/test_retriever_channels.py
+          python -m coverage run --append --source=app tests/test_limits.py
           python ../scripts/coverage_gate.py --quiet
 
-  deploy:
+  # 聚合 required check（对标 OpenEMR 的 `All Checks Passed`）。
+  # 为什么需要它：仓库的 required_status_checks 是**手工维护的字符串列表**，而 ci.yml 的 job 会随轮次增加——
+  # 实测两者已脱节（4 个阻断作业 vs 2 项 required checks），结果新加的 e2e/文本卫生判据可被绕过。
+  # 有了聚合项，以后新增 job 只要挂进本作业的 needs 就自动被强制；忘记挂由 branch_guard.py 判红。
+  # if: always() 是必须的：否则任一前置失败时本作业不运行，GitHub 侧那个 required check 永远"等待中"，
+  # 保护反而变成永久卡死（比形同虚设更难排查）。
+  all-checks-passed:
+    name: All Checks Passed
     needs: [build-and-test, backend-test, text-hygiene, e2e]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: 汇总上游结果（任一 failure/取消 即本检查红）
+        env:
+          UPSTREAM: ${{ toJSON(needs) }}
+        run: |
+          echo "$UPSTREAM"
+          if echo "$UPSTREAM" | grep -qE '"result" *: *"(failure|cancelled|timed_out)"'; then
+            echo "::error::有阻断作业未通过，聚合检查判红"
+            exit 1
+          fi
+          if echo "$UPSTREAM" | grep -qE '"result" *: *"(skipped|null)"'; then
+            echo "::error::有阻断作业被跳过，聚合检查不放行（跳过不等于通过）"
+            exit 1
+          fi
+          echo "全部阻断作业通过 ⇒ 聚合检查绿"
+
+  deploy:
+    needs: [build-and-test, backend-test, text-hygiene, e2e, all-checks-passed]
     # 自动部署开关 = 仓库变量 AUTO_DEPLOY（默认未设 ⇒ 作业显式 skipped，不冒充「已部署」也不误红徽章）。
     # 现状（2026-09-25 实测）：本仓未配 CLOUDFLARE_API_TOKEN secret，生产部署由本机 wrangler OAuth 手工执行；
     # 配好 Token 后置 AUTO_DEPLOY=true 即接管，届时缺 Token 会判红（fail-closed 分支已实测生效，禁止回退成静默跳过）。

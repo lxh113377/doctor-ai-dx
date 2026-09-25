@@ -2,7 +2,7 @@
   "openapi": "3.0.3",
   "info": {
     "title": "医·基层AI辅助诊断系统 API",
-    "version": "1.16.0",
+    "version": "1.17.0",
     "description": "Cloudflare Pages Functions（线上权威实现 functions/api/[[route]].js）的机器可读契约；FastAPI 后端为镜像实现，双端一致性由 contract_parity 测试保障。所有响应统一壳 {code:0,data}（成功）或 {code:<http-status>,message}（失败），并携带 x-request-id 响应头用于故障归因。全程 AI 辅助参考 · 医生终审，输出不构成独立诊断。",
     "x-compliance": "演示仅脱敏合成病例；evidence_ids 仅限知识库白名单 kb-001~055；红旗规则层独立于 LLM 不可被模型覆盖"
   },
@@ -26,7 +26,7 @@
         "responses": {
           "200": { "$ref": "#/components/responses/JsonEnvelope" },
           "404": { "$ref": "#/components/responses/NotFound" },
-          "500": { "$ref": "#/components/responses/InternalError" }
+          "500": { "$ref": "#/components/responses/InternalError" }, "400": { "$ref": "#/components/responses/BadJson" }, "413": { "$ref": "#/components/responses/PayloadTooLarge" }
         }
       }
     },
@@ -39,7 +39,7 @@
         "responses": {
           "200": { "description": "诊断结果；mode=live|rule-fallback；红旗不可被模型覆盖", "headers": { "x-request-id": { "$ref": "#/components/headers/RequestId" } }, "content": { "application/json": { "schema": { "allOf": [{ "$ref": "#/components/schemas/Envelope" }, { "type": "object", "properties": { "data": { "$ref": "#/components/schemas/Diagnosis" } } }] } } } },
           "404": { "$ref": "#/components/responses/NotFound" },
-          "500": { "$ref": "#/components/responses/InternalError" }
+          "500": { "$ref": "#/components/responses/InternalError" }, "400": { "$ref": "#/components/responses/BadJson" }, "413": { "$ref": "#/components/responses/PayloadTooLarge" }
         }
       }
     },
@@ -49,7 +49,7 @@
         "summary": "检查建议（essential/suggested/optional 三组；可复用已生成诊断省一次串行 LLM）",
         "parameters": [{ "name": "caseId", "in": "path", "required": true, "schema": { "type": "string" } }],
         "requestBody": { "$ref": "#/components/requestBodies/HistoryDx" },
-        "responses": { "200": { "$ref": "#/components/responses/JsonEnvelope" }, "404": { "$ref": "#/components/responses/NotFound" }, "500": { "$ref": "#/components/responses/InternalError" } }
+        "responses": { "200": { "$ref": "#/components/responses/JsonEnvelope" }, "404": { "$ref": "#/components/responses/NotFound" }, "500": { "$ref": "#/components/responses/InternalError" }, "400": { "$ref": "#/components/responses/BadJson" }, "413": { "$ref": "#/components/responses/PayloadTooLarge" } }
       }
     },
     "/api/report/{caseId}": {
@@ -58,7 +58,7 @@
         "summary": "SOAP 病历报告（含免责声明与医生终审定位）",
         "parameters": [{ "name": "caseId", "in": "path", "required": true, "schema": { "type": "string" } }],
         "requestBody": { "$ref": "#/components/requestBodies/HistoryDx" },
-        "responses": { "200": { "$ref": "#/components/responses/JsonEnvelope" }, "404": { "$ref": "#/components/responses/NotFound" }, "500": { "$ref": "#/components/responses/InternalError" } }
+        "responses": { "200": { "$ref": "#/components/responses/JsonEnvelope" }, "404": { "$ref": "#/components/responses/NotFound" }, "500": { "$ref": "#/components/responses/InternalError" }, "400": { "$ref": "#/components/responses/BadJson" }, "413": { "$ref": "#/components/responses/PayloadTooLarge" } }
       }
     },
     "/api/health": {
@@ -80,6 +80,8 @@
     "responses": {
       "JsonEnvelope": { "description": "统一壳 {code:0,data} + x-request-id", "headers": { "x-request-id": { "$ref": "#/components/headers/RequestId" } }, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Envelope" } } } },
       "NotFound": { "description": "未知病例 id——医生可理解文案", "content": { "application/json": { "schema": { "type": "object", "properties": { "code": { "type": "integer", "example": 404 }, "message": { "type": "string" } } } } } },
+      "PayloadTooLarge": { "description": "入站边界拒绝：请求体/问诊条数/单条字数超上限（阈值单一源 = frontend/tests/fixtures/request_limits.json）；文案不含内部阈值", "headers": { "x-request-id": { "$ref": "#/components/headers/RequestId" } }, "content": { "application/json": { "schema": { "type": "object", "properties": { "code": { "type": "integer", "example": 413 }, "message": { "type": "string" } } } } } },
+      "BadJson": { "description": "请求体不是合法 JSON 对象——不再静默按空对象处理（v1.17.0 起显式 400）", "headers": { "x-request-id": { "$ref": "#/components/headers/RequestId" } }, "content": { "application/json": { "schema": { "type": "object", "properties": { "code": { "type": "integer", "example": 400 }, "message": { "type": "string" } } } } } },
       "InternalError": { "description": "服务暂不可用——仅故障编号与重试文案，不含堆栈/内部路径", "headers": { "x-request-id": { "$ref": "#/components/headers/RequestId" } }, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Envelope" } } } }
     },
     "schemas": {

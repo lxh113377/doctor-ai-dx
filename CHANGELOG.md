@@ -5,6 +5,35 @@
 
 ## [Unreleased]
 
+## [1.17.0] - 2026-09-25
+
+### Added（第十九轮：判据的强制层 + 入站滥用护栏）
+- 🔴 **缺口一：判据写了但不被强制**（实测）。`ci.yml` 有 **4 个阻断性作业**（build-and-test / backend-test / text-hygiene / e2e），而 `gh api repos/.../branches/main/protection` 实测 `required_status_checks.contexts` 只有 **2 项**（`build-and-test`、`backend-test`）⇒ **上一轮的文本卫生门禁与本轮刚上线的浏览器回归都可以被绕过**——PR 带着红的 e2e 照样能合进 main。这与 r12「红线在 live 路径从未被测」同类，只是发生在更外层（合入闸门）。
+  - 治本采用 OpenEMR 的做法（其 95 个工作流里有名为 **`All Checks Passed`** 的聚合作业）：新增 `all-checks-passed` 聚合 job（`needs` 全部阻断作业 + `if: always()`），并把仓库 required check 改指该聚合项 ⇒ **以后新增作业只要挂进 needs 就自动被强制**，不必再回头手工改仓库设置。聚合项用 `if: always()` 是必须的：否则任一前置红时聚合不运行，那个 required check 永远"等待中"，保护从形同虚设变成永久卡死。
+  - 新增 `scripts/branch_guard.py`（CI `backend-test` 内自跑）五条判据：聚合 job 存在／**聚合 needs ⊇ 全部阻断作业（新增作业忘记挂进来即判红）**／`if: always()` 在场／ci.yml 真的调用本脚本（防"判据只写在文档里"）／`deploy.needs` 同样全覆盖；`--remote` 另核线上真实 contexts（读不到时打印 SKIP，不静默判绿）。**四组反例实测 rc=1**：needs 漏 `e2e`、删 `if: always()`、插入未挂聚合的新 job（同时打挂 deploy 判据）、把聚合 id 改名而线上保护未同步。
+  - 边界如实登记（不 overclaim）：`enforce_admins` 保持 false——本项目的发布通道就是直推 main，关掉它等于把发布一起锁死；故聚合检查强制的是 **PR 合入**，直推路径的兜底是"推送后 CI 全绿 + `release.yml` 出包前把全部门禁再跑一遍"。
+  - 线上变更前后均留痕：改前 contexts=`['build-and-test','backend-test']`、strict=false；改后 contexts=`['all-checks-passed']`、strict=true；原配置整份备份到系统临时目录（`branch_protection_backup.json`）便于回滚。
+- 🔴 **缺口二：双端零入站边界**。实测同类对请求体一律有显式上界（ragflow `docker/nginx/nginx.conf` 设 `client_max_body_size 1024M`；OpenEMR 走 PHP/Apache 上传上限），而我方权威面是 Cloudflare Pages（**没有边缘 nginx，上界只能写在应用层**），此前两端都无上限，且 Functions 的 `readBody` 用 `catch { return {} }` 把坏 JSON **静默接受**后继续消耗引擎与 8s LLM 窗口。
+  - 新增单一源 `frontend/tests/fixtures/request_limits.json`：`max_body_bytes 65536 / max_history_items 64 / max_content_chars 2000 / max_dx_json_bytes 65536`，状态码 413/400。**上限不是随手整数**：实测本仓合法峰值 body 488B、history 5 条 ⇒ 取 128x 余量（门禁第 6 组判据现场重算余量并把"上限小于真实峰值"判红）。
+  - JS 侧 `functions/lib/limits.js` + 路由改 `parseBoundedBody(await request.text())`（先看 Content-Length 第一道，读出后按**实际字节**复核）；Py 侧 `app/limits.py` + `models.py` 的 `field_validator`（**进引擎前**就挡，不付 LLM 窗口）+ `main.py` 中间件（声明长度先检）与 `RequestTooLarge` 专用处理器。
+  - 新增 `frontend/tests/limits_guard.mjs`（入**十六件套**，33 项）与 `backend/tests/test_limits.py`（22 项，入 CI 与覆盖率链）：数值三处同源逐字段全等／越界必拒且**文案不含内部阈值**／合法链路不误伤（含"红旗规则层仍独立生效""未知病例仍 404"）／**接线实证**（路由源文本必须真的调用 `parseBoundedBody`，并断言旧的静默 `catch { return {} }` 已消失）／4xx 不得记成 error 级日志（否则滥用流量会把错误日志刷成噪声、掩盖真故障）。
+  - 实测双端同码：Py 侧超限由 500 兜底改判 413（`code:413` + 医生可读文案）；`--selftest-negative` 模式证明本门禁自己会红（rc=1）。
+
+### Fixed（本轮过程中被既有门禁当场抓到的失手）
+- **常驻判据立刻抓到本人引入的回归**：改写 `[[route]].js` 代码块时把 `json()` 里的 `requestId` 参数丢了 ⇒ `X-Request-Id` 在**所有成功响应**上消失（会静默废掉"故障编号可对账"这条契约）。`tests/route_guard.mjs` 在改动后数秒内报 `FAIL 响应头带 X-Request-Id :: 实测 ""`（2 fail），随即修回并复跑 25/0。这是第十七轮"判据必须常驻"的直接回报：**没有常驻判据，这类回归会一路跟到线上**。
+- **判据被注释字面量骗过（同族第二次，方向相反）**：`limits_guard` 的"反静默 catch"判据按全文匹配 `catch { return {} }`，而我在 route.js 的**注释里**引用了这句旧代码作说明 ⇒ 判据**误判红**。修法是剥掉整行注释再匹配（第十八轮那次是注释让判据假绿，这次是注释让判据假红——两个方向同指一条：**拿源码文本做判据必须先剥注释**）。
+- **文案对账判据的退化风险**：初版用正则从 Py 源里提 `super("…")` 字面量，提错时两边都取到空串 ⇒ **相等判绿**。改为"JS 文案原样出现在 Py 源里且长度 > 8"，把"提不到"变成显式失败。
+- 📋 **登记一条既有双端差异（不偷偷改）**：同一入参 `history:"boom"` 在权威面 Functions 走引擎抛错 → **500**（`route_guard` 钉住），在镜像面 FastAPI 于 pydantic 契约层被拒 → **422**。本轮不扩大范围去动既有错误语义，改为在 `test_limits.py` 里把两侧实测码钉住并登记台账#28（收敛方向＝统一 400）。
+- `pyyaml` 从"只作为 uvicorn[standard] 传递依赖存在"改为**显式声明**（`branch_guard.py` 直接用它解析 ci.yml，不自造 YAML 解析器）；锁已重生成，`lock_guard` 实测 声明 6 条 → 锁内 22 条全等。
+
+### 度量与红线
+- 三条产品红线逻辑**零改动**：护栏只做入站边界，实测"红旗规则层仍独立生效""未知病例仍 404""正常链路仍 200/code=0"；默认检索档仍 bm25；评测仍是同一批 31 例。
+- 门禁面：`npm test` 十五→**十六件套**（+limits_guard 33 项）；pre-commit 九钩不变（新判据经 CI 与 npm 链生效）；ruff／ESLint／文本卫生／`lock_guard`／`branch_guard --remote` 全绿；mypy 受控文件 25→**27**（新增两个脚本/模块）仍 0 error。
+- **新写模块不许留盲区（自查两轮）**：`app/limits.py` 首版只有 79%，且藏着一处**死代码** `check_payload`（全仓无调用点，只有本文件 docstring 提到自己）与一处**重复实现**（中间件自己 `int(content_length)` 比较阈值，而 `limits.check_declared_size` 是同逻辑的第二份）。处置＝删死代码、把阈值判断收进单一实现由中间件委托，并补 12 条模块级分支用例。实测 `app/limits.py` **79% → 100%**，全局 **92.78% → 93.51%**；据此把全局地板 88→**90**、新增 `app/limits.py` 地板 **97**（余量 3pt 与既有模块同量级），理由写进 fixture 的 `_meta.r19_note`（地板只升不降，降必须写理由）。
+- **判据也不能盯实现细节的形状**：上面那次去重把 `MAX_BODY_BYTES` 字样从 `main.py` 挪走，`limits_guard` 里"main.py 出现该字样"的判据**立刻误判红**——它盯的是实现形态而非行为。改判为"中间件必须委托 `limits.check_declared_size` 单一实现 + 处理 `RequestTooLarge`"，并反向加一条"阈值字面量不得在 main.py 再现"（同一逻辑写两遍正是漂移开端）。改后 `limits_guard` 34 项全绿。
+- 另外 `test:limits` 自身的两条 `no-unused-vars`（多余 import、未用变量）被 `--max-warnings=0` 抓出并删除：本轮新写的**判据脚本本身**也在 lint 覆盖范围内，不是只当裁判不当选手。
+- 覆盖率口径：后端新增 `tests/test_limits.py`（34 项）进入覆盖率采集链（`coverage:py` 与 CI 同步），红线模块地板不降。
+
 ## [1.16.0] - 2026-09-25
 
 ### Added（第十八轮：运行环境可复现——依赖锁定 + 配置契约门禁）
