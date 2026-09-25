@@ -27,7 +27,7 @@
 
 - **请勿公开创建 Issue 披露未修复漏洞**（issue 模板首项已提示）。
 - 请使用仓库的 **Private vulnerability reporting**（GitHub → Security → Report a vulnerability），该通道复用 GitHub 私有安全议题，修复前对其他访客不可见。
-- 一般问题走 [Discussions](../../discussions/categories/q-a) 或普通 issue。
+- 一般问题走 [Discussions](https://github.com/lxh113377/doctor-ai-dx/discussions/categories/q-a) 或普通 issue。
 
 ## 响应承诺
 

@@ -21,7 +21,11 @@ class CaseSummary(BaseModel):
 
 
 class IntakeAskRequest(BaseModel):
-    case_id: str
+    # case_id 在 /dx|/workup|/report 三条路由里取自 **路径参数**（与权威面 Functions 一致），
+    # 所以请求体不得强制携带它：此前 `case_id: str`（必填）让镜像面对"只带路径 id"的合法请求回 422，
+    # 而权威面正常 200——第二十一轮双端错误码对账（tests/error_parity_guard.mjs）首跑抓到的真实差异。
+    # 只有 /intake/ask 无路径 id、需要体里的 case_id；缺/错时由引擎抛 unknown case → 双端同回 404。
+    case_id: str = ""
     answer: str = ""
     history: list[dict] = []   # [{role: "user"|"assistant", content: ...}] 由前端随请求携带（stateless）
     dx: dict | None = None     # 前端已生成的诊断结果（workup/report 复用，省一次 LLM 串行调用）

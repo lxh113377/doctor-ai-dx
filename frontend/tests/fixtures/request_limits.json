@@ -6,6 +6,6 @@
   "max_history_items": 64,
   "max_content_chars": 2000,
   "max_dx_json_bytes": 65536,
-  "http_status": { "too_large": 413, "bad_json": 400 },
-  "_status_note": "413/400 沿用 HTTP 语义；响应体仍走双端同形 {code,message}，message 只出医生可理解文案，不含内部路径/大小计算细节以外的实现信息。"
+  "http_status": { "too_large": 413, "bad_json": 400, "unprocessable": 422 },
+  "_status_note": "413/400 沿用 HTTP 语义；422＝'JSON 合法但结构不合契约'（v1.19.0 第二十一轮消掉台账#28：权威面此前把 history 传成字符串放到引擎里炸 500，镜像面 pydantic 422——500 用在客户端错误上会污染故障口径并把滥用流量刷成 error 日志）。响应体仍走双端同形 {code,message}，message 只出医生可理解文案，不含内部路径/大小计算细节以外的实现信息。"
 }

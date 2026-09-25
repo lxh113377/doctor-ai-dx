@@ -20,9 +20,13 @@ MAX_DX_JSON_BYTES = 65536
 
 STATUS_TOO_LARGE = 413
 STATUS_BAD_JSON = 400
+STATUS_BAD_SHAPE = 422  # 与 functions/lib/limits.js 同名同值；由 limits_guard/error_parity 对账
 
-# 对外唯一文案（与 Functions 侧 `lib/limits.js` 同字）；细节只进日志的 msg 字段。
+# 对外唯一文案（与 Functions 侧 `lib/limits.js` 同名同值，由 tests/limits_guard.mjs 逐字对账）；
+# 归因细节一律走 reason 字段只进日志，绝不进响应体（红线：不外泄内部路径与计算细节）。
 TOO_LARGE_PUBLIC_MESSAGE = "请求内容超出可处理范围，请精简问诊记录后重试"
+BAD_JSON_PUBLIC_MESSAGE = "请求内容无法解析，请刷新页面后重试"
+BAD_SHAPE_PUBLIC_MESSAGE = "请求参数不完整，请刷新后重试"
 
 
 class RequestTooLarge(Exception):
@@ -61,15 +65,28 @@ def _check_text(value: Any, where: str) -> None:
 
 
 def check_history(history: Any) -> None:
+    """条数/字数上界 + 结构类型（由 pydantic 包装成 422，与权威面 `RequestBadShape` 同码同文案）。
+
+    此前"非数组直接放过、让引擎炸 500"是台账#28 的另一半；本轮改完发现镜像面还有一条更隐蔽的：
+    `content` 传成对象时 `"".join(...)` 抛 TypeError → **500**（本机实测 kind=TypeError
+    "sequence item 1: expected str instance, dict found"）。入站就把类型判掉，500 只留给真故障。
+    """
     if history is None:
         return
     if not isinstance(history, list):
-        return  # 非数组交给引擎既有分支（保持双端 500 语义一致）
+        raise ValueError("history 必须是数组")
     if len(history) > MAX_HISTORY_ITEMS:
         raise RequestTooLarge(f"history 条数 {len(history)} > {MAX_HISTORY_ITEMS}")
     for i, item in enumerate(history):
-        if isinstance(item, dict):
-            _check_text(item.get("content"), f"history[{i}].content")
+        if not isinstance(item, dict):
+            raise ValueError(f"history[{i}] 必须是对象")
+        content = item.get("content")
+        if content is not None and not isinstance(content, str):
+            raise ValueError(f"history[{i}].content 必须是字符串")
+        role = item.get("role")
+        if role is not None and not isinstance(role, str):
+            raise ValueError(f"history[{i}].role 必须是字符串")
+        _check_text(content, f"history[{i}].content")
 
 
 def check_dx(dx: Any) -> None:

@@ -22,7 +22,7 @@
 | 红线 | 实现点 | 由谁守 |
 |---|---|---|
 | 红旗层独立于 LLM、不可被模型覆盖 | ⑤ 在 ③④ 之后执行且只增不改；`reuseOrBuild` 复用前端 dx 时仍重算红旗 | `route_guard` / `engine_eval` 27+31 项、后端 `smoke_engine` 25 项（含双端同表红旗探针 6 条） |
-| 全界面「AI 辅助参考 · 医生终审」 | 前端持续显示 + report `disclaimer` 字段 | `tests/redline.test.jsx`（vitest 7 项） |
+| 全界面「AI 辅助参考 · 医生终审」 | 前端持续显示 + report `disclaimer` 字段 | `frontend/src/redline.test.jsx`（vitest 7 项） |
 | 引用可溯源（不得编造证据） | ④ 白名单校验 `has_evidence(evidence_id)`；越界即降级 | `engine_eval` 引用断言 + `kb_guard` schema |
 
 ## 2. 权威面与镜像面

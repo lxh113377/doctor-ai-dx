@@ -10,6 +10,7 @@ from ..retriever import get_retriever
 from . import fhir as fhir_svc
 from . import llm as llm_svc
 
+MISSING_CASE = "(未提供)"  # 与 functions/lib/engine.js 同值，由 error_parity_guard 逐字对账
 _BY_ID = {k["id"]: k for k in KNOWLEDGE_BASE}
 _RETRIEVER = get_retriever()
 
@@ -21,7 +22,7 @@ class UnknownCase(Exception):
 def _case(case_id: str) -> dict:
     c = next((x for x in mock.CASES if x["id"] == case_id), None)
     if not c:
-        raise UnknownCase(f"unknown case: {case_id}")
+        raise UnknownCase(f"unknown case: {case_id or MISSING_CASE}")
     return c
 
 

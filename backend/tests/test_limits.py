@@ -67,11 +67,14 @@ st, body = post("/api/dx/c1", {"case_id": "c1", "history": ok_hist})
 check("正常问诊请求 → 200 code=0", st == 200 and body.get("code") == 0, f"实测 {st}")
 flags = (body.get("data") or {}).get("flags") or []
 check("红旗规则层仍独立生效（红线未被护栏影响）", isinstance(flags, list), str(flags)[:80])
-# 已知双端差异（本轮实测登记，非本轮引入，也**不**在本轮偷偷改）：
-# 同一入参 history:"boom" ⇒ 权威面 Functions 走引擎抛错→500（route_guard 钉住），
-# 镜像面 FastAPI 在 pydantic 契约层就拒→422。台账#28 跟踪收敛方向=两端统一 400。
+# 台账#28 已在第二十一轮关闭：此前"同一入参权威面 500／镜像面 422"被测试当既成事实钉住，
+# 本轮改为**双端一律 422**（客户端错误定码 4xx，500 只留给真故障），并由
+# tests/error_parity_guard.mjs + fixtures/error_parity.json 做三方对账（期望↔JS↔Py）常驻拦截。
 st, body = post("/api/dx/c1", {"case_id": "c1", "history": "boom"})
-check("非数组 history → 镜像面 422（已知差异，见台账#28）", st == 422, f"实测 {st}")
+check("非数组 history → 422（双端已收敛）", st == 422, f"实测 {st}")
+check("422 文案以契约常量开头（与权威面逐字同值，编号后缀供支持对账）",
+      str(body.get("message", "")).startswith(limits.BAD_SHAPE_PUBLIC_MESSAGE),
+      json.dumps(body, ensure_ascii=False)[:120])
 check("422 响应体仍是 {code,message} 同形且含故障编号",
       body.get("code") == 422 and "故障编号" in str(body.get("message")), json.dumps(body, ensure_ascii=False)[:120])
 check("护栏未把该入参误判成 413（边界与校验分流正确）", st != 413)
@@ -87,7 +90,10 @@ if os.path.exists(FIXTURE):
     for key, const in [("max_body_bytes", limits.MAX_BODY_BYTES), ("max_history_items", limits.MAX_HISTORY_ITEMS),
                        ("max_content_chars", limits.MAX_CONTENT_CHARS), ("max_dx_json_bytes", limits.MAX_DX_JSON_BYTES)]:
         check(f"{key} == fixture({spec[key]})", const == spec[key], f"实测 {const}")
-    check("状态码与 fixture 一致", limits.STATUS_TOO_LARGE == spec["http_status"]["too_large"])
+    check("状态码与 fixture 一致", limits.STATUS_TOO_LARGE == spec["http_status"]["too_large"]
+          and limits.STATUS_BAD_JSON == spec["http_status"]["bad_json"]
+          and limits.STATUS_BAD_SHAPE == spec["http_status"]["unprocessable"],
+          f"实测 413={limits.STATUS_TOO_LARGE} 400={limits.STATUS_BAD_JSON} 422 由 fixture 钉")
 else:
     print(f"  SKIP 未找到 {os.path.relpath(FIXTURE, REPO)}（镜像内只装后端）⇒ 数值同源改由 npm 侧 limits_guard 判定")
     check("镜像上下文：行为断言仍已跑完（前面各节），跳过项已显式登记", True)
@@ -95,8 +101,6 @@ else:
 print("== 4b. 模块级分支补测（新写的入站边界不许留盲区——r12 教训：覆盖率上线即暴露盲区）==")
 for name, fn, args in [
     ("history=None 放行", limits.check_history, (None,)),
-    ("history 非数组不在此层拦", limits.check_history, ("boom",)),
-    ("history 混入非 dict 条目不炸", limits.check_history, (["plain string", 42, None],)),
     ("dx=None 放行", limits.check_dx, (None,)),
     ("dx 非 dict 不误崩", limits.check_dx, (["not", "a", "dict"],)),
     ("dx.evidence 非数组不误崩", limits.check_dx, ({"evidence": "not-a-list"},)),
@@ -134,6 +138,22 @@ try:
 except limits.RequestTooLarge:
     check("超大 Content-Length 抛 RequestTooLarge", True)
 check("合法声明不抛", (limits.check_declared_size("512") or True) is True)
+
+print("== 5b. 结构违规必须抛 ValueError（pydantic 包成 422，不得穿透到引擎）==")
+# 第二十一轮新增的类型判据。少一条就退回实测过的旧行为：`content` 传对象时引擎 `"".join()`
+# 抛 TypeError → **500**（本机日志实证 kind=TypeError "sequence item 1: expected str instance, dict found"）。
+for name, bad_value in [
+    ("history 非数组", "boom"),
+    ("history 元素非对象", ["plain string"]),
+    ("content 非字符串", [{"role": "user", "content": {"a": 1}}]),
+    ("role 非字符串", [{"role": 7, "content": "x"}]),
+]:
+    try:
+        limits.check_history(bad_value)
+        check(f"{name} 必须抛 ValueError", False, "未抛＝会穿透到引擎变 500")
+    except ValueError as e:
+        check(f"{name} → ValueError（契约层 422）", "history" in str(e), str(e)[:70])
+check("合法 history 不误伤（role/content 齐全）", (limits.check_history(hist(3, 10)) or True) is True)
 
 print("== 6. 对外出口的机器判据（CodeQL py/stack-trace-exposure 归因后的收口）==")
 # 起因：CodeQL 在 main.py 的 `"message": str(exc)` 上开了一条 **error 级** 告警。该处 str(exc)

@@ -102,6 +102,21 @@ CI 会跑同样的东西；`main` 分支保护要求 `build-and-test` 与 `backe
 - 改动影响交付物时，需同步重建源码 ZIP 与最终提交包，并跑 `node work/freeze_check.mjs`、
   `python work/check_delivery_consistency.py`（这两个是**一致性检查工具**，不是改动门槛）。
 
+## 推送之后：CI 结果观察与排障入口
+
+- **报错先查 `docs/PITFALLS.md`**：本仓踩过的坑按「症状（可 grep 的原样报错）→ 根因 → 处置 → 常驻判据」编在目次里，
+  并且由 `frontend/tests/docs_link_guard.mjs` 守着——每条都必须点名一个**真实存在**的判据文件（写不出判据的坑不许进手册）。
+  新踩的坑要进手册，请连判据一起写，否则该守卫判红。
+- 一条命令看本次提交在 Actions 上的真实结果（只读，不改任何状态）：
+  `python scripts/ci_watch.py --sha "$(git rev-parse --short HEAD)" --wait 900`
+  判定只看远端：`[GATE:ci-watch-pass]`／失败时打印失败作业名 + 首条错误行 + run 链接；
+  **一条 run 都没观察到 = rc 2（UNKNOWN），不是通过**——最常见原因是轻量 tag 没推上去（见上方 ④）。
+  要机器可读就加 `--json`。
+- 可选的 IDE 钩子（把上面的取数变成"push 后自动回灌失败面"）：**需在你本机配置，本仓不代改全局设置**。
+  以 Qoder/Trae 的 post-execution hook 为例，把 `Bash(git push*)` 之后接一条
+  `python scripts/ci_watch.py --wait 900 --json`，Agent 就能直接拿到 `failed[]` 与错误行原文而不是去猜；
+  注意钩子只应做**只读观察**，不要让它自动 `gh run rerun` 或改代码——护栏拦停的发布必须人来复核（既有口径）。
+
 ## 依赖维护策略（Dependabot）
 
 - 扫描：npm（frontend）/ pip（backend）/ github-actions 每周检查（`.github/dependabot.yml`）。

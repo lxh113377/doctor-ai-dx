@@ -1,0 +1,4 @@
+# Dockerfile 静态检查配置（hadolint）——规则集显式钉住，不靠默认值
+# 立论同 ruff/mypy：工具升版会改默认规则集，判据必须稳定；禁用规则须写明理由，禁止为凑绿静默关闸。
+failure-threshold: info   # 连 style 级也判红（当前 backend/Dockerfile 实测 0 findings ⇒ 有空间就拿最严档）
+ignore: []

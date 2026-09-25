@@ -71,4 +71,4 @@ cd frontend && npm run test:privacy      # 声明 ↔ 代码一致性门禁（�
 node tests/privacy_guard.mjs             # 单独跑
 ```
 
-联系人/安全漏洞报告渠道见 [`SECURITY.md`](SECURITY.md)。
+联系人/安全漏洞报告渠道见 [`SECURITY.md`](../SECURITY.md)。

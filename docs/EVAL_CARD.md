@@ -34,7 +34,7 @@
 | 入站滥用护栏（v1.17.0） | 请求体/问诊条数/单条字数上限三处同源对账 + 越界 413 + 坏 JSON 400 + 4xx 不落 error 日志 | JS 33 项（`tests/limits_guard.mjs`）+ Py 22 项（`backend/tests/test_limits.py`）；阈值单一源 `fixtures/request_limits.json`，余量按实测峰值 488B 取 128x |
 | 分支保护强制性（v1.17.0） | 聚合 required check `all-checks-passed` + `scripts/branch_guard.py` 五判据 | 实测修前 required checks 仅 2/4 作业 ⇒ 新判据可被绕过；修后线上 contexts=[all-checks-passed]、strict=true，四组反例 rc=1 |
 | 端到端浏览器回归（v1.15.0 起进 CI） | 生产构建 + Functions 本地运行时（无 Key ⇒ 规则降级，确定可重复）跑 5 条用例：三张脱敏病例卡、红线常驻与负向、五步链路与红旗独立呈现与降级标注、双视口 1440/390 × 五页面零横向溢出、零控制台异常 | `frontend/e2e/app.spec.mjs` + `frontend/playwright.config.mjs`（chromium 单引擎，按 AC 口径不做跨浏览器矩阵）。两组反例实测 rc=1（红线文案改一字 → 1 failed；仅报告页注入 `min-width:200vw` → 2 failed 且报错指向新增的病历报告页断言），还原后 rc=0 / 5 passed。此前「双视口 E2E 通过」只是本机一次性人工证据，本轮起为每次 push 的常驻判据 |
-| 交付物可审计性（v1.14.0 起） | tag 触发的 `release.yml`：门禁全绿才产出 `git archive` 源码包 + 双端 CycloneDX SBOM + SHA256SUMS 并挂到 Release（实测前端 362 组件，17 个声明直接依赖连同 lock 解析版本逐一在单） | `scripts/sbom_guard.mjs` 四组反例实测 rc=1；SBOM 不入库防第二真值。**平台侧依赖图实测不可用**（本仓 `dependency-graph/sbom` 读写均 404，peer 3/3 可读）⇒ 属账号/仓库设置面待办，未以代码冒充完成 |
+| 交付物可审计性（v1.14.0 起） | tag 触发的 `release.yml`：门禁全绿才产出 `git archive` 源码包 + 双端 CycloneDX SBOM + SHA256SUMS 并挂到 Release（实测前端 362 组件，17 个声明直接依赖连同 lock 解析版本逐一在单） | `frontend/tests/sbom_guard.mjs` 四组反例实测 rc=1；SBOM 不入库防第二真值。**平台侧依赖图实测不可用**（本仓 `dependency-graph/sbom` 读写均 404，peer 3/3 可读）⇒ 属账号/仓库设置面待办，未以代码冒充完成 |
 | 可观测性 | 每请求 `X-Request-Id`；错误结构化日志（无堆栈/路径/密钥，出站前脱敏）；>8s 慢请求告警 | `lib/observe.js` ↔ `app/observe.py`；route_guard 25 项 + 后端 test_api_observe 40 项 + live 路径 43/37 项（含追问 live 分支与「超限轮零外呼」）（含无 crypto 回退、warn/info 两级日志、空入参、慢请求 warn 与 404 契约）。日志未接集中式后端（见 §3） |
 | 降级行为 | 无 Key / 超时 / 非法 JSON → `rule-fallback` 且带 `fallback_reason` | 31/31 降级标注通过；错误态只显示医生可理解文案 + 故障编号 |
 

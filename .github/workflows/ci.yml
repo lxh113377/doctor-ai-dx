@@ -75,6 +75,34 @@ jobs:
       - name: 全仓文本控制字符扫描（C0 与 DEL，\t\n\r 除外）
         run: python scripts/check_text_hygiene.py
 
+  # 第二十一轮补（对标 OpenEMR 的三条 infra linting 工作流：`Github Actions Linting` /
+  # `Dockerfile Linting`(hadolint + .hadolint.yaml) / `Docker Compose Linting`，实测 peer 1/3 有、
+  # ragflow 只有 web-lint、phlox 零）。立论不是"补个规范"，而是**本项目反复在基础设施层自己写坏自己**：
+  # r18 把 `--require-hashes` 写进注释让判据命中"说到"而非"做到"；r19 注释续行漏 `#` 让 pip 解析失败；
+  # r20 写工作流时把 sed 的 `\1` 落成裸 0x01 控制字符（YAML 直接解析失败）、把多行续行塌成 215 列长行，
+  # 以及本轮修 SC2035 时又穿两层转义写出字面 `\n`（本机 actionlint 立刻 SC1012 抓到）。
+  # 这三样恰好都在**已有门禁的盲区**（ESLint/ruff/mypy 只看源码，link_health 只看 URL）。
+  infra-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: 扫描面非空证明（工作流数 ≥5 且 Dockerfile/compose 在场，防"扫 0 个文件也判绿"）
+        run: |
+          set -eu
+          shopt -s nullglob
+          wfiles=(.github/workflows/*.yml .github/workflows/*.yaml)
+          echo "workflow 文件数=${#wfiles[@]}"
+          test "${#wfiles[@]}" -ge 5
+          test -f backend/Dockerfile
+          test -f docker-compose.yml
+      - name: actionlint（含 shellcheck 覆盖 run 块；版本钉死）
+        # 版本必须钉：actionlint 升版会改规则集，判据不能跟着漂。--pull 让 CI 每次拉钉版镜像。
+        run: docker run --rm -v "$PWD":/work:ro -w /work rhysd/actionlint:1.7.7
+      - name: hadolint（规则集钉在仓根 .hadolint.yaml，failure-threshold=info）
+        run: docker run --rm -v "$PWD":/work:ro -w /work ghcr.io/hadolint/hadolint:v2.14.0-alpine hadolint backend/Dockerfile
+      - name: docker compose config（compose schema 与插值真解析一次）
+        run: docker compose -f docker-compose.yml config -q
+
   e2e:
     # 第十七轮补（对标 OpenEMR `Acceptance test (docker)`）：三红线在**真实浏览器渲染**上的常驻判据。
     # 此前 E2E 只在本机人工跑过，"双视口通过"属一次性人工证据；本作业把它变成每次 push 必跑的机器判据。
@@ -152,7 +180,7 @@ jobs:
   # 保护反而变成永久卡死（比形同虚设更难排查）。
   all-checks-passed:
     name: All Checks Passed
-    needs: [build-and-test, backend-test, text-hygiene, e2e]
+    needs: [build-and-test, backend-test, text-hygiene, infra-lint, e2e]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -172,7 +200,7 @@ jobs:
           echo "全部阻断作业通过 ⇒ 聚合检查绿"
 
   deploy:
-    needs: [build-and-test, backend-test, text-hygiene, e2e, all-checks-passed]
+    needs: [build-and-test, backend-test, text-hygiene, infra-lint, e2e, all-checks-passed]
     # 自动部署开关 = 仓库变量 AUTO_DEPLOY（默认未设 ⇒ 作业显式 skipped，不冒充「已部署」也不误红徽章）。
     # 现状（2026-09-25 实测）：本仓未配 CLOUDFLARE_API_TOKEN secret，生产部署由本机 wrangler OAuth 手工执行；
     # 配好 Token 后置 AUTO_DEPLOY=true 即接管，届时缺 Token 会判红（fail-closed 分支已实测生效，禁止回退成静默跳过）。

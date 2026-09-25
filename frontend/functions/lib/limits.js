@@ -13,11 +13,22 @@ export const MAX_DX_JSON_BYTES = 65536 // workup/report 会回传前端已生成
 
 export const STATUS_TOO_LARGE = 413
 export const STATUS_BAD_JSON = 400
+// 422＝"JSON 合法但语义不合"（HTTP 语义上比 400 精确，且与镜像面 FastAPI 的校验失败同码）。
+// 第二十一轮消掉台账#28：此前 `history:"boom"` 在权威面穿透到引擎→**500**，镜像面 422，
+// 双端差异被测试钉了两个月而不是修掉。500 用在客户端错误上会污染服务端故障口径
+// （滥用流量刷成 error 日志＝掩盖真故障，正是 r19 立 4xx 不记 error 的理由），故收敛到 422。
+export const STATUS_BAD_SHAPE = 422
+
+// 对外文案常量（镜像面 backend/app/limits.py 有同名同值件；由 tests/limits_guard.mjs 逐字对账，
+// 理由同 r20 把 413 文案提成常量：**能逐字比对的东西才谈得上判据**，靠"两处各写一遍中文"必然漂）
+export const TOO_LARGE_MESSAGE = "请求内容超出可处理范围，请精简问诊记录后重试"
+export const BAD_JSON_MESSAGE = "请求内容无法解析，请刷新页面后重试"
+export const BAD_SHAPE_MESSAGE = "请求参数不完整，请刷新后重试"
 
 /** 超限：响应只出医生可理解文案，不外泄内部计算细节 */
 export class RequestTooLarge extends Error {
   constructor(reason) {
-    super("请求内容超出可处理范围，请精简问诊记录后重试")
+    super(TOO_LARGE_MESSAGE)
     this.name = "RequestTooLarge"
     this.reason = reason // 仅进服务端日志，不进响应体
     this.status = STATUS_TOO_LARGE
@@ -26,10 +37,24 @@ export class RequestTooLarge extends Error {
 
 export class RequestBadJson extends Error {
   constructor(reason) {
-    super("请求内容无法解析，请刷新页面后重试")
+    super(BAD_JSON_MESSAGE)
     this.name = "RequestBadJson"
     this.reason = reason
     this.status = STATUS_BAD_JSON
+  }
+}
+
+/**
+ * 结构不合规（类型对不上契约）。对外文案与镜像面 `main.invalid_request` 逐字同值，
+ * 故障编号由路由追加（`请求参数不完整，请刷新后重试（故障编号 xxx）`）。
+ */
+export class RequestBadShape extends Error {
+  constructor(reason) {
+    super(BAD_SHAPE_MESSAGE)
+    this.name = "RequestBadShape"
+    this.reason = reason
+    this.status = STATUS_BAD_SHAPE
+    this.withFailureId = true // 路由据此追加故障编号（413/400 不带，保持既有对外口径）
   }
 }
 
@@ -52,12 +77,25 @@ function boundedText(value, where) {
 
 export function assertHistoryShape(history) {
   if (history === undefined || history === null) return
-  if (!Array.isArray(history)) return // 非数组交给引擎既有分支（保持双端 500 语义不变）
+  // 契约 `history: list[dict]`（镜像面 models.IntakeAskRequest 由 pydantic 强校验 ⇒ 不合即 422）。
+  // 权威面此前"非数组直接放过、让引擎炸 500"＝台账#28 的真实成因，本轮改为入站即判。
+  if (!Array.isArray(history)) throw new RequestBadShape(`history 类型 ${typeof history} ≠ array`)
   if (history.length > MAX_HISTORY_ITEMS) {
     throw new RequestTooLarge(`history 条数 ${history.length} > ${MAX_HISTORY_ITEMS}`)
   }
   history.forEach((m, i) => {
-    if (m && typeof m === "object") boundedText(m.content, `history[${i}].content`)
+    if (m === null || typeof m !== "object" || Array.isArray(m)) {
+      throw new RequestBadShape(`history[${i}] 类型 ${Array.isArray(m) ? "array" : typeof m} ≠ object`)
+    }
+    // 类型也判掉：`content` 传成对象会在镜像面 `"".join()` 处抛 TypeError → 500（本机实测），
+    // 权威面则是静默把对象拼进上下文继续跑。500 只留给真故障，客户端错误在入站就定码。
+    if (m.content !== undefined && m.content !== null && typeof m.content !== "string") {
+      throw new RequestBadShape(`history[${i}].content 类型 ${typeof m.content} ≠ string`)
+    }
+    if (m.role !== undefined && m.role !== null && typeof m.role !== "string") {
+      throw new RequestBadShape(`history[${i}].role 类型 ${typeof m.role} ≠ string`)
+    }
+    boundedText(m.content, `history[${i}].content`)
   })
 }
 
@@ -78,10 +116,15 @@ export function parseBoundedBody(text) {
   }
   assertHistoryShape(parsed.history)
   if (parsed.dx !== undefined && parsed.dx !== null) {
+    // 契约 `dx: dict | None`；只校到这一层（镜像面 dx 内部是自由 dict，不再往下强校验）
+    if (typeof parsed.dx !== "object" || Array.isArray(parsed.dx)) {
+      throw new RequestBadShape(`dx 类型 ${Array.isArray(parsed.dx) ? "array" : typeof parsed.dx} ≠ object`)
+    }
     const dxBytes = byteLength(JSON.stringify(parsed.dx))
     if (dxBytes > MAX_DX_JSON_BYTES) throw new RequestTooLarge(`dx ${dxBytes} > ${MAX_DX_JSON_BYTES}`)
     boundedText(parsed.dx?.conclusion, "dx.conclusion")
-    ;(parsed.dx?.evidence || []).slice(0, MAX_HISTORY_ITEMS).forEach((ev, i) => {
+    const evidence = Array.isArray(parsed.dx.evidence) ? parsed.dx.evidence.slice(0, MAX_HISTORY_ITEMS) : []
+    evidence.forEach((ev, i) => {
       if (ev && typeof ev === "object") boundedText(ev.text, `dx.evidence[${i}].text`)
     })
   }

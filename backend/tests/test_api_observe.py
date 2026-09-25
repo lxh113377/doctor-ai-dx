@@ -74,11 +74,22 @@ check("日志已脱敏（无密钥/内部路径）", bool(log) and not LEAK_RE.s
 check("日志不带堆栈字段", bool(log) and "stack" not in log and "traceback" not in log)
 
 print("== 错误契约对称（FastAPI 默认 detail 数组不外泄）==")
-bad = client.post("/api/dx/c1", json={"history": []})
+# 第二十一轮改判：`/dx/{case_id}` 的病例 id 取自**路径**，镜像面此前还强制体里再带一个 case_id，
+# 于是"只带路径 id"的合法请求在镜像面回 422、权威面回 200（tests/error_parity_guard.mjs 首跑抓到）。
+# 现在这里断言 200，422 的用例换成真正的形状违规——两条都是契约，缺一条就退回旧差异。
+ok_path_only = client.post("/api/dx/c1", json={"history": []})
+check("只带路径 case_id 的合法请求 → 200（不再额外索要体字段）",
+      ok_path_only.status_code == 200 and ok_path_only.json().get("code") == 0,
+      f"实测 {ok_path_only.status_code}")
+bad = client.post("/api/dx/c1", json={"history": "boom"})
 bad_body = bad.json()
-check("缺字段 422 走 {code,message} 契约", bad.status_code == 422 and bad_body.get("code") == 422
+check("history 非数组 422 走 {code,message} 契约", bad.status_code == 422 and bad_body.get("code") == 422
       and "detail" not in bad_body and isinstance(bad_body.get("message"), str), json.dumps(bad_body, ensure_ascii=False)[:160])
 check("422 也带 X-Request-Id", bool(ID_RE.match(bad.headers.get("x-request-id", ""))))
+malformed = client.post("/api/dx/c1", content="{oops", headers={"content-type": "application/json"})
+check("请求体不是合法 JSON → 400（与权威面 parseBoundedBody 同码，不再按 422 混报）",
+      malformed.status_code == 400 and malformed.json().get("code") == 400,
+      f"实测 {malformed.status_code} {json.dumps(malformed.json(), ensure_ascii=False)[:120]}")
 
 print("== 路由级 404 契约（未知病例 / 未知路径）==")
 # 第十四轮补：此前 api.py 只跑过 /cases 与 /health，四条业务路由的 404 分支与 200 主体从未执行。

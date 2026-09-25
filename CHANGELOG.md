@@ -5,6 +5,24 @@
 
 ## [Unreleased]
 
+## [1.19.0] - 2026-09-25
+
+### Added（第二十一轮：把"我们写坏的基础设施文件"和"双端错误码"都变成有判据的面）
+- 🔴 **基础设施层静态把关进阻断链**。对标实测：OpenEMR 有专门的三条 linting 工作流（`Github Actions Linting` / `Dockerfile Linting`(hadolint) / `Docker Compose Linting`），ragflow 只有 `web-lint`，phlox 零 ⇒ **1/3** 有；我方此前 ESLint/ruff/mypy 只看源码，**工作流/Dockerfile/compose 这三份"决定发布能不能跑"的文件没有任何判据**——而本仓反复在这里自伤（r18 把 `--require-hashes` 写进注释导致判据命中"说到"而非"做到"；r19 `requirements.txt` 注释续行漏 `#` 让 pip 解析失败；r20 把 `sed` 的 `\1` 落成裸 `0x01` 让 YAML 直接解析失败）。新增阻断作业 `infra-lint`：`rhysd/actionlint:1.7.7`（内嵌 shellcheck 扫每个 `run` 块）+ `ghcr.io/hadolint/hadolint:v2.14.0-alpine`（规则集钉在仓根 `.hadolint.yaml`，`failure-threshold: info`）+ `docker compose config -q`，另加"扫描面非空"反空断言（workflow 文件 ≥5、Dockerfile/compose 在场）。**首跑即抓到一条真问题**：`release.yml` 的 `sha256sum *` → `SC2035`（文件名以 `-` 开头会被当成选项）。更诚实的一条：修它时我又穿了一层 shell+python 转义，把续行写成**字面 `\n`**，被同一个 actionlint 以 `SC1012` 当场抓回——这正是本作业要防的事，且它上线第一轮就拦到了作者本人。新作业已挂进 `all-checks-passed.needs` 与 `deploy.needs`（`scripts/branch_guard.py` 反例实测：漏挂即 rc=1 并指名 `缺 ['infra-lint']`）。
+- **镜像层 CVE 扫描**（对标：ragflow 仓根带 `.trivyignore` ⇒ 同类把镜像层纳入扫描；我方自 v1.18 起把镜像发布给评审，却只扫依赖清单，基础镜像的 OS 包全在射程外）。阻断档取值的依据是实测而非拍脑袋：本机扫我们刚发布的镜像得 `Total: 44 (HIGH: 44, CRITICAL: 0)`，逐条查 `FixedVersion` **44 条全部无可用修复版本**（Debian 侧未发补丁）⇒ 阻断档＝「CRITICAL 且已有修复版本」（`--severity CRITICAL --ignore-unfixed --exit-code 1`，当前 0 命中），HIGH 全量只写进 job summary 不拦（按 HIGH 阻断会在上游出补丁前长期红灯＝cry-wolf，同 r17 计数基线教训）。判据真的会咬的机制反例：同一镜像去掉 `--ignore-unfixed` ⇒ rc=1。落点：`.github/workflows/release.yml` **推之前**扫（不把已知可修的 CRITICAL 推给评审）+ `.github/workflows/dep-audit.yml` 定时扫已发布的 `:latest`。
+- **双端错误码三方对账**：新增 `frontend/tests/fixtures/error_parity.json`（12→13 条用例，期望码写在仓内单一源）+ `frontend/tests/error_parity_guard.mjs`（期望 ↔ JS ↔ Py 三方，另含"客户端错误一律 4xx""4xx 必须 {code,message} 且 message 非空"两条不变式）。`api_contract_guard.mjs` 的"实现真的有这个分支"从**比字符串**升级为**比 limits 常量产出的状态码集合**（旧判法一改 if 写法就假红）。`docs/openapi.json` 四个 POST 补声明 `422` + `BadShape` 响应组件。
+- **排障手册 + 手册自身的守卫**：新增 `docs/PITFALLS.md`（转义/假绿/发布与 Git/Windows+Git Bash/双端一致 五类，每条写「可 grep 的报错症状 → 根因 → 处置 → 常驻判据」，写不出判据的坑不许进手册）；新增 `frontend/tests/docs_link_guard.mjs` 守它和其余文档：markdown 仓内链接与锚点必须存在、反引号里的仓内路径必须真实（`CHANGELOG.md` 按历史叙述豁免，理由写在代码注释里）、被点名的判据文件必须存在、扫描面必须非空。**首跑抓到 4 处既存真死链**：`SECURITY.md` 的 Discussions 写成 `../../discussions/...`、`docs/PRIVACY.md` 引 `SECURITY.md` 少一层 `../`、`docs/ARCHITECTURE.md` 写 `tests/redline.test.jsx`（实在 `frontend/src/`）、`docs/EVAL_CARD.md` 写 `scripts/sbom_guard.mjs`（实在 `frontend/tests/`）——全部已修。
+- **推送后的远端回执脚本化**：新增 `scripts/ci_watch.py`（只读；按提交聚合 run/作业结论，失败时打印失败作业名 + 首条错误行 + run 链接；`--json` 供 IDE 钩子消费）。关键取向：**一条 run 都没观察到 = exit 2（UNKNOWN）而不是通过**，实测反例 rc=2。`CONTRIBUTING.md` 增「推送之后」一节，并把可选的 post-execution hook 写法交给人（钩子只做只读观察，不代改全局设置、不自动 rerun）。
+
+### Fixed（同轮，多数由上面两条新判据抓出）
+- 🔴 **台账#28 关闭**（此前"同一入参权威面 500／镜像面 422"被测试**钉住**当既成事实，而不是修掉）：`history` 传成字符串改由入站定码 **422**；三方对账又抓到三条此前无人知道的差异并一并收敛——① 镜像面额外强制 body 带 `case_id`（权威面从路径取）⇒ 只带路径 id 的合法请求镜像面回 422；② `content` 传对象时镜像面 `"".join()` 抛 `TypeError` → **500**（本机日志实证 `sequence item 1: expected str instance, dict found`）而权威面静默继续；③ 请求体不是合法 JSON 时权威面 400、镜像面按 FastAPI 惯例 422。现统一：结构不合契约＝422、解析不了＝400、id 只取路径。对外文案两侧各写一遍中文必然漂 ⇒ 提成三对同名同值常量（`TOO_LARGE/BAD_JSON/BAD_SHAPE`_MESSAGE），由 `limits_guard` 逐字对账。
+- **错误处理路径自身不得把请求带崩**：`catch` 分支里 `redact(e.message, env)` 读 env 一旦抛异常，异常就逃出 handler，医生看到的是平台错误页而不是承诺过的可读文案（破「API 失败只显示可读文案」这条口径）。改为 `redact` 的 env 读取与 `logEvent` 的序列化各自兜底：**归因可以降级，响应信封不能失败**。`route_guard` 用「取属性即抛的 env 桩」把这条钉成常驻用例（不给生产代码开测试后门）。
+- `docs/` 四处死链（见上）；`.github/workflows/release.yml` 的 `sha256sum *` → `sha256sum ./*`。
+
+### 度量与红线
+`npm test` 十六→**十八件套**（+`test:docs`、+`test:error-parity`）exit 0；`route_guard` 29→**37** 项、`test_limits` 40→**44** 项、`test_api_observe` 39→**42** 项、`error_parity_guard` 33 项、`docs_link_guard` 7 项（三组反例实测 rc=1：假凭据／死链／删掉判据行）；覆盖率 Py **93.52→93.63%**（地板 90）、JS 全局零降（新增的 `observe.js` 两条兜底支路各自 100% 覆盖，模块地板余量最薄 2.0pt 如实记录）；ruff/mypy(29 文件 0 error)/ESLint/文本卫生/pre-commit **10 钩**全绿；`branch_guard` 阻断作业 4→5 且 needs 全覆盖。**三条产品红线逻辑零改动**（红旗仍独立于 LLM、终审文案与引用白名单未动）、默认检索档仍 bm25、评测仍是同一批 31 例。
+
+
 ## [1.18.2] - 2026-09-25
 
 ### Fixed

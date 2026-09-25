@@ -11,6 +11,27 @@ on:
   workflow_dispatch: {}
 
 jobs:
+  image-scan:
+    # 第二十一轮补（对标：ragflow 仓根带 `.trivyignore` ⇒ 同类把**镜像层**纳入 CVE 扫描；我方自 r20 起
+    # 已把镜像发布给评审，但既有 audit 只扫依赖清单（npm/pip），基础镜像的 OS 包完全不在射程内）。
+    # 阻断档的取值来自实测而非拍脑袋：本机扫我们刚发布的镜像得 HIGH+CRITICAL 共 **44** 条，
+    # 逐条查 FixedVersion 后 **全部无可用修复版本**（Debian 侧未发补丁），CRITICAL=0
+    # ⇒ 阻断档＝「CRITICAL 且已有修复版本」（`--ignore-unfixed`）。若按 HIGH 阻断，CI 会在上游出补丁前
+    # 长期红灯＝cry-wolf（同 r17 link_health 计数基线的教训），所以 HIGH 全量只写报告不拦。
+    # 判据真的会咬（机制反例）：同一镜像去掉 `--ignore-unfixed`、按 `HIGH,CRITICAL` 扫 ⇒ 输出
+    # `Total: 44 (HIGH: 44, CRITICAL: 0)` 且 `--exit-code 1` 返回 **rc=1**（本机实测）。
+    # trivy 版本钉死 0.61.0：DB 规则集随版本变，判据不能跟着漂（升版须人工复核后再改这里）。
+    if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: 扫 GHCR 上已发布的 latest（匿名可拉，故不需要任何凭据）
+        run: |
+          set -eu
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+            -v trivy-cache:/root/.cache/trivy \
+            aquasec/trivy:0.61.0 image --severity CRITICAL --ignore-unfixed --exit-code 1 \
+            "ghcr.io/${{ github.repository_owner }}/doctor-ai-dx:latest"
+
   audit:
     runs-on: ubuntu-latest
     steps:

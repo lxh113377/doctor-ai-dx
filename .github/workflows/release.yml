@@ -126,6 +126,27 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: 镜像 CVE 阻断扫描（**推之前**扫，不把已知可修的 CRITICAL 交给评审）
+        # 第二十一轮补（对标 ragflow 用 trivy 扫镜像层；我方 r20 起 publish 镜像却只扫依赖清单）。
+        # 阻断档＝CRITICAL 且已有修复版本；判据依据与机制反例见 `dep-audit.yml` 的 image-scan 注释
+        # （本机实测：我方镜像 HIGH 44 条全部无补丁 ⇒ 不阻断，去掉 --ignore-unfixed 时 rc=1 证明会咬）。
+        # 顺序是判据的一部分：先扫后推，避免"已公开一个带可修 CRITICAL 的镜像再回头删"。
+        if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+        run: |
+          set -eu
+          docker build -t "scan-local:${{ github.ref_name }}" ./backend
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+            -v trivy-cache:/root/.cache/trivy \
+            aquasec/trivy:0.61.0 image --severity CRITICAL --ignore-unfixed --exit-code 1 \
+            "scan-local:${{ github.ref_name }}"
+      - name: 镜像漏洞全量报告（HIGH+CRITICAL 不阻断，只写进 job summary 供复核）
+        if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+        continue-on-error: true
+        run: |
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+            -v trivy-cache:/root/.cache/trivy \
+            aquasec/trivy:0.61.0 image --severity HIGH,CRITICAL --format table \
+            "scan-local:${{ github.ref_name }}" | tail -60 >> "$GITHUB_STEP_SUMMARY"
       - name: 镜像发布（GHCR，随 tag 双标签：<版本> + latest）
         # 对标取证（当轮实测）：`gh api users/bloodworks-io/packages?package_type=container` 查到公开包 phlox，
         # 而 `gh api users/lxh113377/packages?package_type=container` 返回 **0 个包** ⇒ 我方镜像只在 CI 里临时 build，
@@ -151,7 +172,9 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh api -X PATCH             "users/${{ github.repository_owner }}/packages/container/doctor-ai-dx/visibility"             --input - <<< '{"visibility":"public"}' ||             echo "可见性接口不接受当前凭据（继续，由 manifest 实测判定是否真的可匿名拉取）"
+          ENDPOINT="users/${{ github.repository_owner }}/packages/container/doctor-ai-dx/visibility"
+          gh api -X PATCH "$ENDPOINT" --input - <<< '{"visibility":"public"}' \
+            || echo "可见性接口不接受当前凭据（继续，由 manifest 实测判定是否真的可匿名拉取）"
 
       - name: 镜像可拉取实证（**匿名**走 GHCR token 交换，模拟评审侧视角）
         if: ${{ startsWith(github.ref, 'refs/tags/v') }}
@@ -168,7 +191,9 @@ jobs:
           TOK=$(curl -s --max-time 60 "https://ghcr.io/token?scope=repository:${IMG}:pull" | sed -n 's/.*"token":"\([^"]*\)".*/\1/p')
           test -n "$TOK" || { echo "::error::匿名 token 交换失败（GHCR 端点异常）"; exit 1; }
           ACCEPT="application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.list.v2+json, application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.v2+json"
-          code=$(curl -s -o /tmp/mf.json -w "%{http_code}" --max-time 60 -H "Authorization: Bearer ${TOK}" -H "Accept: ${ACCEPT}" "https://ghcr.io/v2/${IMG}/manifests/${{ github.ref_name }}")
+          URL="https://ghcr.io/v2/${IMG}/manifests/${{ github.ref_name }}"
+          code=$(curl -s -o /tmp/mf.json -w "%{http_code}" --max-time 60 \
+            -H "Authorization: Bearer ${TOK}" -H "Accept: ${ACCEPT}" "$URL")
           echo "匿名 manifest http=$code"
           if [ "$code" != "200" ]; then
             echo "--- 响应体 ---"; cat /tmp/mf.json
@@ -187,7 +212,8 @@ jobs:
         run: |
           cd dist-release
           cp ../docs/sbom/frontend.cdx.json ../docs/sbom/backend.cdx.json .
-          sha256sum * | tee SHA256SUMS.txt
+          # SC2035：`*` 展开遇到以 - 开头的文件名会被当成选项 ⇒ 显式 ./*
+          sha256sum ./* | tee SHA256SUMS.txt
           cd ..
 
       - uses: actions/upload-artifact@v4

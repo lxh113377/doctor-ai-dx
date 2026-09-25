@@ -1,0 +1,22 @@
+{
+  "_source": "医·基层AI辅助诊断 · 双端错误码对账单源（v1.19.0 第二十一轮）。权威面 Functions(JS) 与镜像面 FastAPI(Py) 对同一入参必须回**同一个** status，且等于本文件的期望值。",
+  "_why": "台账#28 挂了两个月：`history:\"boom\"` 权威面 500／镜像面 422，只用测试把差异**钉住**而没有消掉。本轮改判：客户端错误一律 4xx 定码（500 只留给真故障，否则滥用流量会把 error 日志刷成噪声＝掩盖真故障，r19 立的口径）。对账时又抓到三条此前没人知道的差异：① 镜像面强制 body 带 `case_id`（权威面从路径取）→ 只带路径 id 的合法请求镜像面回 422；② `content` 传对象在镜像面 `\"\".join()` 抛 TypeError→**500**、权威面静默拼接继续跑；③ 请求体不是合法 JSON 时权威面 400、镜像面按 FastAPI 惯例 422。",
+  "_measured": "2026-09-25 本机双端实跑逐条取真值（node 侧直接调 onRequest，py 侧 TestClient raise_server_exceptions=False），非按文档推。",
+  "cases": [
+    { "name": "history 非数组", "path": "/api/dx/c1", "json": { "history": "boom" }, "status": 422 },
+    { "name": "history 元素非对象", "path": "/api/dx/c1", "json": { "history": ["junk"] }, "status": 422 },
+    { "name": "content 非字符串", "path": "/api/dx/c1", "json": { "history": [{ "role": "user", "content": { "a": 1 } }] }, "status": 422 },
+    { "name": "role 非字符串", "path": "/api/dx/c1", "json": { "history": [{ "role": 1, "content": "x" }] }, "status": 422 },
+    { "name": "dx 非对象", "path": "/api/workup/c1", "json": { "history": [], "dx": "x" }, "status": 422 },
+    { "name": "单条 content 超上限", "path": "/api/dx/c1", "json": { "history": [{ "role": "user", "content": "腹" }] }, "repeat_content": 2001, "status": 413 },
+    { "name": "history 条数超上限", "path": "/api/dx/c1", "json": { "history": [{ "role": "user", "content": "腹" }] }, "repeat_items": 65, "status": 413 },
+    { "name": "请求体不是合法 JSON", "path": "/api/dx/c1", "raw": "{oops", "status": 400 },
+    { "name": "空 body 走合法链路", "path": "/api/dx/c1", "json": {}, "status": 200 },
+    { "name": "只带路径 case_id 的合法请求", "path": "/api/dx/c1", "json": { "history": [{ "role": "user", "content": "压榨样胸痛伴冷汗" }] }, "status": 200 },
+    { "name": "未知病例", "path": "/api/dx/nope", "json": { "history": [] }, "status": 404 },
+    { "name": "intake 缺 case_id", "path": "/api/intake/ask", "json": { "history": [] }, "status": 404,
+      "message": "unknown case: (未提供)" },
+    { "name": "未知病例(带 id)", "path": "/api/dx/zzz", "json": { "history": [] }, "status": 404,
+      "message": "unknown case: zzz" }
+  ]
+}

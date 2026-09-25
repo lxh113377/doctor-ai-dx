@@ -45,28 +45,83 @@ check("未知病例 404 且 message 可读（不含堆栈/路径）",
   JSON.stringify(badCaseBody).slice(0, 140))
 
 const logs = []
+const warns = []
 const realError = console.error
+const realWarn = console.warn
 console.error = (...args) => { logs.push(args.join(" ")) }
-let internalErr = null
+console.warn = (...args) => { warns.push(args.join(" ")) }
+let shapeErr = null
 try {
-  // history 传字符串 → 引擎内部抛非业务异常，走 500 兜底分支
-  internalErr = await onRequest(ctx("/api/dx/c1", {
+  // v1.19.0 第二十一轮：`history` 传字符串不再穿透到引擎报 500，而是入站定码 422（双端同码同文案，
+  // 见 tests/error_parity_guard.mjs 与 fixtures/error_parity.json）。此处测的是"权威面自己"的行为。
+  shapeErr = await onRequest(ctx("/api/dx/c1", {
     method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ history: "boom" }),
   }))
 } finally {
   console.error = realError
+  console.warn = realWarn
+}
+const shapeBody = shapeErr ? await readJson(shapeErr) : {}
+const shapeId = shapeErr?.headers.get("x-request-id") || ""
+check("history 非数组 → 422（不是 500，客户端错误不得记服务端故障）",
+  shapeErr?.status === 422 && shapeBody.code === 422, `实测 ${shapeErr?.status}`)
+check("422 文案 = 契约文案 + 故障编号",
+  shapeBody.message === `请求参数不完整，请刷新后重试（故障编号 ${shapeId}）`, JSON.stringify(shapeBody.message))
+check("422 走 warn 级日志且 kind=RequestBadShape",
+  warns.some((l) => { try { const j = JSON.parse(l); return j.lvl === "warn" && j.kind === "RequestBadShape" } catch { return false } })
+  && logs.length === 0, `warn=${warns.length} error=${logs.length}`)
+check("422 日志的 reason 可用于归因（含字段名）且不含请求体原文", (() => {
+  const hit = warns.map((l) => { try { return JSON.parse(l) } catch { return null } }).filter(Boolean)
+    .find((j) => j.kind === "RequestBadShape")
+  return !!hit && String(hit.msg).includes("history") && !JSON.stringify(hit).includes("boom")
+})(), JSON.stringify(warns[0] || "").slice(0, 160))
+
+// 真·未预期异常的 500 兜底：用 env 取属性即抛的桩触发（env 是 Functions 契约里调用方给的对象，
+// 属测试桩，不给生产代码开测试后门）。此前这条靠"传个坏 history 让它炸"顺带覆盖，
+// 那条路已被入站校验接管 ⇒ 换成显式注入，覆盖不降。
+const errLogs = []
+const realErrInject = console.error
+console.error = (...args) => { errLogs.push(args.join(" ")) }
+let internalErr = null
+const explodingEnv = new Proxy({}, { get() { throw new Error("env 读取失败（测试注入）") } })
+try {
+  internalErr = await onRequest({
+    request: new Request(`https://dx.test/api/dx/c1`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ history: [] }),
+    }), env: explodingEnv, waitUntil() {},
+  })
+} finally {
+  console.error = realErrInject
 }
 const errId = internalErr?.headers.get("x-request-id") || ""
 const errBody = internalErr ? await readJson(internalErr) : {}
-check("未预期异常返回 500", internalErr?.status === 500, `实测 ${internalErr?.status}`)
+check("未预期异常仍返回 500（兜底分支未被入站校验吃掉）", internalErr?.status === 500, `实测 ${internalErr?.status}`)
+check("归因链路自身抛异常时响应仍带 X-Request-Id（信封不能因日志失败而丢）",
+  internalErr?.status === 500 && ID_RE.test(errId), `id=${errId}`)
+{
+  // logEvent 的降级支路：字段不可序列化（循环引用）时必须仍出一行、且不得把异常抛回请求链路
+  const captured = []
+  const realLog = console.log
+  console.log = (...a) => captured.push(a.join(" "))
+  try {
+    const circular = {}
+    circular.self = circular
+    logEvent("info", { req: "x", bad: circular })
+  } finally {
+    console.log = realLog
+  }
+  const parsed = captured.length ? JSON.parse(captured[0]) : null
+  check("logEvent 遇不可序列化字段→降级行而非抛出",
+    !!parsed && parsed.kind === "LogSerializeError" && parsed.lvl === "warn", captured[0] || "无输出")
+}
 check("500 文案含可对账故障编号", typeof errBody.message === "string" && errBody.message.includes(errId) && errId.length >= 4,
   `msg=${JSON.stringify(errBody.message)} id=${errId}`)
 check("500 响应体零泄漏（无堆栈/路径/密钥）", !LEAK_RE.test(JSON.stringify(errBody)), JSON.stringify(errBody).slice(0, 160))
 check("服务端日志落了一条 error 且 req 与故障编号一致",
-  logs.some((line) => { try { const j = JSON.parse(line); return j.lvl === "error" && j.req === errId } catch { return false } }),
-  logs.slice(0, 2).join(" | "))
-check("日志不含请求体原文（防病例文本入日志）",
-  logs.every((line) => !line.includes("boom")))
+  errLogs.some((line) => { try { const j = JSON.parse(line); return j.lvl === "error" && j.req === errId } catch { return false } }),
+  errLogs.slice(0, 2).join(" | "))
+check("全部日志（error/warn/stdout）不含请求体原文（防病例文本入日志）",
+  [...logs, ...warns, ...errLogs].every((line) => !line.includes("boom")))
 
 console.log("== 入站边界（v1.17.0 滥用护栏）==")
 const big = JSON.stringify({ case_id: "c1", history: Array.from({ length: 70 }, () => ({ role: "user", content: "腹" })) })

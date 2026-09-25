@@ -62,9 +62,11 @@ export async function onRequest(context) {
     const ms = Date.now() - startedAt
     // 入站边界拒绝：客户端错误**不得**记成服务端 error（否则滥用流量会把错误日志刷成噪声，掩盖真故障）。
     // 对外只出医生可理解文案；reason 只进日志，且只含数值与字段名，不含病例文本。
-    if (e?.status === 413 || e?.status === 400) {
+    if (typeof e?.status === "number" && e.status >= 400 && e.status < 500) {
       logEvent("warn", { req: requestId, path, method, ms, kind: e.name, msg: e.reason })
-      return fail(e.status, e.message, requestId)
+      // 422 与镜像面 `RequestValidationError` 逐字同文案（含故障编号）；413/400 维持既有对外口径不带编号
+      const msg = e.withFailureId ? `${e.message}（故障编号 ${requestId}）` : e.message
+      return fail(e.status, msg, requestId)
     }
     // 只落归因最小集：不写 stack、不写请求体（可能含病例文本）
     logEvent("error", {

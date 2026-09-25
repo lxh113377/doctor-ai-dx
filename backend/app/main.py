@@ -109,11 +109,21 @@ async def http_error(request: Request, exc: StarletteHTTPException):
 
 @app.exception_handler(RequestValidationError)
 async def invalid_request(request: Request, exc: RequestValidationError):
-    """请求体校验失败：对齐 Functions 端 {code,message} 契约，不外泄字段路径数组。"""
+    """请求体校验失败：对齐 Functions 端 {code,message} 契约，不外泄字段路径数组。
+
+    第二十一轮双端对账（tests/error_parity_guard.mjs）抓到的一处真实差异：请求体**根本不是合法 JSON**
+    时，pydantic 也归到 RequestValidationError（`type=json_invalid`）⇒ 镜像面回 422，而权威面
+    `parseBoundedBody` 明确抛 RequestBadJson 回 400。HTTP 语义上"解析不了"是 400、"语法对但不合契约"
+    才是 422，所以按错误类型分流，而不是把权威面倒向 422。
+    """
     request_id = getattr(request.state, "request_id", None) or new_request_id()
+    errs = exc.errors() or []
+    malformed = any(str(e.get("type", "")).startswith("json_invalid") or "JSON decode" in str(e.get("msg", "")) for e in errs)
+    code = limits.STATUS_BAD_JSON if malformed else 422
+    base = limits.BAD_JSON_PUBLIC_MESSAGE if malformed else limits.BAD_SHAPE_PUBLIC_MESSAGE
     return JSONResponse(
-        status_code=422,
-        content={"code": 422, "message": f"请求参数不完整，请刷新后重试（故障编号 {request_id}）"},
+        status_code=code,
+        content={"code": code, "message": f"{base}（故障编号 {request_id}）"},
         headers={"X-Request-Id": request_id},
     )
 

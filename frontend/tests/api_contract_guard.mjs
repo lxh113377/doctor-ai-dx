@@ -31,19 +31,30 @@ for (const p of Object.keys(spec.paths)) {
 for (const kw of ["医生终审", "不可被模型覆盖", "白名单"]) {
   if (!JSON.stringify(spec.info).includes(kw)) { console.log(`FAIL info 缺安全口径: ${kw}`); fail++ }
 }
-// 声明↔实现双向对账（v1.17.0 滥用护栏）：spec 里给 POST 声明的 400/413，源码必须真发得出来，
-// 否则 openapi 就退化成"许愿式契约"（写了但没人实现），这正是本仓 privacy_guard 同类的判据方向。
-const GUARD_STATUSES = ["400", "413"]
-const routeHasGuard = routeSrc.includes("e?.status === 413") && routeSrc.includes("e?.status === 400")
+// 声明↔实现双向对账（v1.17.0 滥用护栏；v1.19.0 起含 422）：spec 里给 POST 声明的 400/413/422，
+// 源码必须真发得出来，否则 openapi 就退化成"许愿式契约"（写了但没人实现）。
+// 本轮把"实现有分支"的判法从**比字符串**（`routeSrc.includes("e?.status === 413")`）升级为
+// **比实现真的会抛出的状态码集合**：源码里的 if 条件写法一改（本轮改成 4xx 区间判断），
+// 旧判法就会假红；而"某个 4xx 码由 limits 里的哪个常量产出"才是契约本体。
+const GUARD_STATUSES = ["400", "413", "422"]
+const limits = await import("../functions/lib/limits.js")
+const produced = new Set([limits.STATUS_BAD_JSON, limits.STATUS_TOO_LARGE, limits.STATUS_BAD_SHAPE].map(Number))
+if (produced.size !== GUARD_STATUSES.length) {
+  console.log(`FAIL limits.js 产出的 4xx 状态码数(${produced.size}) 与声明数(${GUARD_STATUSES.length})不符`); fail++
+}
+const routeHasGuard = /e\.status >= 400 && e\.status < 500/.test(routeSrc)
 for (const [path, method] of Object.entries(spec.paths)) {
   if (!method.post) continue
   for (const code of GUARD_STATUSES) {
     const declared = method.post.responses?.[code] != null
-    const ok = declared && routeHasGuard
-    if (!ok) { console.log(`FAIL POST ${path} 声明 ${code}=${declared} 实现有分支=${routeHasGuard}`); fail++ }
+    const ok = declared && produced.has(Number(code)) && routeHasGuard
+    if (!ok) {
+      console.log(`FAIL POST ${path} 声明 ${code}=${declared} 实现产出该码=${produced.has(Number(code))} 路由有 4xx 分支=${routeHasGuard}`)
+      fail++
+    }
   }
 }
-if (fail === 0) console.log(`PASS 入站边界响应码：4 个 POST 均声明并实现 400/413`)
+if (fail === 0) console.log(`PASS 入站边界响应码：4 个 POST 均声明并由 limits 常量产出 ${GUARD_STATUSES.join("/")}`)
 
 console.log(`API 契约守卫: ${fail === 0 ? "ALL PASS" : `FAIL(${fail})`}（${CONTRACT.length} 端点双向对账）`)
 process.exit(fail === 0 ? 0 : 1)

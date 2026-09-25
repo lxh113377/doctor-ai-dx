@@ -2,7 +2,7 @@
   "openapi": "3.0.3",
   "info": {
     "title": "医·基层AI辅助诊断系统 API",
-    "version": "1.18.2",
+    "version": "1.19.0",
     "description": "Cloudflare Pages Functions（线上权威实现 functions/api/[[route]].js）的机器可读契约；FastAPI 后端为镜像实现，双端一致性由 contract_parity 测试保障。所有响应统一壳 {code:0,data}（成功）或 {code:<http-status>,message}（失败），并携带 x-request-id 响应头用于故障归因。全程 AI 辅助参考 · 医生终审，输出不构成独立诊断。",
     "x-compliance": "演示仅脱敏合成病例；evidence_ids 仅限知识库白名单 kb-001~055；红旗规则层独立于 LLM 不可被模型覆盖"
   },
@@ -26,7 +26,7 @@
         "responses": {
           "200": { "$ref": "#/components/responses/JsonEnvelope" },
           "404": { "$ref": "#/components/responses/NotFound" },
-          "500": { "$ref": "#/components/responses/InternalError" }, "400": { "$ref": "#/components/responses/BadJson" }, "413": { "$ref": "#/components/responses/PayloadTooLarge" }
+          "500": { "$ref": "#/components/responses/InternalError" }, "400": { "$ref": "#/components/responses/BadJson" }, "413": { "$ref": "#/components/responses/PayloadTooLarge" }, "422": { "$ref": "#/components/responses/BadShape" }
         }
       }
     },
@@ -39,7 +39,7 @@
         "responses": {
           "200": { "description": "诊断结果；mode=live|rule-fallback；红旗不可被模型覆盖", "headers": { "x-request-id": { "$ref": "#/components/headers/RequestId" } }, "content": { "application/json": { "schema": { "allOf": [{ "$ref": "#/components/schemas/Envelope" }, { "type": "object", "properties": { "data": { "$ref": "#/components/schemas/Diagnosis" } } }] } } } },
           "404": { "$ref": "#/components/responses/NotFound" },
-          "500": { "$ref": "#/components/responses/InternalError" }, "400": { "$ref": "#/components/responses/BadJson" }, "413": { "$ref": "#/components/responses/PayloadTooLarge" }
+          "500": { "$ref": "#/components/responses/InternalError" }, "400": { "$ref": "#/components/responses/BadJson" }, "413": { "$ref": "#/components/responses/PayloadTooLarge" }, "422": { "$ref": "#/components/responses/BadShape" }
         }
       }
     },
@@ -49,7 +49,7 @@
         "summary": "检查建议（essential/suggested/optional 三组；可复用已生成诊断省一次串行 LLM）",
         "parameters": [{ "name": "caseId", "in": "path", "required": true, "schema": { "type": "string" } }],
         "requestBody": { "$ref": "#/components/requestBodies/HistoryDx" },
-        "responses": { "200": { "$ref": "#/components/responses/JsonEnvelope" }, "404": { "$ref": "#/components/responses/NotFound" }, "500": { "$ref": "#/components/responses/InternalError" }, "400": { "$ref": "#/components/responses/BadJson" }, "413": { "$ref": "#/components/responses/PayloadTooLarge" } }
+        "responses": { "200": { "$ref": "#/components/responses/JsonEnvelope" }, "404": { "$ref": "#/components/responses/NotFound" }, "500": { "$ref": "#/components/responses/InternalError" }, "400": { "$ref": "#/components/responses/BadJson" }, "413": { "$ref": "#/components/responses/PayloadTooLarge" }, "422": { "$ref": "#/components/responses/BadShape" } }
       }
     },
     "/api/report/{caseId}": {
@@ -58,7 +58,7 @@
         "summary": "SOAP 病历报告（含免责声明与医生终审定位）",
         "parameters": [{ "name": "caseId", "in": "path", "required": true, "schema": { "type": "string" } }],
         "requestBody": { "$ref": "#/components/requestBodies/HistoryDx" },
-        "responses": { "200": { "$ref": "#/components/responses/JsonEnvelope" }, "404": { "$ref": "#/components/responses/NotFound" }, "500": { "$ref": "#/components/responses/InternalError" }, "400": { "$ref": "#/components/responses/BadJson" }, "413": { "$ref": "#/components/responses/PayloadTooLarge" } }
+        "responses": { "200": { "$ref": "#/components/responses/JsonEnvelope" }, "404": { "$ref": "#/components/responses/NotFound" }, "500": { "$ref": "#/components/responses/InternalError" }, "400": { "$ref": "#/components/responses/BadJson" }, "413": { "$ref": "#/components/responses/PayloadTooLarge" }, "422": { "$ref": "#/components/responses/BadShape" } }
       }
     },
     "/api/health": {
@@ -82,6 +82,7 @@
       "NotFound": { "description": "未知病例 id——医生可理解文案", "content": { "application/json": { "schema": { "type": "object", "properties": { "code": { "type": "integer", "example": 404 }, "message": { "type": "string" } } } } } },
       "PayloadTooLarge": { "description": "入站边界拒绝：请求体/问诊条数/单条字数超上限（阈值单一源 = frontend/tests/fixtures/request_limits.json）；文案不含内部阈值", "headers": { "x-request-id": { "$ref": "#/components/headers/RequestId" } }, "content": { "application/json": { "schema": { "type": "object", "properties": { "code": { "type": "integer", "example": 413 }, "message": { "type": "string" } } } } } },
       "BadJson": { "description": "请求体不是合法 JSON 对象——不再静默按空对象处理（v1.17.0 起显式 400）", "headers": { "x-request-id": { "$ref": "#/components/headers/RequestId" } }, "content": { "application/json": { "schema": { "type": "object", "properties": { "code": { "type": "integer", "example": 400 }, "message": { "type": "string" } } } } } },
+      "BadShape": { "description": "JSON 合法但结构不合契约（如 history 非数组、元素非对象、dx 非对象）——双端同码同文案，v1.19.0 起权威面不再让其穿透到引擎报 500（消台账#28）；文案含故障编号供支持侧对账", "headers": { "x-request-id": { "$ref": "#/components/headers/RequestId" } }, "content": { "application/json": { "schema": { "type": "object", "properties": { "code": { "type": "integer", "example": 422 }, "message": { "type": "string", "example": "请求参数不完整，请刷新后重试（故障编号 090fa889）" } } } } } },
       "InternalError": { "description": "服务暂不可用——仅故障编号与重试文案，不含堆栈/内部路径", "headers": { "x-request-id": { "$ref": "#/components/headers/RequestId" } }, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Envelope" } } } }
     },
     "schemas": {

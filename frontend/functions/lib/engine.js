@@ -11,13 +11,16 @@ import { getRetriever } from "./retriever.js"
 import { KB_BY_ID, SYMPTOM_TO_KB, kbTitleOf, kbConditionOf } from "./knowledge.js"
 import { toFhirBundle } from "./fhir.js"
 
+// 404 文案里的"未提供"占位：双端必须同值（tests/error_parity_guard.mjs 逐字比对 message，
+// 之前 JS 打 `undefined`、Py 打空串，码相同但文案漂＝支持侧对不上话）
+const MISSING_CASE = "(未提供)"
 const retriever = getRetriever()
 const kbTitle = (id) => kbTitleOf(id)
 const kbCondition = (id) => kbConditionOf(id)
 
 function caseOf(id) {
   const c = CASES.find((x) => x.id === id)
-  if (!c) throw new Error(`unknown case: ${id}`)
+  if (!c) throw new Error(`unknown case: ${id || MISSING_CASE}`)
   return c
 }
 

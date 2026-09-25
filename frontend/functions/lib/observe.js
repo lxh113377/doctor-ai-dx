@@ -36,7 +36,15 @@ export function newRequestId() {
 // 脱敏：任何写日志或回显给前端的文本都必须先过这一关
 export function redact(input, env = {}) {
   let text = String(input ?? "").slice(0, 300)
-  const key = env?.DEEPSEEK_API_KEY
+  // 读 env 必须包起来：这是**错误处理路径上**的代码，取值一旦抛异常（第二十一轮用 env 抛错桩实测到，
+  // 也让 logEvent 里的 JSON.stringify 同样不可靠），医生看到的就不是承诺过的可读文案而是平台错误页。
+  // 兜底原则＝归因可以降级，响应信封不能失败。
+  let key
+  try {
+    key = env?.DEEPSEEK_API_KEY
+  } catch {
+    key = undefined
+  }
   if (typeof key === "string" && key.length >= 6) {
     text = text.split(key).join("[已脱敏]")
   }
@@ -48,7 +56,13 @@ export function redact(input, env = {}) {
 
 // 结构化单行日志（JSON）：logs 里出现过的字段名即归因查询的索引面
 export function logEvent(level, fields) {
-  const line = JSON.stringify({ app: "doctor-ai-dx", lvl: level, ...fields })
+  let line
+  try {
+    line = JSON.stringify({ app: "doctor-ai-dx", lvl: level, ...fields })
+  } catch {
+    // 字段里混进不可序列化的东西（循环引用等）时，宁可少一条归因也不许把请求带崩
+    line = JSON.stringify({ app: "doctor-ai-dx", lvl: "warn", kind: "LogSerializeError", msg: "日志字段不可序列化，已降级" })
+  }
   if (level === "error") console.error(line)
   else if (level === "warn") console.warn(line)
   else console.log(line)
