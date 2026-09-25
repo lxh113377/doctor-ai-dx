@@ -77,9 +77,9 @@ jobs:
           node tests/sbom_guard.mjs --sbom docs/sbom/backend.cdx.json --manifest pip
 
       - name: 源码包 = tag 内容（可复现，git archive 不含未跟踪文件）
-        # --mtime 钉成 tag 提交时间：实测两次 `git archive --mtime` 逐字节相同（sha ded085dc…），
-        # 不带 --mtime 时 CI 与本地构建的 zip sha 不同（zip 容器写入时间差异）⇒ 加上才能主张
-        # "任何人独立构建得到同一字节序列"，而不是只主张内容集合相同。
+        # --mtime 钉成 tag 提交时间：实测**同一环境下重复构建逐字节相同**（本地两次 sha 均为 ded085dc…）。
+        # 边界（实测，别写过头）：CI 产物与本机包因 git 版本/zip 容器元数据不同，sha 仍不同（CI fddaa3da…），
+        # 故这里主张的是"内容集合可复现 + 同环境字节可复现"，不是"跨环境字节一致"。
         run: |
           mkdir -p dist-release
           MT=$(git log -1 --format=%ct "$TAG")
