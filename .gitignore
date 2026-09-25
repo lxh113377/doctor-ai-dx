@@ -41,3 +41,8 @@ coverage-py.json
 # SBOM 为发布期产物（scripts/sbom_guard.mjs 校验、release.yml 作为 Release 资产上传），不入库防陈旧副本
 frontend/report.cdx.json
 docs/sbom/
+
+# Playwright 运行期产物（e2e 作业本地/CI 生成，禁入库）
+test-results/
+playwright-report/
+blob-report/

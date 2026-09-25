@@ -71,6 +71,32 @@ jobs:
       - name: 全仓文本控制字符扫描（C0 与 DEL，\t\n\r 除外）
         run: python scripts/check_text_hygiene.py
 
+  e2e:
+    # 第十七轮补（对标 OpenEMR `Acceptance test (docker)`）：三红线在**真实浏览器渲染**上的常驻判据。
+    # 此前 E2E 只在本机人工跑过，"双视口通过"属一次性人工证据；本作业把它变成每次 push 必跑的机器判据。
+    # 跑的是生产构建 + Pages Functions 本地运行时，不设 Key ⇒ 必走 rule-fallback，结果确定、零网络零密钥。
+    # 刻意不进 npm test 链：那条链被 c8 整体包裹做覆盖率，混入浏览器进程会污染口径（与 r14 同一条理由）。
+    name: e2e 双视口浏览器回归
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install
+        run: npm ci --no-audit --no-fund
+      - name: Build (production，E2E 测的就是这份产物)
+        run: npm run build
+      - name: Install chromium
+        run: npx playwright install --with-deps chromium
+      - name: E2E（五步链路 + 红旗独立呈现 + 降级标注 + 红线负向 + 1440/390 双视口无横向溢出 + 零控制台异常）
+        run: npx playwright test
+
   backend-test:
     runs-on: ubuntu-latest
     defaults:
@@ -115,7 +141,7 @@ jobs:
           python ../scripts/coverage_gate.py --quiet
 
   deploy:
-    needs: [build-and-test, backend-test, text-hygiene]
+    needs: [build-and-test, backend-test, text-hygiene, e2e]
     # 自动部署开关 = 仓库变量 AUTO_DEPLOY（默认未设 ⇒ 作业显式 skipped，不冒充「已部署」也不误红徽章）。
     # 现状（2026-09-25 实测）：本仓未配 CLOUDFLARE_API_TOKEN secret，生产部署由本机 wrangler OAuth 手工执行；
     # 配好 Token 后置 AUTO_DEPLOY=true 即接管，届时缺 Token 会判红（fail-closed 分支已实测生效，禁止回退成静默跳过）。

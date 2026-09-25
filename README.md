@@ -54,6 +54,7 @@ npm run lint     # 静态检查：ESLint（frontend，--max-warnings=0）+ ruff�
 npm run typecheck  # Python 类型门禁：mypy 严格档（check_untyped_defs）+ 阈值单一源，实测 23 文件 0 error、抑制项 0（零豁免有机器判据）
 npm run sbom       # 生成前端 CycloneDX SBOM（钉版 @cyclonedx/cyclonedx-npm）；属发布期产物，不入库
 npm run sbom:check # SBOM 对账门禁：声明依赖连同 lock 版本逐一在单 + 组件数/purl/工具版本核验
+npm run build && npm run test:e2e  # 端到端浏览器回归（生产构建 + Functions 本地运行时，无 Key 走降级链路；首次需 npx playwright install --with-deps chromium）
 npm run coverage:js   # c8 覆盖率 + 模块级地板棘轮（红线模块退化会被单独拦下）
 npm run coverage:py   # coverage.py（语句+分支弧）汇总 5 套后端测试 → scripts/coverage_gate.py 按模块地板对账
 npm run build  # Vite 生产构建

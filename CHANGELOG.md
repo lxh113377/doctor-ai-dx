@@ -5,6 +5,25 @@
 
 ## [Unreleased]
 
+## [1.15.0] - 2026-09-25
+
+### Added（端到端浏览器回归进 CI：对标 OpenEMR 的 Acceptance 常驻作业）
+- 对标实测（`gh api actions/workflows`）：**OpenEMR** 有 `Acceptance test (docker)` / `Acceptance test (package)` / `Acceptance-only re-run + publish`（另配 `Github Actions Linting`、`Docker Compose Linting`）；**phlox** 的 `ci.yml` 里 grep 不到任何浏览器测试；**ragflow** 有 `release`/`sep-tests` 无 E2E；**medical-rag** 零工作流 ⇒ 浏览器级验收常驻作业 **1/4 有**。我方历史文档写的「桌面 1440 + 移动 390 双视口 E2E 通过」实际是**本机一次性人工运行**，不在任何常驻判据里——三条红线在真实浏览器渲染结果上此前零自动化拦截
+- 新增 `frontend/playwright.config.mjs` + `frontend/e2e/app.spec.mjs`（devDep `@playwright/test@1.63.0`，`npm run test:e2e`）：跑**生产构建 + Pages Functions 本地运行时**（`wrangler pages dev dist --local`），刻意不设 `DEEPSEEK_API_KEY` ⇒ 必走 rule-fallback ⇒ 零网络零密钥、结果确定可进 CI。5 条用例覆盖：① 三张脱敏病例卡 + 常驻红线条款 + 演示声明 + **零控制台异常**；② 红线**负向**（全站不得出现「替代医生」/「自动诊断」）；③ 五步全链路（红旗区块 + 「不可被模型覆盖」声明 + `.mode-badge` 明确标注「规则引擎降级模式」+ 引用可见 + 检查建议三组 + SOAP 四段 + 「执业资质的医生」免责 + 打印入口）；④⑤ **1440×900 与 390×844 双视口 × 五步全页面**零横向溢出
+- CI `ci.yml` 新增 `e2e` 作业（build → `playwright install --with-deps chromium` → `playwright test`），并把 `e2e` 加进 `deploy` 的 `needs`（fail-closed：浏览器回归不过就不部署）
+- 刻意**不做**的两件事（附理由）：① 不进 `npm test` 链——那条链被 c8 整体包裹算覆盖率，混入浏览器进程会污染口径（与 lint 同理）；② 不装 firefox/webkit——AC 口径是双视口自适应，不是跨浏览器矩阵，加引擎只会让 CI 时长翻倍而不多抓一类缺陷。live 分支的自动化仍由 `tests/live_path_guard.mjs`（fetch 桩）负责，职责不重叠
+
+### 反例与自纠（实测）
+- **两组反例证明它真的会红（实测 rc 与报错原文）**：① 把常驻红线文案改一个字（终审→复核）→ `npx playwright test` **rc=1**，`1 failed / 4 passed`，报错原文即指到被改后的文案；② 只在报告页注入 `.report-sheet { min-width: 200vw }` → **rc=1**、`2 failed`（双视口各一次），报错原文 `病历报告页: scrollWidth=800 > clientWidth=390`——命中位置正是本轮新增的那半截断言，证明"五步全页面"不是纸面属性。两次都以还原文件+重建收尾，还原后 `npx playwright test` **rc=0 / 5 passed (19.8s)**
+- **同类出口补全**：首版溢出断言只覆盖首屏与诊断页——报告页表格最宽、历史上最易出事的一半被留在盲区；本轮补成五步全页面逐页断言（并写进 CONTRIBUTING 的维护约定）
+- **E2E 本轮没抓出产品缺陷，抓出的是测试自身的写法缺陷（两次）**：① 初版用定长 `waitForTimeout(250)` 点快选项，在请求 `busy` 期间点击被组件直接吞掉；改为"等对话气泡数量增加"后**仍然失败**——真正根因是用户气泡在点击瞬间就入列，`expect.poll` 立即返回，下一轮照样落在 `busy` 窗口里，8 轮预算被空等吃掉一半，表象却是"链路卡住"。② 终版改为等**打字气泡消失**（`.msg .typing` 计数归 0，即 `busy` 的真实渲染信号）后通过：五步全链路从"30s 超时失败"变 **4.7s 通过**。登记此条是因为这类假故障极易被后来者误判成产品回归；同时暴露一个通用判据：**等待条件必须取"被等对象的完成信号"，不能取"自己刚触发的副作用"**
+
+### 门禁自身缺陷自纠（本轮跑全量门禁时按 R236「先实跑再据其下结论」抓到）
+- `tests/link_health.mjs` 的 **BLOCKED 判据从"计数基线"改为"内容登记册"**：原 `BLOCKED_BASELINE = 0` 与实测值 1（`www.nhc.gov.cn` 返回 412，是其 WAF 反爬前置校验、浏览器可达）长期不一致 ⇒ 每次运行都打印"不得长期悬空"却**永远不红**，且真正新增的被拦源会被这条固定噪声淹没。这正是本项目反复在防的 cry-wolf 型判据（警告失去意义＝判据失效）。现在：`BLOCKED_REGISTRY` 按 `host → 状态码 + 登记日期 + 理由` 逐条登记，**未登记的被拦源直接判红**；反向还检查"登记册里的 host 如今已可达"并提示清理（防白名单只增不减变成掩体）。反例实测：临时删掉 nhc 登记项 → **rc=1** 且报 `https://www.nhc.gov.cn(412·未登记)`；还原后 **rc=0** 报 `零死链 + 被拦源全部已登记`。与本轮 lessons 口径一致：**计数型判据要看内容，不看数量**
+
+### 度量与红线
+运行时零变更 ⇒ JS 全局分支 75.24%（地板 74）、Py 92.78%（地板 88）、mypy 23 文件 0 error、ESLint/ruff/文本卫生/SBOM 对账全绿均与 v1.14.0 一致；新增 devDep 会进 SBOM 与依赖审计面（`@playwright/test` 及其传递依赖），已实测 `npm ci` 与 `npm run lint` 通过。三条产品红线逻辑零改动、默认检索档仍 bm25、评测仍是同一批 31 例。
+
 ## [1.14.0] - 2026-09-25
 
 ### Added（交付物可审计性：对标 OpenEMR / ragflow / phlox 的"打 tag 即由机器出包"）

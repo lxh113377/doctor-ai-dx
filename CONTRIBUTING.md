@@ -29,11 +29,16 @@
 cd frontend && npm test                       # 十四件套，含双端契约与知识库门禁
 cd frontend && npm run lint                   # 静态检查门禁（ESLint + ruff；警告也算红）
 cd frontend && npm run typecheck              # Python 类型门禁（mypy 严格档，阈值 fixtures/type_floor.json）
+cd frontend && npm run build && npm run test:e2e   # 端到端浏览器回归（首次先 npx playwright install --with-deps chromium）
 cd backend && python tests/smoke_engine.py && python tests/test_api_observe.py
 node ../../work/perf_gate.mjs                 # 性能地板线（需 14 天内新鲜 live 报告）
 ```
 
 CI 会跑同样的东西；`main` 分支保护要求 `build-and-test` 与 `backend-test` 通过。
+
+端到端回归的维护约定（v1.15.0 起）：E2E 刻意**不进** `npm test`（那条链被 c8 整体包裹算覆盖率，混入浏览器进程会污染口径，与 lint 同理，见 `frontend/lint.mjs` 头注）。
+它是"三条红线在真实浏览器渲染结果"这一层的唯一常驻证据——改视图、改文案、改样式时，五步链路断言与双视口溢出断言必须同步更新；
+新增页面请一并纳入 `e2e/app.spec.mjs` 的"五步全页面"循环（漏掉一页＝把最可能溢出的一半留在盲区，本轮实测就差点这么干）。
 
 静态检查与类型门禁的维护约定（v1.12.0 / v1.13.0 起）：
 
