@@ -152,6 +152,23 @@ def main() -> int:
     checks.append(("Dockerfile 的 RUN 行开 --require-hashes", has_require_hashes, "RUN 行缺 --require-hashes（注释不算）"))
     checks.append(("Dockerfile 不再安装浮动 requirements.txt", not still_float, "RUN 行仍在装 requirements.txt"))
 
+    # 10) 同类出口补全：`--require-hashes` 会作用于该次 pip 的**全部**需求输入，
+    # 任何一行把「非 .lock 需求文件」和它写在同一条命令里，pip 会直接报
+    # 「all requirements must have their versions pinned with ==」（v1.16.0 首发即因此 14 秒判红）。
+    mixed: list[str] = []
+    wf_dir = os.path.join(REPO, ".github", "workflows")
+    if os.path.isdir(wf_dir):
+        for fn in sorted(os.listdir(wf_dir)):
+            if not fn.endswith((".yml", ".yaml")):
+                continue
+            for i, line in enumerate(read(os.path.join(wf_dir, fn)).splitlines(), 1):
+                if "pip install" not in line or "--require-hashes" not in line:
+                    continue
+                bad = [r for r in re.findall(r"-r\s+(\S+)", line) if not r.endswith(".lock")]
+                if bad:
+                    mixed.append(f"{fn}:{i} → {bad}")
+    checks.append(("无命令行把 --require-hashes 与非锁需求文件混用", not mixed, "; ".join(mixed[:3])))
+
     if not args.quiet:
         print(f"== 依赖锁定对账（lock={os.path.relpath(args.lock, REPO)} 锁内 {len(pins)} 包 / {total_hashes} 条哈希）==")
     rc = 0
