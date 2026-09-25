@@ -33,7 +33,11 @@ import yaml  # 锁内已声明（pyyaml>=6.0.1）：不自造 YAML 解析器
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CI = os.path.join(REPO, ".github", "workflows", "ci.yml")
-AGGREGATE_ID = "all-checks-passed"  # 仓库保护里 required check 的 context 即此 id
+AGGREGATE_ID = "all-checks-passed"  # ci.yml 里的 job key
+# required check 的 context 真值取 job 的 name 字段（缺省才回落到 key）。
+# v1.17.0 实测踩过：把 key 当 context 写进保护，而 Actions 上报的是 name="All Checks Passed"，
+# 结果保护指向一个永远不会出现的 check ⇒ 每个 PR 被永久卡住。本判据现按 name 对账并同时核线上真实值。
+
 NON_BLOCKING = {AGGREGATE_ID, "deploy"}  # deploy 是条件作业（AUTO_DEPLOY 未设时 skipped），不能当阻断判据
 
 
@@ -71,6 +75,12 @@ def main() -> int:
         cond = str(agg.get("if", ""))
         checks.append(("聚合 job 带 if: always()（否则前置红时它不跑，required check 永不出现）",
                        "always()" in cond, f"实测 if={cond!r}"))
+    # required check 的 context 真值 = 聚合 job 的 `name` 字段（无 name 才回落到 job key）。
+    # v1.17.0 实测踩过：把 job key `all-checks-passed` 当 context 写进仓库保护，而 Actions 上报的
+    # check 名是 `All Checks Passed`（job 的 name）⇒ 那个 required check 永远不会被满足，
+    # **每个 PR 会被永久卡住**。更糟的是当时的远端判据拿同一个 key 去比同一个 key，自洽地判绿。
+    context = ((agg or {}).get("name") or AGGREGATE_ID).strip()
+    print(f"  信息 聚合 job key={AGGREGATE_ID} → GitHub 上报 context={context!r}（保护里要写后者）")
     with open(CI, encoding="utf-8") as f:
         ci_text = f.read()
     checks.append(("ci.yml 真的调用 branch_guard 自身（判据不许只写在文档里）",
@@ -101,8 +111,12 @@ def main() -> int:
                 contexts = json.loads(r.stdout or "[]")
             except json.JSONDecodeError:
                 contexts = []
-            ok = AGGREGATE_ID in contexts
-            print(f"  {'PASS' if ok else 'FAIL'} 线上 required checks 含聚合检查 :: 实测={contexts}")
+            ok = context in contexts
+            print(f"  {'PASS' if ok else 'FAIL'} 线上 required checks 含聚合检查（按上报名逐字对账）"
+                  f" :: 期望={context!r} 实测={contexts}")
+            if not ok and contexts:
+                # 反向提示：保护里写了一个现实中不存在的 check 名 = PR 永久卡死
+                print(f"        若把 job key {AGGREGATE_ID!r} 误当 context，GitHub 永不满足该检查 ⇒ 合入被永久阻塞")
             if not ok:
                 rc = 1
     else:

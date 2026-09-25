@@ -28,14 +28,18 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-          cache-dependency-path: backend/requirements.txt
+          cache-dependency-path: |
+            backend/requirements.txt
+            backend/requirements.lock
       - name: Install
         run: npm ci --no-audit --no-fund
       - name: Lint (ESLint flat config，--max-warnings=0)
         # 刻意排在测试前：静态面秒级判红先于分钟级套件；警告同样阻断（防"攒额度"式沉默）
         run: npm run lint:js
       - name: Install backend deps (for contract parity)
-        run: python -m pip install -r ../backend/requirements.txt
+        # 与 backend-test／镜像同一份锁：契约对账必须在**生产依赖集合**上做，
+        # 否则会出现"JS 端跑最新、Py 端跑最新、对账跑第三次解析结果"的三向漂移。
+        run: python -m pip install --require-hashes -r ../backend/requirements.lock
       - name: Test + coverage floor ratchet (JS)
         # c8 包住整条 npm test（套件只跑一次），随后按模块级地板对账；刻意不接 Codecov 等外部服务
         run: npm run coverage:js

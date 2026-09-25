@@ -7,6 +7,9 @@ uvicorn[standard]>=0.53.0
 httpx>=0.28.1
 pydantic>=2.8
 python-dotenv>=1.2.3
-# 显式声明：scripts/branch_guard.py 要解析 ci.yml（此前只作为 uvicorn[standard] 的传递依赖存在，
-把"靠传递依赖"写成声明依赖，是 lock_guard 的「声明⊆锁」对账能真正管住它的前提）。
+# 显式声明：scripts/branch_guard.py 要解析 ci.yml（此前它只作为 uvicorn[standard] 的传递依赖存在）。
+# 把"靠传递依赖"写成声明依赖，是 lock_guard 的「声明⊆锁」对账能真正管住它的前提。
+# 注意：本文件每一行注释都必须自带 `#`——v1.17.0 实测踩过：一条续行漏了 `#`，
+# `uv pip compile` 照样解析成功，但 CI 里 `pip install -r` 直接 `ERROR: Invalid requirement`
+# （生成器宽容 ≠ 消费者宽容；判据已按**消费者口径**把每一行钉死，见 lock_guard 第 11 条）。
 pyyaml>=6.0.1

@@ -34,6 +34,11 @@
 - 另外 `test:limits` 自身的两条 `no-unused-vars`（多余 import、未用变量）被 `--max-warnings=0` 抓出并删除：本轮新写的**判据脚本本身**也在 lint 覆盖范围内，不是只当裁判不当选手。
 - 覆盖率口径：后端新增 `tests/test_limits.py`（34 项）进入覆盖率采集链（`coverage:py` 与 CI 同步），红线模块地板不降。
 
+### 本轮**自己引入又当场修掉**的两个缺陷（如实登记，不写成"一次做对"）
+- 🔴 **把聚合检查配成了永远不会满足的 required check**：`required_status_checks.contexts` 我写的是 job key `all-checks-passed`，而 GitHub 上报的 check 名是 job 的 **`name: All Checks Passed`** ⇒ 保护指向现实中永不出现的 check，**每个 PR 会被永久卡死**（比形同虚设更坏）。更难看到的是我的 `branch_guard --remote` 当时判绿——它拿"我写在常量里的 key"去比"我写进保护的 key"，属**自证式对账**。修法＝context 真值一律从 ci.yml 的 `name` 字段推导（无 name 才回落 job key），线上核 `期望=实测` 逐字对账；保护已改回 `["All Checks Passed"]` 并实测 PASS。教训：**判据的期望值必须来自被测系统的实际产出，不能来自我自己写的常量。**
+- 🔴 **声明面坏掉而生成器不报**：给 `requirements.txt` 加的注释有一段续行漏了 `#`。`uv pip compile` 照样解析成功（生成器宽容），CI 里 `pip install -r` 直接 `ERROR: Invalid requirement`（run 36105388164 的 `build-and-test` 判红，聚合检查如实跟着判红——这一层工作正常）。`lock_guard` 当时也判绿，因为它的行解析器**跳过**不认识的行。新增第 11 条判据按 **pip 的行规则**逐行核（非 `#` 又不是 requirement 语法即判红），反例＝原样复刻本次漏 `#` 的那行，实测 rc=1 并指名 `11: 把"靠传递依赖"写成声明依赖…`。教训：**校验要用消费者的口径，不是生成器的口径**（同一逻辑也解释"锁必须按运行时平台解析"）。
+- 顺带把 `build-and-test` 里最后一处浮动安装（`pip install -r requirements.txt`）改成从锁安装 ⇒ 三个 CI 作业 + 运行时镜像现在共用同一份依赖真值。
+
 ## [1.16.0] - 2026-09-25
 
 ### Added（第十八轮：运行环境可复现——依赖锁定 + 配置契约门禁）

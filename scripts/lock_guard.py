@@ -169,6 +169,22 @@ def main() -> int:
                     mixed.append(f"{fn}:{i} → {bad}")
     checks.append(("无命令行把 --require-hashes 与非锁需求文件混用", not mixed, "; ".join(mixed[:3])))
 
+    # 11) 声明面必须按**消费者口径**可解析（v1.17.0 实测教训）：
+    # 我给 requirements.txt 加的一段注释，续行漏了 `#` —— `uv pip compile` 照解析成功（生成器宽容），
+    # 但 CI 里 `pip install -r ../backend/requirements.txt` 直接
+    # `ERROR: Invalid requirement: '把"靠传递依赖"写成声明依赖…'`（run 36105388164，build-and-test 判红）。
+    # ⇒ 生成器通过 ≠ 消费者通过。这里按 pip 的行规则逐行判，不依赖任何第三方解析库
+    #   （CI 的运行时环境里没有 packaging，实测 ModuleNotFoundError，用它反而把门禁变成不可跑）。
+    REQ_LINE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*(\[[A-Za-z0-9,._-]+\])?\s*(===|==|>=|<=|~=|!=|>|<|@)")
+    bad_lines = []
+    for no, line in enumerate(req_text.splitlines(), 1):
+        t = line.strip()
+        if not t or t.startswith("#"):
+            continue
+        if not REQ_LINE.match(t):
+            bad_lines.append(f"{no}: {t[:40]}")
+    checks.append(("声明面逐行按 pip 口径可解析（生成器宽容不算通过）", not bad_lines, "; ".join(bad_lines[:3])))
+
     if not args.quiet:
         print(f"== 依赖锁定对账（lock={os.path.relpath(args.lock, REPO)} 锁内 {len(pins)} 包 / {total_hashes} 条哈希）==")
     rc = 0
