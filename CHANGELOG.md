@@ -5,6 +5,23 @@
 
 ## [Unreleased]
 
+## [1.18.1] - 2026-09-25
+
+### Fixed（v1.18.0 发布作业判红后的三处自查——**拦下来就是拦下来，不绕**）
+- 🔴 **判据的归因错误（本条最值钱）**。`v1.18.0` 的 `release.yml` 在「匿名可拉取实证」一步判红，日志提示语写的是「包可见性多半仍是 private」。实测证明**这个猜测是错的**：`docker/build-push-action` 推上去的是 OCI **index**（`mediaType=application/vnd.oci.image.index.v1+json`），而判据的 `Accept` 只列了 `image.manifest` 与 `distribution.manifest` 两种类型 ⇒ registry 回 `404 MANIFEST_UNKNOWN: OCI index found, but Accept header does not support OCI indexes`；包自始就是 **public**（`gh api users/lxh113377/packages?package_type=container` 实测 `visibility=public`）。本机同一命令对照实验：两类型 `http=404`，四类型 `http=200`（body 856 B）。修法：`Accept` 补 `oci.image.index` + `distribution.manifest.list` 两类；报错按状态码分支（401/403 → 可见性、404 → tag 未推上，各自给可执行改法）并把响应体打进日志；再补一条下限——**200 之后还必须有子清单**，否则等于验证了个空壳。教训：**判据红了先读响应体再改状态**，猜测式提示语会把下一轮排查整个带到别的系统上去（这次就白折腾了一趟"翻可见性"）。
+- **镜像内自证根本跑不起来**。`backend/Dockerfile` 只 `COPY app/ requirements* tests/`，而本轮刚把套件改成 `backend/selftest.py` 驱动 ⇒ 发布出去的镜像里没有 runner（compose selftest 一跑就是 `No such file`）。补 `COPY selftest.py ./`（注释写明这是"清单驱动化后 Dockerfile 属于消费方"这一类，不是单点）。镜像内实测 `SELFTEST SUMMARY: 6/6 套件 exit0` + `[GATE:selftest-pass]`。
+- **后端测试对仓库外文件的隐式依赖**。`tests/test_limits.py` 第 4 节直读 `frontend/tests/fixtures/request_limits.json`（数值同源对账），镜像内只装后端 ⇒ 整套崩。改为文件不存在时**显式 SKIP 并写明"数值同源改由 npm 侧 limits_guard 判定"**——绝不静默 `return`（静默通过就是假绿）。镜像内实测 `30 pass / 0 fail` + 1 条 SKIP。
+
+### Added（顺带关闭台账#23：Release 正文进版本控制且由机器产出）
+- 原来 `release.yml` 是"先建**占位正文**的 Release，再由人事后补双语说明"——两处毛病：占位忘了补就是评审看到一句空话；且正文**不在版本控制里**，无从对账、无从复现。现改为取 `CHANGELOG.md` 的 `## [<版本>]` 小节拼成 `NOTES.md`，前置一段"一条命令拉取 + 独立核验（`sha256sum -c` / `git archive --mtime` 复算）"，再 `gh release create --notes-file`（已存在则 `gh release edit` 连正文一起更新）。**小节缺失／正文 <200 字符直接判红**：宁可不发，也不发一个只有占位话的 Release。本机把该步骤脚本从 YAML 里**原样抽出实跑**：正例 rc=0（正文 2613 字符），两组反例 rc=1（无 `## [9.9.9]` 小节 / 正文裁到 3 字符）。过程自身踩到两条：`ln.strip() == "## [1.18.1]"` 匹配不上带日期的标题（改 `startswith`）、python 里引用了 shell 的 `TAG`（NameError）——**都只有真跑才会暴露**，写在文档里就是又一条"未跑先写"的反面教材。
+- 顺手把镜像内自证命令按 `Dockerfile` 真实 `WORKDIR=/srv/backend` 写成 `docker run --rm --entrypoint python <image> selftest.py`，并在本机对刚构建的镜像跑通（`6/6 套件 exit0`）后才写进 Release 正文与 CONTRIBUTING。
+
+### 关于 `v1.18.0` 这个 tag（不偷偷抹平）
+`v1.18.0` 的 tag 与 `ghcr.io/lxh113377/doctor-ai-dx:v1.18.0` 镜像**保留原样、不重锚**：镜像已经公开可拉＝存在下游可见物，重锚会让"已拉走 v1.18.0 镜像的人"对不上源码，属于我自己在 r17 立下的规矩（零下游可见物才可重锚）。该 tag **没有 GitHub Release**（发布作业在出包前就红了，符合设计），其缺陷已由本版修复并随 `v1.18.1` 重新出包；`:latest` 随本次成功发布覆盖为 v1.18.1 构建。
+
+### 度量与红线
+运行时行为零改动（版本号四处同步 + `docs/openapi.json` 重新生成）：`npm test` 十六件套 exit 0、`suite_guard` 九项、`coverage:py` 全局 **93.51% ≥ 90**（模块地板 10 项）、pre-commit **10 钩** Passed、镜像内 6/6 套件 exit0。三条产品红线逻辑零改动、默认检索档仍 bm25、评测仍是同一批 31 例。
+
 ## [1.18.0] - 2026-09-25
 
 ### Added（第二十轮：交付物的"可拉取"与"单一清单"）

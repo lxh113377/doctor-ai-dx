@@ -196,16 +196,78 @@ jobs:
           path: dist-release/*
           if-no-files-found: error
 
-      - name: 挂到 Release（不存在则先建占位，正文随后由人工补双语说明）
+      - name: 发布正文由 CHANGELOG 机器产出（关闭台账#23：正文入版本控制且可复算）
+        # 上一版这里是"先建占位正文，再人工补双语说明"——占位一旦忘了补，评审看到的 Release 正文就是空话，
+        # 而且**正文不在版本控制里**，无法对账也无法复现。本轮改为：正文唯一来源 = 仓内 `CHANGELOG.md`
+        # 对应 `## [x.y.z]` 小节，缺小节／正文过短一律判红（宁可不出 Release，也不出没有说明的 Release）。
+        run: |
+          set -e
+          VER="${TAG#v}"
+          python3 - "$VER" "${{ github.repository_owner }}" <<'PY'
+          import sys, pathlib
+          ver = sys.argv[1]
+          tag = f"v{ver}"
+          owner = sys.argv[2]
+          lines = pathlib.Path("CHANGELOG.md").read_text(encoding="utf-8").splitlines()
+          head, body, seen = f"## [{ver}]", [], False
+          for ln in lines:
+              if ln.startswith(head):
+                  seen = True
+                  continue
+              if seen and ln.startswith("## ["):
+                  break
+              if seen:
+                  body.append(ln)
+          section = "\n".join(body).strip()
+          if not seen:
+              print(f"::error::CHANGELOG.md 里没有 {head} 小节 ⇒ 拒绝用占位正文发 Release（先补变更说明）")
+              sys.exit(1)
+          if len(section) < 200:
+              print(f"::error::{head} 小节正文仅 {len(section)} 字符（<200）＝说明不足以给人读，判红")
+              sys.exit(1)
+          assets = (f"doctor-ai-dx-source-{tag}.zip", "frontend.cdx.json", "backend.cdx.json", "SHA256SUMS.txt")
+          notes = "\n".join([
+              "本 Release 的**工件与正文均由 CI 产出**（打 tag 即出包，无人工二次编辑）：正文取自仓内 `CHANGELOG.md` 的对应小节，可离线复算。",
+              "",
+              "## 一条命令拉取运行环境",
+              "",
+              "```bash",
+              f"docker run --rm -p 8000:8000 ghcr.io/{owner}/doctor-ai-dx:{tag}",
+              f"# 镜像内自证（套件清单单一源，6 套全跑）：",
+              f"docker run --rm --entrypoint python ghcr.io/{owner}/doctor-ai-dx:{tag} selftest.py",
+              "```",
+              "",
+              "## 独立核验（不需要信任任何人的机器）",
+              "",
+              "```bash",
+              "# 1) 下载本 Release 全部资产后，逐条核对校验和",
+              "sha256sum -c SHA256SUMS.txt",
+              "# 2) 源码包内容必须等于 tag 的 git 树（同环境可字节复现）",
+              f"git archive --format=zip --mtime=$(git log -1 --format=%ct {tag}) {tag} | sha256sum",
+              "```",
+              "",
+              "资产清单：" + ", ".join(assets),
+              "",
+              "---",
+              "",
+              section,
+          ])
+          pathlib.Path("dist-release/NOTES.md").write_text(notes + "\n", encoding="utf-8")
+          print(f"NOTES.md 由 CHANGELOG {head} 生成（正文 {len(section)} 字符，全文 {len(notes)} 字符）")
+          PY
+          test -s dist-release/NOTES.md
+
+      - name: 挂到 Release（正文用上一生成的 NOTES.md；已存在则连正文一起更新）
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -e
           if ! gh release view "$TAG" >/dev/null 2>&1; then
-            echo "::warning::tag $TAG 尚无 Release，先建占位（正文含双语说明由发布流程补齐）"
-            gh release create "$TAG" --title "$TAG" --notes "Auto-created by release.yml; 详细双语说明见编辑后的正文。"
+            gh release create "$TAG" --title "$TAG" --notes-file dist-release/NOTES.md
+          else
+            gh release edit "$TAG" --notes-file dist-release/NOTES.md
           fi
           cd dist-release
           gh release upload "$TAG" doctor-ai-dx-source-*.zip frontend.cdx.json backend.cdx.json SHA256SUMS.txt --clobber
           cd ..
-          gh release view "$TAG" --json tagName,assets --jq '"assets=" + ([.assets[].name] | join(","))'
+          gh release view "$TAG" --json tagName,assets,body --jq '"assets=" + ([.assets[].name] | join(",")) + " body_len=\(.body|length)"'
