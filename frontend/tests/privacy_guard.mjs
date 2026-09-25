@@ -22,11 +22,31 @@ const read = (p) => (existsSync(rel(p)) ? readFileSync(rel(p), "utf8") : "")
 
 // 判据本体：喂"文件名 → 内容"的表，返回违规清单（正样本应为空，反样本必须非空）
 const PERSISTENCE = [/localStorage/, /sessionStorage/, /indexedDB/i, /document\.cookie/, /openDatabase/, /\bfs\.writeFile/, /\bwriteFileSync\b/, /createConnection/, /\bsqlite3\b/i, /pymysql/, /SQLAlchemy/i, /mongoose/, /redis/i]
-const TELEMETRY = [/sentry\.io/, /@sentry\//, /Sentry\.init/, /dsn\s*:/, /googletagmanager/, /gtag\(/,
-  /google-analytics/, /navigator\.sendBeacon/, /posthog/, /matomo/, /clarity\.ms/, /fbm.*sdk/i]
+const TELEMETRY = [/sentry\.io/, /@sentry\//, /\bSentry\.init\b/, /\bdsn\s*:/, /googletagmanager/, /gtag\(/,
+  /google-analytics/, /navigator\.sendBeacon/, /posthog/, /matomo/, /clarity\.ms/, /fbq\(/, /connect\.facebook\.net/]
 // 反例驱动的补全（2026-09-25）：初版只认 sentry.io 域名，反例 '@sentry/browser' 零命中——
 // 实际最可能的引入方式是 npm 包名与 Sentry.init/dsn 配置，域名形态反而少见。判据要按真实形态写。
+// 同日第十四轮再修：fbm 形态改为真实形态 fbq(/connect.facebook.net（Facebook Pixel 的实际注入写法）。
 const LOG_LEAK = /logEvent\([^)]*\b(body|history|transcript|requestText|patient)\b/
+
+// —— 判据逐条自证（第十四轮新增，治「聚合反例掩盖单条死判据」）——————————————
+// 根因实证：ESLint no-control-regex 抓出上面三条判据里的 \b 在上一轮被 Python 写文件
+// 转义成裸 0x08 退格符（写成 /\x08Sentry\.init\x08/），永不匹配 = 静默假通过；
+// 而当时的聚合反例仍判绿（同一条 poison 里 '@sentry/' 那条救回了命中数）。
+// ⇒ 聚合命中 ≠ 逐条接线。每条形态各配一个真实写法样本：新增形态忘配样本、或样本被打坏，本块立即判红。
+const PERSISTENCE_SAMPLES = [
+  "localStorage.setItem('dx', x)", "sessionStorage.dx = x", "indexedDB.open('d')",
+  "document.cookie = 'sid=1'", "openDatabase('d', 1, 'n', 1)", "fs.writeFile(p, d, cb)",
+  "fs.writeFileSync('a', 'b')", "net.createConnection(3306, host)", "import sqlite3",
+  "import pymysql", "from sqlalchemy import create_engine", "require('mongoose')", "import redis",
+]
+const TELEMETRY_SAMPLES = [
+  "const DSN = 'https://k@o0.ingest.sentry.io/1'", "import * as Sentry from '@sentry/browser'",
+  "Sentry.init({ dsn: DSN })", "dsn: 'https://k@x/1'", "src='https://www.googletagmanager.com/gtm.js'",
+  "gtag('config', 'G-ABC')", "import 'google-analytics'", "navigator.sendBeacon('/e', data)",
+  "posthog.capture('view')", "const u = 'https://matomo.local/matomo.js'",
+  "https://www.clarity.ms/collect", "fbq('init', '0000')", '<script src="https://connect.facebook.net/en_US/fbevents.js">',
+]
 
 function scan(sources) {
   const problems = { persistence: [], telemetry: [], logLeak: [] }
@@ -98,8 +118,8 @@ check("FHIR 导出对每位患者打 syntheticCase 标记", read("frontend/funct
 const PRIV = read("docs/PRIVACY.md")
 check("PRIVACY.md 存在且非空", PRIV.length > 1500, `bytes=${PRIV.length}`)
 check("PRIVACY.md 显式声明不构成合规认证", /不构成\s*(HIPAA|GDPR)|合规认证/.test(PRIV))
-const anchors = [...new Set([...PRIV.matchAll(/`((?:backend|frontend|docs)\/[\w./\[\]-]+\.(?:js|jsx|mjs|py|md|example))`|`([\w.-]+\.(?:js|jsx|py|md))`/g)])]
-  .map((m) => m[1] || m[2]).filter((p) => !/env\.example$/.test(p) ? true : true)
+const anchors = [...new Set([...PRIV.matchAll(/`((?:backend|frontend|docs)\/[\w./[\]-]+\.(?:js|jsx|mjs|py|md|example))`|`([\w.-]+\.(?:js|jsx|py|md))`/g)])]
+  .map((m) => m[1] || m[2])
 const dead = anchors.filter((p) => !existsSync(rel(p)))
 check("PRIVACY.md 引用的代码锚点全部存在（防文档腐烂）", dead.length === 0, `失效 ${dead.length} 个：${dead.slice(0, 4).join(" ")}`)
 check("锚点抽取本身非空（判据未接线时也会 0 失效）", anchors.length >= 5, `实际抽到 ${anchors.length} 个`)
@@ -123,6 +143,30 @@ for (const [name, src] of poisons) {
 const deadAnchor = "docs/PRIVACY.md 锚点 `frontend/functions/lib/__gone__.js`"
 check("反例可拦：锚点文件不存在会被判失效",
   !existsSync(rel("frontend/functions/lib/__gone__.js")) && deadAnchor.length > 0)
+
+// 判据逐条自证：先对位（防"加形态不加样本"蒙混），再逐条喂自己的样本必须命中，
+// 并额外经 scan() 走一遍（防"正则对了但没接进扫描循环"）。
+const hit = (re, s) => { re.lastIndex = 0; return re.test(s) }  // /g 正则 test() 有 lastIndex 状态，逐条判前先归零
+check("持久化判据与样本数量对位", PERSISTENCE.length === PERSISTENCE_SAMPLES.length,
+  `判据 ${PERSISTENCE.length} 条 / 样本 ${PERSISTENCE_SAMPLES.length} 条`)
+check("遥测判据与样本数量对位", TELEMETRY.length === TELEMETRY_SAMPLES.length,
+  `判据 ${TELEMETRY.length} 条 / 样本 ${TELEMETRY_SAMPLES.length} 条`)
+PERSISTENCE.forEach((re, i) => {
+  const s = PERSISTENCE_SAMPLES[i]
+  check(`持久化判据逐条自证 #${i + 1} ${re.source}`, hit(re, s) && scan({ "s.js": s }).persistence.length > 0,
+    `样本未命中：${s}`)
+})
+TELEMETRY.forEach((re, i) => {
+  const s = TELEMETRY_SAMPLES[i]
+  check(`遥测判据逐条自证 #${i + 1} ${re.source}`, hit(re, s) && scan({ "s.js": s }).telemetry.length > 0,
+    `样本未命中：${s}`)
+})
+// 元反例：用 String.fromCharCode(8) 复刻事故形态（正则源码里不出现裸退格符，避免再次触雷 no-control-regex）。
+// 它必须"匹配不到真实代码" ⇒ 证明上面的逐条自证确实能识别「写成了永不匹配的死判据」。
+const deadForm = new RegExp(String.fromCharCode(8) + "Sentry\\.init" + String.fromCharCode(8), "i")
+check("元反例：裸退格符伪装的词边界会被自证判死",
+  !hit(deadForm, "Sentry.init({ dsn })") && hit(/\bSentry\.init\b/, "Sentry.init({ dsn })"),
+  "自证块失去识别死判据的能力 = 本轮治本失效")
 check("对照组：当前生产面三类扫描全部零命中", live.persistence.length + live.telemetry.length + live.logLeak.length === 0)
 
 console.log(`\nPRIVACY GUARD SUMMARY: 扫描文件=${Object.keys(productionFiles).length} 锚点=${anchors.length} 脱敏用例=${CASES.length}`)

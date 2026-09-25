@@ -2,9 +2,10 @@
 import time
 
 from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from fastapi.exceptions import RequestValidationError
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from .config import current_api_key, get_settings
 from .observe import SLOW_MS, log_event, new_request_id, redact
@@ -54,6 +55,26 @@ async def unhandled_exception(request: Request, exc: Exception):
         status_code=500,
         content={"code": 500, "message": f"服务暂时不可用，请稍后重试（故障编号 {request_id}）"},
         headers={"X-Request-Id": request_id},
+    )
+
+
+@app.exception_handler(StarletteHTTPException)
+async def http_error(request: Request, exc: StarletteHTTPException):
+    """业务级 HTTP 错误（未知病例 404 / 未匹配路径 404）：对齐 Functions 端 {code,message} 契约。
+    此前 FastAPI 默认吐 {"detail": ...}，与线上权威面（Functions）不同形 —— 双端契约对账
+    只覆盖引擎输出与 OpenAPI，路由错误体形态无判据，故第十四轮补此处理器并由 test_api_observe 钉住。
+    注：必须注册在 Starlette 基类上，FastAPI 的 HTTPException 是其子类；只注册子类会漏掉
+    路由未匹配时 Starlette 自己抛的 404（实测 {"detail":"Not Found"} 仍外泄）。"""
+    request_id = getattr(request.state, "request_id", None) or new_request_id()
+    headers = dict(exc.headers or {})
+    headers["X-Request-Id"] = request_id
+    detail = str(exc.detail)
+    if exc.status_code == 404 and detail == "Not Found":
+        detail = f"not found: {request.url.path}"  # 与 Functions 侧 fail(404, `not found: ${path}`) 同文案
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"code": exc.status_code, "message": redact(detail, current_api_key())},
+        headers=headers,
     )
 
 

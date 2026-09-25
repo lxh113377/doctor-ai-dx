@@ -5,7 +5,8 @@
 top_k 钳制 1..10、稳定排序）；tests/contract_parity.mjs 双端契约测试防漂移。
 """
 import math
-from .knowledge import KNOWLEDGE_BASE, SYNONYMS, RED_FLAG_KEYWORDS, SYMPTOM_TO_KB
+
+from .knowledge import KNOWLEDGE_BASE, RED_FLAG_KEYWORDS, SYMPTOM_TO_KB, SYNONYMS
 
 K1 = 1.5
 B = 0.75

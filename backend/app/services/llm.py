@@ -56,7 +56,7 @@ class OpenAICompatProvider(BaseProvider):
                 timeout=self.timeout,
             )
         except httpx.HTTPError as e:
-            raise LLMUnavailable(f"llm network error: {e}")
+            raise LLMUnavailable(f"llm network error: {e}") from None
         if resp.status_code != 200:
             raise LLMUnavailable(f"llm http {resp.status_code}")
         return resp.json()["choices"][0]["message"]["content"]

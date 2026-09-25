@@ -4,11 +4,11 @@
 mode：live（LLM 生成）/ rule-fallback（规则降级，明确标注）。
 """
 from .. import mock, rag, rules
+from ..config import llm_available
 from ..knowledge import KNOWLEDGE_BASE, SYMPTOM_TO_KB
 from ..retriever import get_retriever
-from ..config import llm_available
-from . import llm as llm_svc
 from . import fhir as fhir_svc
+from . import llm as llm_svc
 
 _BY_ID = {k["id"]: k for k in KNOWLEDGE_BASE}
 _RETRIEVER = get_retriever()

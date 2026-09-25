@@ -7,11 +7,11 @@ from contextlib import redirect_stdout
 
 sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parents[1]))
 
-from fastapi.testclient import TestClient  # noqa: E402
-
+from app import main as main_module  # noqa: E402
 from app import observe  # noqa: E402
 from app.main import app  # noqa: E402
 from app.routers import api as api_router  # noqa: E402
+from fastapi.testclient import TestClient  # noqa: E402
 
 ID_RE = re.compile(r"^[0-9a-f]{4,12}$")
 LEAK_RE = re.compile(r"(Traceback|file://|[A-Za-z]:\\|sk-[A-Za-z0-9]{8,}|abc123secretkey)")
@@ -79,6 +79,70 @@ bad_body = bad.json()
 check("缺字段 422 走 {code,message} 契约", bad.status_code == 422 and bad_body.get("code") == 422
       and "detail" not in bad_body and isinstance(bad_body.get("message"), str), json.dumps(bad_body, ensure_ascii=False)[:160])
 check("422 也带 X-Request-Id", bool(ID_RE.match(bad.headers.get("x-request-id", ""))))
+
+print("== 路由级 404 契约（未知病例 / 未知路径）==")
+# 第十四轮补：此前 api.py 只跑过 /cases 与 /health，四条业务路由的 404 分支与 200 主体从未执行。
+FORGED = {"case_id": "nope", "history": []}
+for route_name, path in [("intake/ask", "/api/intake/ask"), ("dx", "/api/dx/nope"),
+                         ("workup", "/api/workup/nope"), ("report", "/api/report/nope")]:
+    r = client.post(path, json=FORGED)
+    body = r.json()
+    check(f"{route_name} 未知病例 404 且为 {{code,message}}（与 Functions 同形，不吐 detail）",
+          r.status_code == 404 and body.get("code") == 404 and "detail" not in body
+          and isinstance(body.get("message"), str), json.dumps(body, ensure_ascii=False)[:140])
+    check(f"{route_name} 404 响应带 X-Request-Id", bool(ID_RE.match(r.headers.get("x-request-id", ""))))
+    check(f"{route_name} 404 不外泄内部路径/堆栈", not LEAK_RE.search(json.dumps(body, ensure_ascii=False)))
+
+nf = client.get("/api/nope")
+check("未知路径 404 同样走 {code,message} 契约且文案与 Functions 同形",
+      nf.status_code == 404 and nf.json().get("code") == 404 and "detail" not in nf.json()
+      and nf.json().get("message") == "not found: /api/nope", json.dumps(nf.json(), ensure_ascii=False)[:140])
+
+print("== 路由级全链路 200（抽取→诊断→检查→报告）==")
+HIST = [{"role": "user", "content": c} for c in
+        ["压榨样/紧缩感", "向左肩臂放射", "活动/劳累时加重", "出冷汗", "高血压，吸烟"]]
+ask = client.post("/api/intake/ask", json={"case_id": "c1", "history": []})
+ask_body = ask.json()
+check("intake/ask 200 且 code=0 且回追问文本",
+      ask.status_code == 200 and ask_body.get("code") == 0 and isinstance((ask_body.get("data") or {}).get("question"), str),
+      json.dumps(ask_body, ensure_ascii=False)[:140])
+dx_res = client.post("/api/dx/c1", json={"case_id": "c1", "history": HIST})
+dx_body = dx_res.json()
+check("dx 200 且带证据与红旗字段", dx_res.status_code == 200 and dx_body.get("code") == 0
+      and isinstance((dx_body.get("data") or {}).get("evidence"), list), json.dumps(dx_body, ensure_ascii=False)[:140])
+workup_res = client.post("/api/workup/c1", json={"case_id": "c1", "history": HIST, "dx": dx_body.get("data")})
+wb = workup_res.json().get("data") or {}
+check("workup 200 且三组检查建议非空", workup_res.status_code == 200 and workup_res.json().get("code") == 0
+      and all(wb.get(k) for k in ("essential", "suggested", "optional")),
+      json.dumps(wb, ensure_ascii=False)[:140])
+report_res = client.post("/api/report/c1", json={"case_id": "c1", "history": HIST, "dx": dx_body.get("data")})
+rep = report_res.json().get("data") or {}
+soap = rep.get("soap") or {}
+check("report 200 且 SOAP 四段齐 + 执业医生终审口径免责",
+      report_res.status_code == 200 and all(soap.get(k) for k in ("subjective", "objective", "assessment", "plan"))
+      and "执业资质的医生" in str(rep.get("disclaimer", "")), json.dumps(rep, ensure_ascii=False)[:140])
+for name, res in (("intake", ask), ("dx", dx_res), ("workup", workup_res), ("report", report_res)):
+    check(f"{name} 响应带 X-Request-Id", bool(ID_RE.match(res.headers.get("x-request-id", ""))))
+
+print("== 慢请求归因日志（SLOW_MS 分支，第十四轮补：该分支此前零执行）==")
+_saved_slow = main_module.SLOW_MS
+main_module.SLOW_MS = -1  # 强制判慢；真跑一次 8 秒超时无意义也不该进 CI
+try:
+    buf = io.StringIO()
+    with redirect_stdout(buf):
+        slow = client.get("/api/cases")
+    logged = [json.loads(ln) for ln in buf.getvalue().splitlines() if ln.startswith("{")]
+finally:
+    main_module.SLOW_MS = _saved_slow
+warn = next((entry for entry in logged if entry.get("lvl") == "warn"), None)
+check("慢请求落一条 warn 且带 path/method/ms", bool(warn) and warn.get("path") == "/api/cases"
+      and warn.get("method") == "GET" and isinstance(warn.get("ms"), int),
+      json.dumps(warn, ensure_ascii=False)[:140] if warn else f"实测行={logged[:2]}")
+check("warn 字段落在归因白名单内（不外泄请求体/堆栈键）",
+      bool(warn) and set(warn) <= {"app", "lvl", "req", "path", "method", "ms", "mode", "kind", "msg"},
+      str(sorted(warn or {})))
+check("SLOW_MS 判后复原为生产值 8000", main_module.SLOW_MS == 8000, str(main_module.SLOW_MS))
+check("被判慢的请求本身仍 200（慢不等于错）", slow.status_code == 200, str(slow.status_code))
 
 print("== 脱敏函数 ==")
 check("sk- 形态密钥被脱敏", "sk-" not in observe.redact("header: sk-abcdefghijklmnopqrstuvwxyz"))

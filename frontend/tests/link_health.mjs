@@ -3,7 +3,6 @@
 // 分级：OK=2xx/3xx 可达；BLOCKED=401/403/429（存在但拒绝自动化访问，不算腐烂，按基线只报不红）；
 //       DEAD=4xx(除上)/5xx/超时/DNS 失败 = 判失败（fail-closed，须人工处置：换链或降级为未链并同步棘轮）。
 // 用法：node tests/link_health.mjs [--json] [--timeout=15000]
-import { readFileSync } from "node:fs"
 import { KNOWLEDGE_BASE } from "../functions/lib/knowledge.js"
 
 const TIMEOUT = parseInt((process.argv.find((a) => a.startsWith("--timeout=")) || "").split("=")[1] || "15000", 10)
@@ -30,7 +29,7 @@ async function probe(url) {
     // 部分站点不支持 HEAD（405/501）→ 回退 GET 再判，避免假 DEAD
     if (r.status === 405 || r.status === 501) r = await hit("GET")
     return r
-  } catch (e) {
+  } catch {
     try {
       return await hit("GET")
     } catch (e2) {

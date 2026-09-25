@@ -42,7 +42,7 @@ function expandQuery(query) {
 
 // 预建倒排索引（模块加载时一次；缺字段守卫防单条脏数据拖崩全索引）
 const index = (() => {
-  const docs = KNOWLEDGE_BASE.map((item, i) => ({ id: item.id, tf: {}, len: 0, raw: item }))
+  const docs = KNOWLEDGE_BASE.map((item) => ({ id: item.id, tf: {}, len: 0, raw: item }))
   const df = {}
   let totalLen = 0
   for (const d of docs) {

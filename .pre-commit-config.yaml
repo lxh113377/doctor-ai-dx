@@ -30,3 +30,26 @@ repos:
         language: system
         pass_filenames: false
         files: ^(backend/app/(version|main)\.py|backend/app/routers/.*|docs/openapi\.json)$
+
+      # 静态检查两枚（第十四轮补）：与 CI 同源判据、同配置文件。
+      # 刻意不用 hook 级 cwd：pre-commit 4.6.2 对 repo:local 的 cwd 键只告警不生效（实测），
+      # 基准靠 frontend/lint.mjs 内部钉目录；ruff 的规则集按"从被检文件向上找配置"解析，仓根直跑等效。
+      - id: eslint
+        name: 前端/Functions/门禁脚本 ESLint（--max-warnings=0，警告也算红）
+        entry: node frontend/lint.mjs
+        language: system
+        pass_filenames: false
+        files: \.(js|jsx|mjs)$
+
+      - id: ruff
+        name: 后端 ruff 静态检查（规则集钉在 backend/ruff.toml）
+        entry: ruff check backend/app backend/tests
+        language: system
+        pass_filenames: false
+        files: \.py$
+
+      - id: text-hygiene
+        name: 全仓文本控制字符扫描（防"正则里的词边界被转义成裸退格符"类死判据）
+        entry: python scripts/check_text_hygiene.py --quiet
+        language: system
+        pass_filenames: false

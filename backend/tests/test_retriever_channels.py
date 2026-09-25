@@ -14,8 +14,17 @@ os.environ.pop("DEEPSEEK_API_KEY", None)
 from app import rag  # noqa: E402
 from app.knowledge import KNOWLEDGE_BASE  # noqa: E402
 from app.retriever import (  # noqa: E402
-    DEFAULT_RETRIEVER, CONCEPT_TOP, MAX_TOP_K, SEM_FLOOR, SEM_TOP, W_SEM,
-    adjacency_channel, concept_channel, get_retriever, rrf_fuse, semantic_channel,
+    CONCEPT_TOP,
+    DEFAULT_RETRIEVER,
+    MAX_TOP_K,
+    SEM_FLOOR,
+    SEM_TOP,
+    W_SEM,
+    adjacency_channel,
+    concept_channel,
+    get_retriever,
+    rrf_fuse,
+    semantic_channel,
 )
 from app.semantic_neighbors import SEMANTIC_NEIGHBORS  # noqa: E402
 

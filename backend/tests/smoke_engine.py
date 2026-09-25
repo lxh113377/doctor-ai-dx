@@ -8,10 +8,10 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 os.environ.pop("DEEPSEEK_API_KEY", None)  # 强制无 Key 降级
 
-from app.services import engine  # noqa: E402
-from app import rag  # noqa: E402
+from app import rag, rules  # noqa: E402
 from app.rag import has_evidence  # noqa: E402
 from app.retriever import get_retriever  # noqa: E402
+from app.services import engine  # noqa: E402
 
 HIST_C1 = [{"role": "user", "content": c} for c in
            ["压榨样/紧缩感", "向左肩臂放射", "活动/劳累时加重", "出冷汗", "高血压，吸烟"]]
@@ -21,14 +21,14 @@ HIST_C2 = [{"role": "user", "content": c} for c in
 passed = failed = 0
 
 
-def check(name, cond):
+def check(name, cond, detail=""):
     global passed, failed
     if cond:
         passed += 1
         print("  PASS", name)
     else:
         failed += 1
-        print("  FAIL", name)
+        print("  FAIL", name + (f" :: {detail}" if detail else ""))
 
 
 print("== retriever compatibility ==")
@@ -65,6 +65,21 @@ r1 = engine.build_report("c1", HIST_C1)
 check("report SOAP 四段", all(r1["soap"].get(k) for k in ("subjective", "objective", "assessment", "plan")))
 check("report 含免责声明", "辅助" in r1["disclaimer"])
 check("report 含患者名", "张建国" in r1["soap"]["subjective"])
+
+# 红旗规则探针（第十四轮补）：与 frontend/tests/engine_smoke.mjs 的 RED_FLAG_PROBES 逐字同表。
+# 覆盖 rules.py 的数值血压判定 / 组合线索 / 脏读值域拒绝 / 同名去重 / 空输入五条分支
+# —— 此前这些分支在镜像端零执行（JS 端有测，Python 端没有，双端"同逻辑"无判据）。
+RED_FLAG_PROBES = [
+    ("血压 190/110 伴头痛", ["高血压急症红旗|高"]),
+    ("血压 400/300", []),
+    ("血压 120/80 无不适", []),
+    ("停经 6 周，阴道出血，下腹剧痛，面色苍白", ["异位妊娠（宫外孕）破裂红旗|高"]),
+    ("高血压危象，血压 200/130", ["高血压急症红旗|高"]),
+    ("", []),
+]
+for probe_text, want in RED_FLAG_PROBES:
+    got = [f"{h['name']}|{h['severity']}" for h in rules.scan_flag_details(probe_text)]
+    check(f"红旗探针 {probe_text!r}", got == want, f"实测 {got} 期望 {want}")
 
 print(f"\nRESULT: {passed} pass / {failed} fail")
 sys.exit(1 if failed else 0)

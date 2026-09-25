@@ -177,7 +177,6 @@ def _diagnostic_report(dx, patient_ref, result_refs):
     present_form = [{"url": _s(e.get("url"), 500), "title": _s(e.get("title"), 200)}
                     for e in (dx.get("evidence") or [])
                     if isinstance(e.get("url"), str) and e["url"].startswith("http")][:10]
-    case_id = (dx.get("state") or {}).get("case_id") or "unknown"
     report = {
         "resourceType": "DiagnosticReport", "id": "dx-summary",
         "status": "partial" if fallback else "final",

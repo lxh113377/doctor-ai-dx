@@ -32,7 +32,7 @@ Thumbs.db
 coverage/
 .c8-tmp/
 .coverage
-.coverage
 *.cover
 htmlcov/
 .coverage.json
+coverage-py.json

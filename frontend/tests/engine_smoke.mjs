@@ -1,7 +1,6 @@
 // 公开仓自包含冒烟测试：无 LLM Key，验证规则降级与安全链路。
 import { buildDiagnosis, buildWorkup, buildReport, extractState } from "../functions/lib/engine.js"
 import { scanFlags, scanFlagDetails } from "../functions/lib/rules.js"
-import { KB_BY_ID } from "../functions/lib/knowledge.js"
 import { search as legacySearch, hasEvidence } from "../functions/lib/rag.js"
 import { getRetriever } from "../functions/lib/retriever.js"
 
@@ -105,6 +104,23 @@ check("红旗字符串契约格式不变：严重危险信号：{name}。{advice
 
 
 check("report 含患者名", report.soap.subjective.includes("张建国"))
+
+// 红旗规则探针（第十四轮补）：数值血压/组合线索/脏读拒绝/去重/空输入五条分支。
+// 同一张期望表在 backend/tests/smoke_engine.py 里逐字复刻 —— 双端各自主张同一事实，
+// 一端漂移即该端判红（等价于跨端对账，且不必为探针新增一次跨语言 spawn）。
+const RED_FLAG_PROBES = [
+  ["血压 190/110 伴头痛", ["高血压急症红旗|高"]],
+  ["血压 400/300", []],
+  ["血压 120/80 无不适", []],
+  ["停经 6 周，阴道出血，下腹剧痛，面色苍白", ["异位妊娠（宫外孕）破裂红旗|高"]],
+  ["高血压危象，血压 200/130", ["高血压急症红旗|高"]],
+  ["", []],
+]
+for (const [text, want] of RED_FLAG_PROBES) {
+  const got = scanFlagDetails(text).map((h) => `${h.name}|${h.severity}`)
+  check(`红旗探针 ${JSON.stringify(text)}`, JSON.stringify(got) === JSON.stringify(want),
+    `实测 ${JSON.stringify(got)} 期望 ${JSON.stringify(want)}`)
+}
 
 console.log(`\nRESULT: ${pass} pass / ${fail} fail`)
 process.exit(fail ? 1 : 0)

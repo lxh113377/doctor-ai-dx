@@ -69,20 +69,23 @@ export default function App() {
   }
 
   /* 直接跳到某一步时的兜底加载（避免双 POST：显式导航只解锁+切换） */
+  // 依赖项取 intake 的具体成员（useCallback 稳定）而非整对象：整对象每次渲染都是新字面量，纳入依赖会死循环
+  const { dx: intakeDx, loadDx, intakeHistory } = intake
+
   useEffect(() => {
-    if (!patient || step !== 2 || intake.dx) return
-    intake.loadDx().catch((e) => setErr({ step: 2, msg: e.message }))
-  }, [patient, step, intake.dx, intake.loadDx])
+    if (!patient || step !== 2 || intakeDx) return
+    loadDx().catch((e) => setErr({ step: 2, msg: e.message }))
+  }, [patient, step, intakeDx, loadDx])
 
   useEffect(() => {
     if (!patient || step !== 3 || workup) return
-    api.getWorkup(patient.id, intake.intakeHistory(), intake.dx).then((w) => { setWorkup(w); unlock(3) }).catch((e) => setErr({ step: 3, msg: e.message }))
-  }, [patient, step, workup, intake.dx, intake.intakeHistory, unlock])
+    api.getWorkup(patient.id, intakeHistory(), intakeDx).then((w) => { setWorkup(w); unlock(3) }).catch((e) => setErr({ step: 3, msg: e.message }))
+  }, [patient, step, workup, intakeDx, intakeHistory, unlock])
 
   useEffect(() => {
     if (!patient || step !== 4 || report) return
-    api.getReport(patient.id, intake.intakeHistory(), intake.dx).then((r) => { setReport(r); unlock(4) }).catch((e) => setErr({ step: 4, msg: e.message }))
-  }, [patient, step, report, intake.dx, intake.intakeHistory, unlock])
+    api.getReport(patient.id, intakeHistory(), intakeDx).then((r) => { setReport(r); unlock(4) }).catch((e) => setErr({ step: 4, msg: e.message }))
+  }, [patient, step, report, intakeDx, intakeHistory, unlock])
 
   /* 显式"下一步"导航：仅解锁+切换，数据加载交给对应 useEffect 兜底，避免双 POST */
   const goWorkup = () => { unlock(3); setStep(3) }

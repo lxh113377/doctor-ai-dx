@@ -5,6 +5,37 @@
 
 ## [Unreleased]
 
+## [1.12.0] - 2026-09-25
+
+### Added（静态质量门禁：对标实测同类 5 家中 3 家有 linter，我方此前全仓零静态检查）
+- 对标取证（`gh api contents` 实测）：`OpenEMR` 有 `eslint.config.mjs` + `.pre-commit-config.yaml` + 专门 Linting 工作流；`ragflow` 有 `pyproject.toml`(ruff) + `web-lint` 工作流 + CodeQL；`phlox` 有 `eslint.config.js` + CI + CodeQL；`medical-rag` 无任何工作流；`CDSS-RAG-Chatbot` 现已 404（仓库消失，登记为「维护状态」证据）。我方前端无 ESLint、后端无 ruff/flake8/mypy ⇒ 本轮补齐
+- `frontend/eslint.config.mjs`（ESLint 9.39.4 flat config，插件 `@eslint/js` 9.39.5 / `eslint-plugin-react` 7.37.5 / `react-hooks` 7.1.1 / `react-refresh` 0.5.7 / `globals` 17.12.0）+ `frontend/lint.mjs`（把执行目录钉在 `frontend/` 的薄壳，理由见文件头注）+ `npm run lint:js|lint:py|lint`，**`--max-warnings=0`：警告也算红**
+- `backend/ruff.toml`（ruff 0.16.5，`requirements-dev.txt` 钉 `>=0.16.5,<0.17`）：**规则集显式钉文件**——实测 ruff 0.16 默认 select 已含 `I/B/UP/RUF100` 而旧版只含 `E4/E7/E9/F`，靠默认值等于"换工具版本即换判据"。刻意不选 `BLE001`（失败安全降级本就靠宽 `except` 兜，逐条断言在 `test_live_path.py`）与 `RUF100`（ruff 与 pycodestyle 对 `E402` 的判定不同，钉它会随换检查器而判据反转），理由写进配置头注
+- `scripts/coverage_gate.py`：Python 侧模块级地板门禁，与 JS 侧 `coverage_floor_guard.mjs` 读**同一份** `fixtures/coverage_floor.json`（新增 `py_modules` 9 项模块地板）
+- `scripts/check_text_hygiene.py`（新增文本卫生门禁，CI 第 4 个 job + 第 7 枚 pre-commit 钩子）：扫 `git ls-files` 的 105 个受控文本文件，禁止 C0 控制字符（`\t \n \r` 之外）与 DEL。**立论依据是同类缺陷两次实测**：v1.11.0 的 `\b`→`0x08` 死判据、v1.12.0 写本文档时同一机制当场复发——"记得用原始字符串"防不住，需要与语言无关的字节层门禁。清单条目数低于 40 即判红（防"清单来源坏了 ⇒ 零违规"的假通过）
+- 双端同表红旗探针 6 条（`engine_smoke.mjs` 的 `RED_FLAG_PROBES` ↔ `smoke_engine.py` 的 `RED_FLAG_PROBES` 逐字同表）：覆盖数值血压判定、组合线索、超生理值域拒收、同名去重、空输入。两端各自做变异实测——取消 JS 侧值域守卫 → JS rc=1；取消 Py 侧同一守卫 → Py rc=1
+- 后端路由级断言 25 条（`test_api_observe` 15 → 40）：四条业务路由 404、未匹配路径 404、全链路 200（抽取→诊断→检查→报告）、慢请求 warn 分支与字段白名单；前端 `route_guard` 14 → 25（补无 `crypto.randomUUID` 回退、warn/info 两级日志、`redact` 空入参与非字符串、`withRequestId` 两条分支、404 错误体权威面基准）
+
+### 由新门禁抓出的真实缺陷（逐条实测，非风格问题）
+1. 🔴 **隐私判据里有三条"永不匹配"的死正则**：`privacy_guard.mjs` 的 `\bSentry\.init\b`、`\bdsn\s*:`、`\bfbm\b.*sdk` 中的 `\b` 在上一轮由 Python 写文件时被转义成**裸 `0x08` 退格符**（5 处），正则要求文本里真有一个退格字符 ⇒ 永不命中 ⇒ 遥测扫描静默假通过。当时聚合反例仍判绿（同一条 poison 里 `@sentry/` 那条救回了命中数）。ESLint `no-control-regex` 抓出；修复后把"聚合反例"升级为**判据逐条自证**：25 条形态各配一条真实写法样本 + 数量对位断言 + 「元反例」证明自证块能识别死判据（`privacy_guard` 30 → **59 项**）。教训：聚合命中 ≠ 逐条接线
+2. 🔴 **双端错误体不同形**：后端 404 吐 FastAPI 默认 `{"detail": "unknown case: nope"}`，权威面 Functions 吐 `{code,message}`；且第一版处理器注册在 `fastapi.HTTPException` 上仍漏掉未匹配路径的 404（Starlette 自己抛基类，实测 `{"detail":"Not Found"}` 照旧外泄）⇒ 改注册到 `StarletteHTTPException` 并统一文案为 `not found: <path>` 与 Functions 同形。**该缺陷此前零判据覆盖**：`contract_parity` 只比引擎输出、`api_contract_guard` 只比 OpenAPI↔Functions，而 `app/routers/api.py` 语句覆盖 57%、四条路由的 404 分支从未执行
+3. 🔴 **CodeQL 从未扫过生产分支**：实测 30 次分析全部落在 `refs/pull/*/merge`，`refs/heads/main` 为零（只在 Dependabot PR 与 cron 上触发）⇒ 补 `push: [main]`。与 round9「门禁挂在长期 skipped 的 deploy 作业上 = 没有门禁」同族
+4. **覆盖率地板"清单与判据两套数"**：`py_total_fail_under` 写在 fixture 里但**没有任何代码读它**，真实阈值 `--fail-under=85` 硬编码在 `ci.yml` 与 `package.json` 两处 ⇒ 改 JSON 不影响判定。现两处均改调 `scripts/coverage_gate.py`，反例实测（假地板：模块改名 + 抬到 99%）两条均判红 rc=1
+5. 死代码与缺陷类告警清零：后端 `F401`（`SEMANTIC_META` 死导入）、`F841`（`fhir.py` 死变量，与 JS 端逐行核对确认非漏用）、5 处 `B904`（`raise ... from None`，与「日志不写堆栈」的隐私声明一致）、10 处导入次序；前端死类 `Http404`、4 处死导入、恒真三元 `filter(x ? true : true)`、`no-useless-escape`
+6. `App.jsx` 三处 `exhaustive-deps` 告警按规则建议改为解构稳定成员（`useCallback` 已稳定，语义零变化）——而非写死 disable；`require-await` 经实测确认会误判 fetch 桩与同形 async 签名，故不启用并写明理由
+7. 新立的文本卫生门禁**首跑即抓出 2 处同族缺陷**（`ARCHITECTURE.md` 与 `EVAL_CARD.md` 各 1 处 `0x08`，均为本轮用 Python heredoc 写文档时 `\b` 被转义），另在自己刚写的 CHANGELOG 里当场抓到 6 处 ⇒ 该门禁不是假想需求。反例实测：临时文件混入退格符 → 精确报出 `文件:行:列 + U+0008` 且 rc=1
+
+### 度量与地板（口径变更如实标注）
+- `backend/.coveragerc` 开启 **`branch = True`**：Python 口径由「仅语句」改为「语句+分支弧」（更严）。同批测试新口径实测 **90.53%**（旧语句口径 87%）；`rules.py` 75→**98**、`routers/api.py` 57→**100**、`main.py` 96→98；地板 85→**88**
+- JS 全局分支 **74.18 → 75.65%**（`observe.js` 分支 69→**100**）；地板全线收紧（engine 分支 65→68、fhir 72→74、rag 74→75、retriever 80→81、rules 85→86、knowledge 68→69、全局 72→74），并把此前**不在清单内**的 `observe.js`（脱敏层）以 98/98/98 登记
+- `.pre-commit-config.yaml` 四钩子 → **七钩子**（+ESLint +ruff +文本控制字符扫描）。实测 `pre-commit` 4.6.2 对 `repo: local` 的 `cwd` 键只告警不生效 ⇒ 前端改由 `lint.mjs` 内部钉目录。钩链反例实测：往 `version.py` 塞死导入 → ruff 钩判红，恢复后 6/6 Passed
+- 套件数变化：`engine_smoke` 43→49、`route_guard` 14→25、`privacy_guard` 30→59、`coverage_floor_guard` 25→28；后端 `smoke_engine` 19→25、`test_api_observe` 15→40（`test_fhir` 17、`test_live_path` 25、`test_retriever_channels` 25 不变）
+- 文档口径纠偏：README/CONTRIBUTING 里「七件套/九件套/十三件套」的漂移表述统一为十四件套并补 lint 命令与判据维护约定
+
+### 红线影响
+无。三条产品红线逻辑零改动（红旗规则层只**新增**测试，未改判定；引用白名单与终审文案零触碰）；默认检索档仍 `bm25`；评测口径仍是同一批 31 例，未因本轮改动调整任何期望值。`App.jsx` 的依赖数组改写属渲染层等价改写，客户端 bundle 因源码改动必然换 hash，已用线上实测复核。
+
+
 ## [1.11.0] - 2026-09-25
 
 ### Added（文档与隐私面：对标同类 5/5 均无隐私/数据留存声明，本项为做优而非追平）

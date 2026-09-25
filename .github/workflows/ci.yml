@@ -31,6 +31,9 @@ jobs:
           cache-dependency-path: backend/requirements.txt
       - name: Install
         run: npm ci --no-audit --no-fund
+      - name: Lint (ESLint flat config，--max-warnings=0)
+        # 刻意排在测试前：静态面秒级判红先于分钟级套件；警告同样阻断（防"攒额度"式沉默）
+        run: npm run lint:js
       - name: Install backend deps (for contract parity)
         run: python -m pip install -r ../backend/requirements.txt
       - name: Test + coverage floor ratchet (JS)
@@ -56,6 +59,18 @@ jobs:
           path: frontend/dist
           if-no-files-found: error
 
+  text-hygiene:
+    # 兜底一类与语言无关的缺陷：\b \f 等在经 Python/bash 字符串落地时被转义成裸控制字符，
+    # 写进 JS 正则即"永不匹配的死判据"（实测两次：v1.11.0 privacy_guard 3 条、v1.12.0 文档 2 处）。
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: 全仓文本控制字符扫描（C0 与 DEL，\t\n\r 除外）
+        run: python scripts/check_text_hygiene.py
+
   backend-test:
     runs-on: ubuntu-latest
     defaults:
@@ -72,6 +87,8 @@ jobs:
         run: python -m pip install -r requirements.txt
       - name: Install dev deps (coverage instrumentation, not in runtime image)
         run: python -m pip install -r requirements-dev.txt
+      - name: Static analysis (ruff，规则集钉在 backend/ruff.toml)
+        run: ruff check app tests
       - name: Test rule-fallback engine
         run: python tests/smoke_engine.py
       - name: Test API observability contract
@@ -83,7 +100,8 @@ jobs:
       - name: Test retriever channels (stubbed httpx, zero network)
         run: python tests/test_retriever_channels.py
       - name: Coverage floor ratchet (Python)
-        # 地板值记录在 frontend/tests/fixtures/coverage_floor.json 的 py_total_fail_under，只准收紧
+        # 阈值单一源 = frontend/tests/fixtures/coverage_floor.json（py_total_fail_under + py_modules）。
+        # 第十四轮治本：此前本步骤硬编码 --fail-under=85，改 JSON 不影响判定 ⇒ 清单与判据是两套数。
         run: |
           rm -f .coverage
           python -m coverage run --append --source=app tests/smoke_engine.py
@@ -91,10 +109,10 @@ jobs:
           python -m coverage run --append --source=app tests/test_fhir.py
           python -m coverage run --append --source=app tests/test_live_path.py
           python -m coverage run --append --source=app tests/test_retriever_channels.py
-          python -m coverage report --fail-under=85
+          python ../scripts/coverage_gate.py --quiet
 
   deploy:
-    needs: [build-and-test, backend-test]
+    needs: [build-and-test, backend-test, text-hygiene]
     # 自动部署开关 = 仓库变量 AUTO_DEPLOY（默认未设 ⇒ 作业显式 skipped，不冒充「已部署」也不误红徽章）。
     # 现状（2026-09-25 实测）：本仓未配 CLOUDFLARE_API_TOKEN secret，生产部署由本机 wrangler OAuth 手工执行；
     # 配好 Token 后置 AUTO_DEPLOY=true 即接管，届时缺 Token 会判红（fail-closed 分支已实测生效，禁止回退成静默跳过）。

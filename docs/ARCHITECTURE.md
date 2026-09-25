@@ -21,7 +21,7 @@
 
 | 红线 | 实现点 | 由谁守 |
 |---|---|---|
-| 红旗层独立于 LLM、不可被模型覆盖 | ⑤ 在 ③④ 之后执行且只增不改；`reuseOrBuild` 复用前端 dx 时仍重算红旗 | `route_guard` / `engine_eval` 27+31 项、后端 `smoke_engine` 19 项 |
+| 红旗层独立于 LLM、不可被模型覆盖 | ⑤ 在 ③④ 之后执行且只增不改；`reuseOrBuild` 复用前端 dx 时仍重算红旗 | `route_guard` / `engine_eval` 27+31 项、后端 `smoke_engine` 25 项（含双端同表红旗探针 6 条） |
 | 全界面「AI 辅助参考 · 医生终审」 | 前端持续显示 + report `disclaimer` 字段 | `tests/redline.test.jsx`（vitest 7 项） |
 | 引用可溯源（不得编造证据） | ④ 白名单校验 `has_evidence(evidence_id)`；越界即降级 | `engine_eval` 引用断言 + `kb_guard` schema |
 
@@ -31,10 +31,11 @@
 
 | 语义 | 权威（JS） | 镜像（Py） | 对账门禁 |
 |---|---|---|---|
-| 知识数据单一源 | `functions/lib/knowledge.js` | `app/knowledge.py`（导出） | `npm run test:kb`（16 项，含四组数据深度相等） |
+| 知识数据单一源 | `functions/lib/knowledge.js` | `app/knowledge.py`（导出） | `npm run test:kb`（17 项，含四组数据深度相等） |
 | BM25 检索 | `functions/lib/rag.js` | `app/rag.py` | `npm run test:retrieval-parity`（50 例双档） |
-| 红旗规则 | `functions/lib/rules.js` | `app/rules.py` | `npm run test:contract`（31 例逐字段，容差 0.002） |
+| 红旗规则 | `functions/lib/rules.js` | `app/rules.py` | `npm run test:contract`（31 例逐字段，容差 0.002）+ **双端逐字同表的 6 条探针**（数值血压/组合线索/脏读值域/去重/空输入；一端实现漂移即该端判红，实测两端各自可拦） |
 | 引擎链路 | `functions/lib/engine.js` | `app/services/engine.py` | 同上 + `backend/tests/smoke_engine.py` |
+| 路由错误体契约 | `functions/api/[[route]].js` 的 `fail()` → `{code,message}` | `app/main.py` 的 `StarletteHTTPException` 处理器 | `route_guard`（权威面基准）+ `test_api_observe`（镜像面 13 项 404 断言）。第十四轮实测：镜像此前吐 FastAPI 默认 `{"detail":…}`，两端不同形且无任何判据覆盖 |
 | 取整规则 | `Math.round(x*10^n)/10^n` | `round_half_up()`（Py 内置为 half-even，会差末位） | `test:contract` |
 | 症状探针清单 | 由 `SYMPTOM_TO_KB` 派生 | 同 | `test:kb`「探针单一源」两项 |
 | 版本号 | `functions/lib/version.js` | `app/version.py` | `npm run test:version` 五方对账 |
@@ -84,14 +85,17 @@
 
 | 层 | 命令 | 覆盖 |
 |---|---|---|
-| 前端十三件套 | `cd frontend && npm test` | smoke 43（含红旗规则分支边界 16 项）· engine 31 · retrieval 50 例双档地板 · retriever parity 3 档 × 50 例 · semantic 22（含 7 组反例 + 语料指纹防陈旧）· **live_path 36（注入 fetch 桩验三条红线，零网络）** · 双端契约 31:31 · fhir 45（含 6 组反例 + 分支补测）· kb 17 · route 14 · api 契约 6 端点 · vitest 7 · version 五方 |
-| 覆盖率地板（JS） | `cd frontend && npm run coverage:js` | c8 12.0.0 包住整条 npm test（套件只跑一次）→ `coverage_floor_guard.mjs` **按模块级**地板对账（rules/engine/fhir/rag/retriever/knowledge + 全局）；三条硬判据：输入非空证明、模块级地板、地板清单与产物改名对账；反例实测 3 组（summary 缺失／地板抬高／模块改名）均判红。刻意不接 Codecov 等外部服务（与零外部件架构一致） |
-| 覆盖率地板（Py） | `cd frontend && npm run coverage:py`（CI 同命令） | coverage.py 7.16.0 + `backend/.coveragerc`；5 套脚本合并统计后 `--fail-under=85`。dev 依赖走 `requirements-dev.txt`，实测**不进运行时镜像**（容器内 `import coverage` 报 ImportError） |
+| 前端十四件套 | `cd frontend && npm test` | smoke 43（含红旗规则分支边界 16 项）· engine 31 · retrieval 50 例双档地板 · retriever parity 3 档 × 50 例 · semantic 22（含 7 组反例 + 语料指纹防陈旧）· **live_path 36（注入 fetch 桩验三条红线，零网络）** · 双端契约 31:31 · fhir 45（含 6 组反例 + 分支补测）· kb 17 · route 25（含可观测性兜底分支与 404 双端契约）· api 契约 6 端点 · privacy 59 · vitest 7 · version 五方 |
+| 静态检查（第十四轮补，对标 3/5 同类有 linter、我方此前为零） | `cd frontend && npm run lint:js`（ESLint 9 flat config，`--max-warnings=0`）与 `npm run lint:py`（ruff 0.16.5，规则集钉在 `backend/ruff.toml`） | 首跑共 60 项真实告警，逐条处置：删死导入/死类、`eqeqeq`、修 `no-useless-escape`；**并抓出 privacy_guard 三条遥测判据里的 `\b` 被上一轮 Python 写文件转义成裸 `0x08` 退格符 = 永不匹配的死判据**（聚合反例当时仍判绿，故补「判据逐条自证」）。react JSX 需 `react/jsx-uses-vars`，否则在用的组件被误报未使用（实测 1941 假阳性）。规则集显式钉文件而非依赖默认：实测 ruff 0.16 默认 select 与旧版不同，不钉即换版本=换判据 |
+| 覆盖率地板（JS） | `cd frontend && npm run coverage:js` | c8 12.0.0 包住整条 npm test（套件只跑一次）→ `coverage_floor_guard.mjs` **按模块级地板对账（rules/engine/fhir/rag/retriever/knowledge + 全局）；三条硬判据：输入非空证明、模块级地板、地板清单与产物改名对账；反例实测 3 组（summary 缺失／地板抬高／模块改名）均判红。刻意不接 Codecov 等外部服务（与零外部件架构一致） |
+| 覆盖率地板（Py） | `cd frontend && npm run coverage:py`（CI 同命令） | coverage.py 7.16.0 + `backend/.coveragerc`（**第十四轮起 `branch = True`**，口径由「仅语句」改为「语句+分支弧」）。判据 = `scripts/coverage_gate.py`，阈值单一源 = `fixtures/coverage_floor.json` 的 `py_total_fail_under` + `py_modules`（9 个模块级地板）；此前 85 硬编码在 ci.yml 与 package.json 两处、JSON 里的数字无人读，属「清单与判据两套数」，本轮收敛为单一源。实测 90.53%（旧语句口径 87%→新口径下同批测试 91%）；反例实测：喂假地板（模块改名 + 抬到 99%）两条均判红 rc=1。dev 依赖走 `requirements-dev.txt`，实测**不进运行时镜像**（容器内 `import coverage` 报 ImportError） |
 | 构建体积 | `npm run build && npm run test:bundle` | 主 chunk gzip ≤77500B / assets 合计 ≤86500B（地板线，防膨胀也防假瘦身） |
-| 后端 | `smoke_engine` / `test_api_observe` / `test_fhir` / `test_live_path` / `test_retriever_channels` | 规则降级 19 · 可观测脱敏 15 · FHIR 17 · **live 路径红线 25**（桩 httpx 零网络）· **检索通道 25**（三档纯函数与 RRF 语义） |
-| 容器（从零启动自证） | `docker compose up -d` + `docker compose run --rm selftest` | 镜像构建成功 + HEALTHCHECK `healthy` + 镜像内 **19/15/16/25/25 五套** exit 0（源码树级检查在容器内显式 SKIP，不计通过也不计失败；coverage 等 dev 件实测不在镜像内） |
+| 后端 | `smoke_engine` / `test_api_observe` / `test_fhir` / `test_live_path` / `test_retriever_channels` | 规则降级 25（含与 JS 逐字同表的 6 条红旗探针）· 可观测与错误契约 40（含路由级 404/200/慢请求 warn）· FHIR 17 · **live 路径红线 25**（桩 httpx 零网络）· **检索通道 25**（三档纯函数与 RRF 语义） |
+| 容器（从零启动自证） | `docker compose up -d` + `docker compose run --rm selftest` | 镜像构建成功 + HEALTHCHECK `healthy` + 镜像内 **25/40/16/25/25 五套** exit 0（源码树级检查在容器内显式 SKIP，不计通过也不计失败；coverage 等 dev 件实测不在镜像内） |
 | 契约派生件 | `python scripts/gen_openapi.py --check` | openapi 版本与后端单一源一致（只同步版本行，禁全量重写） |
-| CI | `.github/workflows/ci.yml`（3 job）+ `codeql.yml` + `dep-audit.yml` | 上述全量 + 每周 npm/pip 漏洞扫描 |
+| CI | `.github/workflows/ci.yml`（4 job）+ `codeql.yml` + `dep-audit.yml` | 上述全量（含两枚 lint 步骤）+ 每周 npm/pip 漏洞扫描。**CodeQL 第十四轮补 `push: [main]`**：实测此前 30 次分析全在 `refs/pull/*/merge`、`refs/heads/main` 为零 ⇒ 生产分支从未被扫描（与 round9「判据挂在长期 skipped 的作业上」同族缺陷） |
+| 文本卫生（第十四轮补） | `python scripts/check_text_hygiene.py` | 105 个受控文本文件禁 C0 控制字符与 DEL（tab/换行/回车除外）。立论依据：同类「词边界 `\b` 被转义成裸 `0x08`」事故实测三次（v1.11.0 隐私判据 3 条、本轮文档 2 处、CHANGELOG 6 处），本门禁首跑即全部抓出；受控清单条目数 <40 直接判红，防「清单来源坏掉导致零违规」假通过 |
+| 提交前 | `pre-commit run --all-files` | 7 钩子：版本五方 · kb · api 契约 · openapi 漂移 · ESLint · ruff · 文本控制字符扫描（与 CI 同源判据；`repo: local` 不支持 hook 级 `cwd`，实测 4.6.2 只告警不生效，故前端经 `frontend/lint.mjs` 钉目录） |
 | 隐私声明一致性 | `cd frontend && npm run test:privacy` | `docs/PRIVACY.md` 的 13 项可机器化条款 ↔ 代码对账：持久化原语/第三方遥测为 0、日志字段白名单、双端脱敏模式与用例输出逐字相同、文档锚点无死链；5 组反例实测可拦（判据曾漏 `@sentry/browser` 形态，由反例驱动补全） |
 | 引用链健康（唯一联网门禁） | `cd frontend && npm run test:links` | 知识库全部 url 逐条可达性核验：DEAD 即红、412/403 类反爬按 BLOCKED 只报不红；CI `link-health.yml` 每周跑（观察期） |
 | 交付一致性（工作区侧） | `node work/freeze_check.mjs` / `python work/check_delivery_consistency.py` | PDF 20 页、视频 284.7s、线上 live+version、HEAD 锚点、ZIP 与目录三类归零 |

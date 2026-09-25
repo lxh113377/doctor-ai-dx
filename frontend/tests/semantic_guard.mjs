@@ -4,7 +4,7 @@
 import { createHash } from "node:crypto"
 import { readFileSync } from "node:fs"
 import { fileURLToPath } from "node:url"
-import { KNOWLEDGE_BASE, KB_BY_ID, KB_ID_SET } from "../functions/lib/knowledge.js"
+import { KNOWLEDGE_BASE, KB_ID_SET } from "../functions/lib/knowledge.js"
 import { SEMANTIC_NEIGHBORS, SEMANTIC_META } from "../functions/lib/semantic_neighbors.js"
 import {
   DEFAULT_RETRIEVER, SEMANTIC_NAME, SEM_TOP, SEM_FLOOR, W_SEM, getRetriever, semanticChannel,

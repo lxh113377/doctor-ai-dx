@@ -26,12 +26,21 @@
 ## 提交前必须全绿
 
 ```bash
-cd frontend && npm test                       # 七件套，含双端契约与知识库门禁
+cd frontend && npm test                       # 十四件套，含双端契约与知识库门禁
+cd frontend && npm run lint                   # 静态检查门禁（ESLint + ruff；警告也算红）
 cd backend && python tests/smoke_engine.py && python tests/test_api_observe.py
 node ../../work/perf_gate.mjs                 # 性能地板线（需 14 天内新鲜 live 报告）
 ```
 
 CI 会跑同样的东西；`main` 分支保护要求 `build-and-test` 与 `backend-test` 通过。
+
+静态检查判据的维护约定（v1.12.0 起）：
+
+- 规则集**钉在仓内**（`frontend/eslint.config.mjs`、`backend/ruff.toml`），不依赖工具默认值。
+  实测理由：ruff 0.16 的默认 select 与旧版不同，靠默认值 ⇒ 换工具版本即换判据，本地绿不代表 CI 绿。
+- 新增/关闭规则须写**为什么**（现有两处关闭：`require-await` 会误判 fetch 桩与同形 async 签名；
+  ruff 不选 `BLE001`/`RUF100` 的理由见 `backend/ruff.toml` 头注）。禁止用 `// eslint-disable` 批量压告警凑绿。
+- 关闭规则不等于关闭问题：判据本身要能被反例证明"会红"（注入违例文件跑 `npm run lint` 应 rc=1）。
 
 ## 三条不能碰的红线
 
@@ -80,4 +89,4 @@ CI 会跑同样的东西；`main` 分支保护要求 `build-and-test` 与 `backe
 - **同文件多 PR 积压**：按"聚合批"处理——自开分支一次覆盖 N 包，PR 描述引用被覆盖编号，合入后关闭原 PR（留言可 `/rerun` 重建）。
 - **major**：先查 peer（`npm i` 干跑看 ERESOLVE），框架级升级（如 vite 大版本）单独立项，不混入依赖批；结论写入 PR 评论留痕。
 - 自动审计：`.github/workflows/dep-audit.yml` 每周一 npm audit（high 即红）+ pip-audit（观察期报告制，删 `continue-on-error` 一行即转硬门禁）；依赖文件变更的 PR 也会触发。注：本机镜像 registry 无 audit 端点，本地 `npm audit` 不可用属环境限制，以 CI 为准（2026-09-24 实测）。
-- 任何依赖变更后：`npm test` 九件套 + `npm run build` + `npm run test:bundle`（体积地板线）全绿方可合。
+- 任何依赖变更后：`npm run lint` + `npm test` 十四件套 + `npm run build` + `npm run test:bundle`（体积地板线）全绿方可合。

@@ -1,8 +1,8 @@
 {
   "_meta": {
     "purpose": "覆盖率地板棘轮（只准收紧，不准放宽）——对标实测：成熟层项目 3/3 有覆盖率基建（phlox .coveragerc + Makefile / OpenEMR codecov.yml + jest.config / ragflow codecov.yml），我方此前为零。",
-    "tool_js": "c8 12.0.0（V8 coverage，无外部件；刻意不接 Codecov——与本项目「零外部依赖」架构一致）",
-    "tool_py": "coverage.py 7.16.0 + --fail-under（单一阈值，见 CI backend-test 步骤）",
+    "tool_js": "c8 12.0.0（V8 coverage；刻意不接 Codecov 等外部服务）",
+    "tool_py": "coverage.py 7.16.0 + scripts/coverage_gate.py（本文件 py_total_fail_under 与 py_modules 为唯一阈值源；ci.yml 与 package.json 只调本脚本，不再硬编码数字）",
     "measured_at": "2026-09-25",
     "measured_headroom_note": "floor 取自实测值下调 2~4pt 作为棘轮起点；收紧须在覆盖率上升后同步改本文件，放宽须在 _meta 写明原因。",
     "delta_this_round": {
@@ -19,8 +19,8 @@
         94.28
       ],
       "js_engine_branch_pct": [
-        53.12,
-        69.23
+        69.23,
+        70.0
       ],
       "js_rules_branch_pct": [
         78.12,
@@ -45,47 +45,101 @@
       "py_retriever_pct": [
         37,
         98
+      ],
+      "py_total_pct_under_stmt_only_metric": [
+        87.0,
+        91.0
+      ],
+      "py_total_pct_under_branch_metric": [
+        89.0,
+        91.0
+      ],
+      "py_rules_pct": [
+        75.0,
+        98.0
+      ],
+      "py_api_router_pct": [
+        57.0,
+        100.0
+      ],
+      "py_main_pct": [
+        96.0,
+        98.0
+      ],
+      "py_observe_pct": [
+        100.0,
+        100.0
+      ],
+      "js_branch_global_pct": [
+        74.18,
+        74.18
+      ],
+      "js_total_branch_pct": [
+        74.18,
+        75.65
+      ],
+      "js_observe_branch_pct": [
+        69.23,
+        100.0
       ]
     },
     "why_per_module": "全局地板会掩盖红线模块单独退化（如 rules.js 掉到 60% 而总量仍达标），因此按模块设地板。",
-    "measured_note": "JS 数值取 c8 12.0.0 实测；PY 取 coverage.py 7.16.0 实测（.coveragerc 排除 del/无语义行后为 87.0%，未排除口径为 88.79%，两者皆高于地板 85）"
+    "measured_note": "JS 数值取 c8 12.0.0 实测；PY 取 coverage.py 7.16.0 实测（.coveragerc 排除 del/无语义行后为 87.0%，未排除口径为 88.79%，两者皆高于地板 85）",
+    "py_metric_note": "2026-09-25 第十四轮：.coveragerc 开启 branch=True，口径由「仅语句」改为「语句+分支弧」。同口径实测 91%（旧语句-only 口径为 87%）⇒ 更严口径 + 更高地板（85→88），属收紧非放宽。",
+    "js_floor_note": "地板=实测−2pt（棘轮起点）。本轮随覆盖率上升同步收紧：engine 分支 65→68、fhir 72→74、rag 74→75、retriever 80→81、rules 85→86、knowledge 68→69、全局 72→74；并新增 observe.js（脱敏层，实测 100/100/100，地板 98）——此前它不在清单内，属地板盲区。"
   },
   "js_modules": {
     "lib/rules.js": {
       "statements": 98,
-      "branches": 85,
+      "branches": 86,
       "functions": 98
     },
     "lib/engine.js": {
-      "statements": 86,
-      "branches": 65,
-      "functions": 88
+      "statements": 87,
+      "branches": 68,
+      "functions": 90
     },
     "lib/fhir.js": {
       "statements": 98,
-      "branches": 72,
+      "branches": 74,
       "functions": 98
     },
     "lib/rag.js": {
-      "statements": 90,
-      "branches": 74,
-      "functions": 84
+      "statements": 92,
+      "branches": 75,
+      "functions": 85
     },
     "lib/retriever.js": {
-      "statements": 85,
-      "branches": 80,
-      "functions": 86
+      "statements": 87,
+      "branches": 81,
+      "functions": 88
     },
     "lib/knowledge.js": {
       "statements": 98,
-      "branches": 68,
+      "branches": 69,
+      "functions": 98
+    },
+    "lib/observe.js": {
+      "statements": 98,
+      "branches": 98,
       "functions": 98
     }
   },
   "js_total": {
-    "statements": 93,
-    "branches": 72,
-    "functions": 92
+    "statements": 94,
+    "branches": 74,
+    "functions": 93
   },
-  "py_total_fail_under": 85
+  "py_total_fail_under": 88,
+  "py_modules": {
+    "app/rules.py": 95,
+    "app/routers/api.py": 100,
+    "app/observe.py": 100,
+    "app/main.py": 95,
+    "app/services/fhir.py": 95,
+    "app/rag.py": 90,
+    "app/retriever.py": 94,
+    "app/services/engine.py": 74,
+    "app/services/llm.py": 83
+  }
 }

@@ -6,16 +6,14 @@
 // ============================================================
 import { CASES, INTAKE_DONE_REPLY } from "./data.js"
 import { scanFlags, scanFlagDetails } from "./rules.js"
-import { evidenceByIds, hasEvidence, evidenceForSymptoms } from "./rag.js"
+import { hasEvidence, evidenceForSymptoms } from "./rag.js"
 import { getRetriever } from "./retriever.js"
-import { KNOWLEDGE_BASE, KB_BY_ID, SYMPTOM_TO_KB, kbTitleOf, kbConditionOf } from "./knowledge.js"
+import { KB_BY_ID, SYMPTOM_TO_KB, kbTitleOf, kbConditionOf } from "./knowledge.js"
 import { toFhirBundle } from "./fhir.js"
 
 const retriever = getRetriever()
 const kbTitle = (id) => kbTitleOf(id)
 const kbCondition = (id) => kbConditionOf(id)
-
-class Http404 extends Error {}
 
 function caseOf(id) {
   const c = CASES.find((x) => x.id === id)

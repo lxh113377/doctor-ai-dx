@@ -1,6 +1,11 @@
 name: CodeQL static analysis
 
+# 2026-09-25 第十四轮实测补 push：此前 30 次分析全部落在 refs/pull/*/merge，refs/heads/main 为零
+# ——即生产分支从未被静态扫描过，判据只挂在 Dependabot PR 这条"偶尔走"的路径上
+# （与 round9「门禁挂在长期 skipped 的 deploy 作业 = 没有门禁」同族）。补 push 后每次 main 推送必扫。
 on:
+  push:
+    branches: [main]
   pull_request:
     branches: [main]
   schedule:

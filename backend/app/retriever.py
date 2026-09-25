@@ -7,8 +7,8 @@ semantic = BM25+语义近邻通道（构建期 BGE 蒸馏表 semantic_neighbors.
 from math import floor
 
 from . import rag
-from .knowledge import KNOWLEDGE_BASE, SYNONYMS, SYMPTOM_TO_KB
-from .semantic_neighbors import SEMANTIC_META, SEMANTIC_NEIGHBORS
+from .knowledge import KNOWLEDGE_BASE, SYMPTOM_TO_KB, SYNONYMS
+from .semantic_neighbors import SEMANTIC_NEIGHBORS
 
 DEFAULT_RETRIEVER = "bm25"
 RRF_K = 60
