@@ -147,7 +147,13 @@ jobs:
             -v trivy-cache:/root/.cache/trivy \
             aquasec/trivy:0.61.0 image --severity HIGH,CRITICAL --format table \
             "scan-local:${{ github.ref_name }}" | tail -60 >> "$GITHUB_STEP_SUMMARY"
-      - name: 镜像发布（GHCR，随 tag 双标签：<版本> + latest）
+      - name: 注册 QEMU（多架构前置：arm64 层要在 amd64 runner 上交叉构建）
+        if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+
+      - name: 镜像发布（GHCR，随 tag 双标签：<版本> + latest；双架构 amd64+arm64）
         # 对标取证（当轮实测）：`gh api users/bloodworks-io/packages?package_type=container` 查到公开包 phlox，
         # 而 `gh api users/lxh113377/packages?package_type=container` 返回 **0 个包** ⇒ 我方镜像只在 CI 里临时 build，
         # 评审与用户仍须自装 Python/Node 或自己 build。本步把 Dockerfile 的产物变成"一条命令可拉取"的交付物。
@@ -158,6 +164,11 @@ jobs:
         with:
           context: ./backend
           push: true
+          # 双架构：评审与用户里 Apple Silicon / arm 云机占相当比例，只出 amd64 时
+          # `docker run` 在 arm 上会 exec format error，而我们 README 曾笼统写"一条命令可拉取运行"。
+          # 锁按平台分列哈希（见 backend/Dockerfile 与 scripts/lock_guard.py 第 8/9 条），
+          # 构建成功后由下一步断言 index 里真的同时含两个架构（防止"配了 platform 却静默只出一个"）。
+          platforms: linux/amd64,linux/arm64
           tags: |
             ghcr.io/${{ github.repository_owner }}/doctor-ai-dx:${{ github.ref_name }}
             ghcr.io/${{ github.repository_owner }}/doctor-ai-dx:latest
@@ -205,8 +216,43 @@ jobs:
             exit 1
           fi
           test -s /tmp/mf.json
-          # 只拿到 200 还不够：必须是"有子清单的 index"，否则等于验证了一个空壳。
-          python3 -c "import json,sys; d=json.load(open('/tmp/mf.json')); n=len(d.get('manifests') or ([1] if d.get('config') else [])); print('platforms/children=%d'%n); sys.exit(0 if n>=1 else 1)"
+          # 只拿到 200 还不够：必须证明"多架构真的都发布了"。
+          # 配了 platforms 却因 QEMU 缺失/buildx 静默降级只出一个架构，是这类治理的典型死法
+          # （表现是 README 宣称支持 arm 而 arm 用户 `docker run` 直接 exec format error）。
+          python3 - <<'PY'
+          import json
+          import sys
+          d = json.load(open('/tmp/mf.json'))
+          children = d.get('manifests') or []
+          plats = sorted({
+              f"{(m.get('platform') or {}).get('os')}/{(m.get('platform') or {}).get('architecture')}"
+              for m in children
+              if (m.get('platform') or {}).get('architecture')
+          })
+          print('index 子清单平台 =', plats)
+          want = {'linux/amd64', 'linux/arm64'}
+          missing = sorted(want - set(plats))
+          if missing:
+              print(f"::error::宣称多架构但已发布 index 缺 {missing}（QEMU 未注册 / buildx 静默降级）")
+              sys.exit(1)
+          print(f"[GATE:multiarch-pass] 已发布镜像同时含 {len(want)} 个架构：{plats}")
+          PY
+
+      - name: 双架构 CVE 复核（推送后按平台各扫一次，arm64 不许漏扫）
+        if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+        # 推之前的阻断扫描是 `docker build` 出来的 amd64 本地镜像 ⇒ arm64 那一半没被扫过。
+        # 基础镜像与包集在两架构下同源，但**轮子与版本可以不同**（本仓实测：两把锁、两套 wheel 哈希），
+        # 所以按平台各扫一次才算把"发布物 = 被扫过的东西"这条链闭合。匿名拉取，不需要凭据。
+        run: |
+          set -eu
+          IMG="ghcr.io/${{ github.repository_owner }}/doctor-ai-dx:${{ github.ref_name }}"
+          for PLAT in linux/amd64 linux/arm64; do
+            echo "--- trivy --platform $PLAT ---"
+            docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+              -v trivy-cache:/root/.cache/trivy \
+              aquasec/trivy:0.61.0 image --platform "$PLAT" \
+              --severity CRITICAL --ignore-unfixed --exit-code 1 "$IMG"
+          done
 
       - name: SHA256SUMS（三个工件逐一可核验）
         run: |

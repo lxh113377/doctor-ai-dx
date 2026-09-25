@@ -24,7 +24,7 @@ client = TestClient(app, raise_server_exceptions=False)
 
 def build_body(case: dict[str, Any]) -> tuple[str, str | None, Any]:
     """返回 (content_type, raw_text, json_body)。raw_text 非 None 时按原文发送（构造坏 JSON）。"""
-    body = json.loads(json.dumps(case.get("json", {})))  # 深拷贝，避免改到 fixture 内存对象
+    body = json.loads(json.dumps(case.get("body", {})))  # 深拷贝，避免改到 fixture 内存对象
     if case.get("repeat_items"):
         one = body["history"][0]
         body["history"] = [dict(one) for _ in range(int(case["repeat_items"]))]

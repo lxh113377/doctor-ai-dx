@@ -86,6 +86,7 @@ CI 会跑同样的东西；`main` 分支保护要求 `build-and-test` 与 `backe
   改声明面后必须重跑锁生成（命令就写在锁文件头注里）：
   `cd backend && uv pip compile requirements.txt --python-version 3.12 --python-platform x86_64-unknown-linux-gnu --generate-hashes -o requirements.lock`
   然后 `python scripts/lock_guard.py` 对账。**Windows 本机不要直接装这份锁**（uvloop 无 Windows 轮，属预期失败），本机仍用 `pip install -r requirements.txt`。
+- **错误码与对外文案口径（第二十二轮起）**：改 `frontend/functions/lib/limits.js` 里任一 `*_MESSAGE` 常量或状态码，必须同步 `docs/ERRORS.md` 与 `docs/openapi.json`（后者由 `npm run test:api` 双向核对：文档码集合 == 契约声明、文案逐字等于常量）。新增 POST 路由时还要在 `scripts/gen_error_matrix.py` 的 `ROUTES` 里登记并重生成矩阵（`python scripts/gen_error_matrix.py`），否则 `error_parity_guard` 的覆盖面判据会指名它没被测。
 - **环境变量口径**：新增任何 `os.getenv("X")` / `env?.X` 读取，必须同步写进 `backend/.env.example`，
   否则 `npm run test:env` 判红（反向也一样：示例里留一个代码不读的键同样判红）。
 - **版本真值链（升版本必做四步）**：① 同改 `backend/app/version.py` + `functions/lib/version.js` + `frontend/package.json` 三处 → ② `python scripts/gen_openapi.py`（外科同步契约版本，禁手改/全量重写 `docs/openapi.json`）→ ③ `npm run test:version` 五方对账绿 → ④ 打 tag `vX.Y.Z`。`/api/health` 的 `version` 字段即以此链为源。

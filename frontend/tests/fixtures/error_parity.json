@@ -1,22 +1,433 @@
 {
-  "_source": "医·基层AI辅助诊断 · 双端错误码对账单源（v1.19.0 第二十一轮）。权威面 Functions(JS) 与镜像面 FastAPI(Py) 对同一入参必须回**同一个** status，且等于本文件的期望值。",
-  "_why": "台账#28 挂了两个月：`history:\"boom\"` 权威面 500／镜像面 422，只用测试把差异**钉住**而没有消掉。本轮改判：客户端错误一律 4xx 定码（500 只留给真故障，否则滥用流量会把 error 日志刷成噪声＝掩盖真故障，r19 立的口径）。对账时又抓到三条此前没人知道的差异：① 镜像面强制 body 带 `case_id`（权威面从路径取）→ 只带路径 id 的合法请求镜像面回 422；② `content` 传对象在镜像面 `\"\".join()` 抛 TypeError→**500**、权威面静默拼接继续跑；③ 请求体不是合法 JSON 时权威面 400、镜像面按 FastAPI 惯例 422。",
-  "_measured": "2026-09-25 本机双端实跑逐条取真值（node 侧直接调 onRequest，py 侧 TestClient raise_server_exceptions=False），非按文档推。",
+  "_source": "医·基层AI辅助诊断 · 双端错误码对账矩阵（由 scripts/gen_error_matrix.py 生成，禁手改用例）。",
+  "_why": "口径是**枚举积**（POST 路由 × 入站违规类型），不是手写抽样：抽样会随路由增加而静默失真，而本仓的历史教训是「差异被测试钉住当契约」（台账#28：history:\"boom\" 权威面 500／镜像面 422）。期望值写在生成器里并入库成单一源 ⇒ 三方对账（期望 ↔ JS ↔ Py），只比两端互相等不够（两边一起错就永远绿）。",
+  "_measured": "2026-09-25 第二十二轮：生成后由 error_parity_guard 双端实跑逐条核真值；此前抓到的四条真实差异（case_id 只镜像面要、content 传对象镜像面 TypeError→500、坏 JSON 400/422 分家、history 非数组 500/422）全部收敛后本矩阵才全绿。",
+  "_regen": "python scripts/gen_error_matrix.py   （改路由或违规种类后必须重跑，否则 CI 漂移判红）",
+  "routes": [
+    "/api/intake/ask",
+    "/api/dx/{case}",
+    "/api/workup/{case}",
+    "/api/report/{case}"
+  ],
+  "violation_kinds": [
+    "history 非数组",
+    "history 元素非对象",
+    "content 非字符串",
+    "role 非字符串",
+    "dx 非对象",
+    "单条 content 超上限",
+    "history 条数超上限",
+    "请求体不是合法 JSON",
+    "空 body"
+  ],
+  "_meta": {
+    "routes": 4,
+    "violations": 9,
+    "route_level": 2,
+    "cases": 38
+  },
   "cases": [
-    { "name": "history 非数组", "path": "/api/dx/c1", "json": { "history": "boom" }, "status": 422 },
-    { "name": "history 元素非对象", "path": "/api/dx/c1", "json": { "history": ["junk"] }, "status": 422 },
-    { "name": "content 非字符串", "path": "/api/dx/c1", "json": { "history": [{ "role": "user", "content": { "a": 1 } }] }, "status": 422 },
-    { "name": "role 非字符串", "path": "/api/dx/c1", "json": { "history": [{ "role": 1, "content": "x" }] }, "status": 422 },
-    { "name": "dx 非对象", "path": "/api/workup/c1", "json": { "history": [], "dx": "x" }, "status": 422 },
-    { "name": "单条 content 超上限", "path": "/api/dx/c1", "json": { "history": [{ "role": "user", "content": "腹" }] }, "repeat_content": 2001, "status": 413 },
-    { "name": "history 条数超上限", "path": "/api/dx/c1", "json": { "history": [{ "role": "user", "content": "腹" }] }, "repeat_items": 65, "status": 413 },
-    { "name": "请求体不是合法 JSON", "path": "/api/dx/c1", "raw": "{oops", "status": 400 },
-    { "name": "空 body 走合法链路", "path": "/api/dx/c1", "json": {}, "status": 200 },
-    { "name": "只带路径 case_id 的合法请求", "path": "/api/dx/c1", "json": { "history": [{ "role": "user", "content": "压榨样胸痛伴冷汗" }] }, "status": 200 },
-    { "name": "未知病例", "path": "/api/dx/nope", "json": { "history": [] }, "status": 404 },
-    { "name": "intake 缺 case_id", "path": "/api/intake/ask", "json": { "history": [] }, "status": 404,
-      "message": "unknown case: (未提供)" },
-    { "name": "未知病例(带 id)", "path": "/api/dx/zzz", "json": { "history": [] }, "status": 404,
-      "message": "unknown case: zzz" }
+    {
+      "name": "intake × history 非数组",
+      "path": "/api/intake/ask",
+      "status": 422,
+      "body": {
+        "history": "boom"
+      }
+    },
+    {
+      "name": "intake × history 元素非对象",
+      "path": "/api/intake/ask",
+      "status": 422,
+      "body": {
+        "history": [
+          "junk"
+        ]
+      }
+    },
+    {
+      "name": "intake × content 非字符串",
+      "path": "/api/intake/ask",
+      "status": 422,
+      "body": {
+        "history": [
+          {
+            "role": "user",
+            "content": {
+              "a": 1
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "intake × role 非字符串",
+      "path": "/api/intake/ask",
+      "status": 422,
+      "body": {
+        "history": [
+          {
+            "role": 7,
+            "content": "x"
+          }
+        ]
+      }
+    },
+    {
+      "name": "intake × dx 非对象",
+      "path": "/api/intake/ask",
+      "status": 422,
+      "body": {
+        "history": [],
+        "dx": "x"
+      }
+    },
+    {
+      "name": "intake × 单条 content 超上限",
+      "path": "/api/intake/ask",
+      "status": 413,
+      "body": {
+        "history": [
+          {
+            "role": "user",
+            "content": "腹"
+          }
+        ]
+      },
+      "repeat_content": 2300
+    },
+    {
+      "name": "intake × history 条数超上限",
+      "path": "/api/intake/ask",
+      "status": 413,
+      "body": {
+        "history": [
+          {
+            "role": "user",
+            "content": "腹"
+          }
+        ]
+      },
+      "repeat_items": 65
+    },
+    {
+      "name": "intake × 请求体不是合法 JSON",
+      "path": "/api/intake/ask",
+      "status": 400,
+      "raw": "{oops"
+    },
+    {
+      "name": "intake × 空 body",
+      "path": "/api/intake/ask",
+      "status": 404,
+      "body": {}
+    },
+    {
+      "name": "dx × history 非数组",
+      "path": "/api/dx/c1",
+      "status": 422,
+      "body": {
+        "history": "boom"
+      }
+    },
+    {
+      "name": "dx × history 元素非对象",
+      "path": "/api/dx/c1",
+      "status": 422,
+      "body": {
+        "history": [
+          "junk"
+        ]
+      }
+    },
+    {
+      "name": "dx × content 非字符串",
+      "path": "/api/dx/c1",
+      "status": 422,
+      "body": {
+        "history": [
+          {
+            "role": "user",
+            "content": {
+              "a": 1
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "dx × role 非字符串",
+      "path": "/api/dx/c1",
+      "status": 422,
+      "body": {
+        "history": [
+          {
+            "role": 7,
+            "content": "x"
+          }
+        ]
+      }
+    },
+    {
+      "name": "dx × dx 非对象",
+      "path": "/api/dx/c1",
+      "status": 422,
+      "body": {
+        "history": [],
+        "dx": "x"
+      }
+    },
+    {
+      "name": "dx × 单条 content 超上限",
+      "path": "/api/dx/c1",
+      "status": 413,
+      "body": {
+        "history": [
+          {
+            "role": "user",
+            "content": "腹"
+          }
+        ]
+      },
+      "repeat_content": 2300
+    },
+    {
+      "name": "dx × history 条数超上限",
+      "path": "/api/dx/c1",
+      "status": 413,
+      "body": {
+        "history": [
+          {
+            "role": "user",
+            "content": "腹"
+          }
+        ]
+      },
+      "repeat_items": 65
+    },
+    {
+      "name": "dx × 请求体不是合法 JSON",
+      "path": "/api/dx/c1",
+      "status": 400,
+      "raw": "{oops"
+    },
+    {
+      "name": "dx × 空 body",
+      "path": "/api/dx/c1",
+      "status": 200,
+      "body": {}
+    },
+    {
+      "name": "workup × history 非数组",
+      "path": "/api/workup/c1",
+      "status": 422,
+      "body": {
+        "history": "boom"
+      }
+    },
+    {
+      "name": "workup × history 元素非对象",
+      "path": "/api/workup/c1",
+      "status": 422,
+      "body": {
+        "history": [
+          "junk"
+        ]
+      }
+    },
+    {
+      "name": "workup × content 非字符串",
+      "path": "/api/workup/c1",
+      "status": 422,
+      "body": {
+        "history": [
+          {
+            "role": "user",
+            "content": {
+              "a": 1
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "workup × role 非字符串",
+      "path": "/api/workup/c1",
+      "status": 422,
+      "body": {
+        "history": [
+          {
+            "role": 7,
+            "content": "x"
+          }
+        ]
+      }
+    },
+    {
+      "name": "workup × dx 非对象",
+      "path": "/api/workup/c1",
+      "status": 422,
+      "body": {
+        "history": [],
+        "dx": "x"
+      }
+    },
+    {
+      "name": "workup × 单条 content 超上限",
+      "path": "/api/workup/c1",
+      "status": 413,
+      "body": {
+        "history": [
+          {
+            "role": "user",
+            "content": "腹"
+          }
+        ]
+      },
+      "repeat_content": 2300
+    },
+    {
+      "name": "workup × history 条数超上限",
+      "path": "/api/workup/c1",
+      "status": 413,
+      "body": {
+        "history": [
+          {
+            "role": "user",
+            "content": "腹"
+          }
+        ]
+      },
+      "repeat_items": 65
+    },
+    {
+      "name": "workup × 请求体不是合法 JSON",
+      "path": "/api/workup/c1",
+      "status": 400,
+      "raw": "{oops"
+    },
+    {
+      "name": "workup × 空 body",
+      "path": "/api/workup/c1",
+      "status": 200,
+      "body": {}
+    },
+    {
+      "name": "report × history 非数组",
+      "path": "/api/report/c1",
+      "status": 422,
+      "body": {
+        "history": "boom"
+      }
+    },
+    {
+      "name": "report × history 元素非对象",
+      "path": "/api/report/c1",
+      "status": 422,
+      "body": {
+        "history": [
+          "junk"
+        ]
+      }
+    },
+    {
+      "name": "report × content 非字符串",
+      "path": "/api/report/c1",
+      "status": 422,
+      "body": {
+        "history": [
+          {
+            "role": "user",
+            "content": {
+              "a": 1
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "report × role 非字符串",
+      "path": "/api/report/c1",
+      "status": 422,
+      "body": {
+        "history": [
+          {
+            "role": 7,
+            "content": "x"
+          }
+        ]
+      }
+    },
+    {
+      "name": "report × dx 非对象",
+      "path": "/api/report/c1",
+      "status": 422,
+      "body": {
+        "history": [],
+        "dx": "x"
+      }
+    },
+    {
+      "name": "report × 单条 content 超上限",
+      "path": "/api/report/c1",
+      "status": 413,
+      "body": {
+        "history": [
+          {
+            "role": "user",
+            "content": "腹"
+          }
+        ]
+      },
+      "repeat_content": 2300
+    },
+    {
+      "name": "report × history 条数超上限",
+      "path": "/api/report/c1",
+      "status": 413,
+      "body": {
+        "history": [
+          {
+            "role": "user",
+            "content": "腹"
+          }
+        ]
+      },
+      "repeat_items": 65
+    },
+    {
+      "name": "report × 请求体不是合法 JSON",
+      "path": "/api/report/c1",
+      "status": 400,
+      "raw": "{oops"
+    },
+    {
+      "name": "report × 空 body",
+      "path": "/api/report/c1",
+      "status": 200,
+      "body": {}
+    },
+    {
+      "name": "未知病例 id",
+      "path": "/api/dx/nope",
+      "body": {
+        "history": []
+      },
+      "status": 404,
+      "message": "unknown case: nope"
+    },
+    {
+      "name": "只带路径 case_id 的合法请求",
+      "path": "/api/dx/c1",
+      "body": {
+        "history": [
+          {
+            "role": "user",
+            "content": "压榨样胸痛伴冷汗"
+          }
+        ]
+      },
+      "status": 200
+    }
   ]
 }

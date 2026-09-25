@@ -5,6 +5,58 @@
 
 ## [Unreleased]
 
+## [1.20.0] - 2026-09-25
+
+### Added（第二十二轮：交付物在**任意架构**都能跑，判据从抽样改成枚举积）
+- 🔴 **多架构镜像（关台账#32）**。此前 `release.yml` 不设 `platform` ⇒ GHCR 上只有 `linux/amd64`，
+  而 README 笼统写"一条命令拉取运行"：Apple Silicon / arm 云机上 `docker run` 直接 `exec format error`。
+  现在 buildx 出 `linux/amd64,linux/arm64`（先 `docker/setup-qemu-action@v3`），发布后**断言已推送的 index 里
+  真的同时含两个架构**（配了 platform 却被静默降级只出一个，是这类治理的典型死法；判据从"有子清单"升级为
+  "子清单覆盖 {amd64, arm64}"）。本机全链路实证：`docker buildx build --platform linux/arm64 --load` 成功后
+  `docker run --platform linux/arm64 <img> python selftest.py` 输出 `arch= aarch64` + `SELFTEST SUMMARY: 6/6 套件 exit0`
+  （首次尝试被本机 `auth.docker.io` 超时挡住，先 `docker pull --platform linux/arm64 python:3.12-slim` 再构建才通过）。
+- 🔴 **锁从一把变两把，并新增"两锁版本集必须全等"判据**。`--python-platform` 解析出的哈希按平台分列 ⇒
+  arm64 用 amd64 那份锁会在 `--require-hashes` 下直接装不动。做法：新增 `backend/requirements.arm64.lock`、
+  `scripts/recompile_locks.py` **一条命令同时刻重算两把**、`backend/Dockerfile` 按 `ARG TARGETARCH` 选锁
+  （选完仍保持单一安装入口 `-r requirements.lock`，避免"两条安装命令只有一条开 require-hashes"）。
+  过程中抓到一条**看起来像架构差异、其实不是**的现象：仓内 amd64 锁停在 `uvicorn 0.53.0`，新建的 arm64 锁是
+  `0.54.0`；同一时刻分别重算两平台后差异为**零** ⇒ 根因是 `uv pip compile` 会**复用输出文件里已有的钉版**
+  （in-source caching），于是"写已存在的锁=保旧版本、写新文件=取最新版"，同一命令两种结果。
+  `lock_guard.py` 由 11 条扩到 **19 条**（每把锁各跑 6 条 + 新增三条：`头注平台必须与文件名匹配`、
+  `额外平台的锁必须真的被 RUN 选用`、`各锁版本集全等`）。三条都配反例实测 rc=1：
+  删掉选锁的 RUN 行 → 判红（第一版判据写得太松，只出现在 COPY 里也算"被引用"，**假绿被自己的反例抓到后收紧**）；
+  只手改一把锁的版本 → 判红；把 arm64 锁头注平台换掉 → 判红。
+- **`docs/ERRORS.md` 错误契约表 + 三方互咬判据**。给集成方一张不看源码就能写对重试分支的表
+  （对标：成熟项目的错误语义是文档一等公民；也是 AI Agent 消费 API 的前置条件）。判据落在
+  `frontend/tests/api_contract_guard.mjs`：① openapi 各操作声明的状态码集合与表**双向全等**（文档落后或缺
+  声明码都红）；② 表里 400/413/422 三行的文案必须**逐字等于** `limits.js` 导出的常量。
+  三组反例实测 rc=1：文案改一字、删一行、表里凭空多一个 `418`。
+- **双端错误码对账从 13 条抽样升级为 38 条枚举积**（推进台账#36）。新增 `scripts/gen_error_matrix.py`
+  声明 4 条 POST 路由 × 9 类入站违规 + 2 条路由级用例，`fixtures/error_parity.json` 变成它的产物；
+  `error_parity_guard.mjs` 增加四条覆盖面判据（用例数==枚举积、路由数对得上、每类违规都在矩阵里、
+  fixture 与生成器无漂移 ⇒ 手改或"加了新路由却没用例"直接指名）。实测**38 条三方全等**（码 + 剥故障编号后的文案）。
+- **codespell 进 `infra-lint`（对标 OpenEMR 的 `.codespellrc` + 忽略清单）**。接线前先量误报：全仓唯一命中是
+  `EHR`（电子健康档案，被词典当成 `HER` 的拼写错误）⇒ 按原因登记进 `.codespellrc` 的 `ignore-words-list`
+  而不是关掉检查；版本钉在 `backend/requirements-dev.txt`（`codespell>=2.4.1,<2.5`，词典随版本变＝判据会漂）。
+  注入反例实测：临时放一个含 `recieve`/`accomodate` 的文件 → rc=65 并逐条点名，删除后 rc=0。
+  另加"受检文件数 ≥80"的覆盖面下限（本机实测 87）——**这里我第一版拍了 120，实测只有 87，
+  分母必须量出来不能猜**，已按实测改。
+
+### Changed
+- **依赖锁推进一个版本**：`uvicorn 0.53.0 → 0.54.0`（`--upgrade` 全量重解析 22 个包，只有这一项变化，
+  两平台一致）。运行时镜像、CI、发布链都从锁安装并开 `--require-hashes`，故本次升级的真实效果在
+  镜像内自证：amd64 与 arm64 两个镜像内 `SELFTEST SUMMARY: 6/6 套件 exit0` 均实测通过。
+- `docs/PITFALLS.md` 新增/修订条目：`auth.docker.io` 超时与 buildkit 取 token 路径、uv 的 in-source caching、
+  `--load` 与多平台互斥、`RC=$?` 读管道尾命令的码（同 D5）等；`README.md`/`CONTRIBUTING.md` 补错误契约口径。
+
+### 度量与红线
+`npm test` **十八件套** exit 0（`api_contract_guard` 新增错误目录对账、`error_parity_guard` 10→覆盖面 10 项含 38 条用例全等、
+`docs_link_guard` 扫描面由手列 8 个文件改为**枚举 md 文件**并加关键文档在场断言）；`lock_guard` 11→**19** 项；
+Py 覆盖率维持 93.6% 档、mypy 30 文件 0 error、ruff 全绿、pre-commit 10 钩 Passed、Playwright 5 passed；
+`actionlint` 对新增 6 步 infra-lint 与改过的 release/dep-audit 均 `[]` 无告警。
+**三条产品红线逻辑零改动**（红旗仍独立于 LLM、终审文案与引用白名单未动）、默认检索档仍 bm25、评测仍是同一批 31 例。
+
+
 ## [1.19.0] - 2026-09-25
 
 ### Added（第二十一轮：把"我们写坏的基础设施文件"和"双端错误码"都变成有判据的面）

@@ -73,6 +73,7 @@ python tests/smoke_engine.py
 - **架构与不变式**：[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) —— 六段链路图、三条产品红线的代码插入点、JS/Py 双端镜像对账矩阵、检索层实测参数、环境变量与门禁清单（数字均为磁盘实测）。
 - **提交前快检**：[`.pre-commit-config.yaml`](.pre-commit-config.yaml) —— `pre-commit install` 后复用仓内既有守卫（版本真值 / 知识库零漂移 / 契约对账 / OpenAPI 漂移 / ESLint / ruff / 类型门禁 / 依赖锁定 / 文本控制字符 九钩子），秒级；全量十五件套仍由 CI 兜底。
 - **安全边界与未保障项**：[`SECURITY.md`](SECURITY.md) —— 已实现的控制、明确未提供的保障（无认证/无审计/日志不留存）、漏洞报告渠道。
+- **错误契约一览**：[`docs/ERRORS.md`](docs/ERRORS.md) —— 集成方只需这张表就能写对重试分支；由 `npm run test:api` 双向核对（表里的码集合 == openapi 声明、三处文案逐字等于 `limits` 常量），改码不改表或表领先实现都判红。
 - **排障手册**：[`docs/PITFALLS.md`](docs/PITFALLS.md) —— 本仓真实踩过的坑按「可 grep 的报错症状 → 根因 → 处置 → 常驻判据」编排；条目必须点名兜住它的判据文件，由 `npm run test:docs` 核对（引用失效即判红）。
 - **数据留存与隐私**：[`docs/PRIVACY.md`](docs/PRIVACY.md) —— 服务端零持久化、日志不落请求体、脱敏形态清单、唯一出站为 LLM 供应商（必然携带问诊文本）、明确未提供项；**声明与代码一致性由 `npm run test:privacy` 机器核对**（漂移即判红，非纯文档承诺）。
 - **接手与贡献**：[`CONTRIBUTING.md`](CONTRIBUTING.md) —— 双端同步矩阵、提交前必跑门禁、知识库条目与评测集变更规范。

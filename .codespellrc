@@ -1,0 +1,12 @@
+# 英文拼写检查配置（第二十二轮，对标 OpenEMR 的 .codespellrc + .codespell-ignore-words.txt）
+# 规则集随版本漂 ⇒ 版本钉在 backend/requirements-dev.txt（codespell>=2.4.1,<2.5），升版须人工复核新增告警。
+# 接线口径：先量误报再接线（本轮实测全仓命中 1 条，且是医学缩写的词典误报，见 ignore-words-list 的理由）。
+[codespell]
+# 产物与生成件不检查：锁文件/wheel/打包输出/依赖清单/历史归档/SBOM/契约 JSON（契约文案由 test:api 对账，不归拼写管）
+skip = node_modules,.wrangler,dist,build,archive,docs/sbom,package-lock.json,requirements.lock,requirements.arm64.lock,docs/openapi.json,*.min.js,*.map,*.whl,memory
+# 误报登记（每条必须写原因；禁止为凑绿批量关闸）：
+#   ehr —— 电子健康档案（Electronic Health Record）是本项目的核心领域词，
+#            codespell 词典把 EHR 当成 HER 的拼写错误。实测：全仓唯一一条命中就是这个（docs/EVAL_CARD.md）。
+ignore-words-list = ehr
+count = true
+quiet-level = 3

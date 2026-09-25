@@ -3,7 +3,7 @@
 // 这类引用一旦改名/挪目录就成死链，而 link_health.mjs 只管**外网 URL**、openapi 只管契约——
 // 文档指向仓内文件这条面此前无人守（实测：改名 scripts/ 下任一脚本文档全绿）。
 // 判据方向：既拦"引用不存在的文件"（假凭据），也拦"扫描面为空"（防"没扫到＝通过"的假绿）。
-import { readFileSync, existsSync } from "node:fs"
+import { readFileSync, existsSync, readdirSync, statSync } from "node:fs"
 import { dirname, resolve, relative } from "node:path"
 import { fileURLToPath } from "node:url"
 
@@ -15,12 +15,28 @@ const check = (name, ok, detail = "") => {
   else { fail++; console.log("  FAIL", name + (detail ? ` :: ${detail}` : "")) }
 }
 
-const mdFiles = []
-for (const f of ["README.md", "CONTRIBUTING.md", "SECURITY.md", "CHANGELOG.md", "docs/ARCHITECTURE.md",
-  "docs/PRIVACY.md", "docs/EVAL_CARD.md", "docs/PITFALLS.md"]) {
-  if (existsSync(resolve(ROOT, f))) mdFiles.push(f)
+// 扫描面**枚举**而不是手列文件清单：新增 md 文档自动进射程（同 error_parity 从抽样改枚举积的口径）。
+// 排除：node_modules / archive / dist（历史归档与产物不做现状核）。
+const SKIP_DIRS = new Set(["node_modules", "archive", "dist", ".wrangler", "sbom"])
+const walkMd = (rel) => {
+  const abs = resolve(ROOT, rel)
+  if (!existsSync(abs) || !statSync(abs).isDirectory()) return []
+  const out = []
+  for (const e of readdirSync(abs, { withFileTypes: true })) {
+    if (e.isDirectory()) {
+      if (SKIP_DIRS.has(e.name)) continue
+      out.push(...walkMd(`${rel}/${e.name}`))
+    } else if (e.isFile() && e.name.endsWith(".md")) {
+      out.push(rel ? `${rel}/${e.name}` : e.name)
+    }
+  }
+  return out
 }
-check(`扫描面非空（md 文件 ≥ 6，实测 ${mdFiles.length}）`, mdFiles.length >= 6, "读不到文档＝守卫失效")
+const mdFiles = [...walkMd(""), ...walkMd("docs")].filter((f, i, arr) => arr.indexOf(f) === i).sort()
+check(`扫描面非空（md 文件 ≥ 8，实测 ${mdFiles.length}）`, mdFiles.length >= 8, "读不到文档＝守卫失效")
+check("关键文档在射程内（README/CONTRIBUTING/SECURITY/CHANGELOG/PITFALLS 缺一即红）",
+  ["README.md", "CONTRIBUTING.md", "SECURITY.md", "CHANGELOG.md", "docs/PITFALLS.md"].every((f) => mdFiles.includes(f)),
+  mdFiles.join(", "))
 
 // 锚点 slug 按 GitHub 规则近似：小写、去标点（保留 CJK/字母/数字/-/空格）、空格转 -
 const slug = (s) => s.trim().toLowerCase()

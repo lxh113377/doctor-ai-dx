@@ -102,6 +102,18 @@ jobs:
         run: docker run --rm -v "$PWD":/work:ro -w /work ghcr.io/hadolint/hadolint:v2.14.0-alpine hadolint backend/Dockerfile
       - name: docker compose config（compose schema 与插值真解析一次）
         run: docker compose -f docker-compose.yml config -q
+      - name: codespell（英文拼写看守；规则钉 .codespellrc + 版本钉 requirements-dev）
+        # 接线前先量过误报（第二十二轮本机实测）：全仓唯一命中是 `EHR`，属医学缩写被词典当成
+        # `HER` 的拼写错误 ⇒ 按原因登记进 ignore-words-list 而不是关掉整个检查。
+        # 覆盖面非空证明：被扫文件数少到某个下限就说明 skip 写过头了（那等于没扫）。
+        run: |
+          set -eu
+          python -m pip install --quiet --no-input -r backend/requirements-dev.txt
+          n=$(git ls-files '*.md' '*.py' '*.js' '*.jsx' '*.yml' '*.yaml' | wc -l)
+          echo "受检文件数=$n"
+          test "$n" -ge 80   # 本轮实测 87（git ls-files 六类后缀）；取下限而非现值，留删改余量
+          codespell
+          echo "[GATE:codespell-pass] 零拼写告警（误报须带原因登记进 .codespellrc）"
 
   e2e:
     # 第十七轮补（对标 OpenEMR `Acceptance test (docker)`）：三红线在**真实浏览器渲染**上的常驻判据。

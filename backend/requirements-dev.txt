@@ -6,3 +6,7 @@ ruff>=0.16.5,<0.17
 # 类型检查。同 ruff 的理由钉上界：mypy 大版本会改默认严格度与推断行为（实测 2.3.1 全仓 0 error）。
 # scripts/type_gate.py 会同时核对「实跑版本 ≥ 阈值最低版本」与「本文件是否钉版」，缺钉版即判红。
 mypy>=2.3.1,<3
+# 英文拼写看守（第二十二轮，对标 OpenEMR 的 .codespellrc）。钉上界同 ruff 的理由：
+# codespell 的词典随版本增删词，升版可能凭空多出告警 ⇒ 人工复核后再动这里。
+# 误报登记在 .codespellrc 的 ignore-words-list（含原因），CI 步骤在 ci.yml 的 infra-lint 作业。
+codespell>=2.4.1,<2.5

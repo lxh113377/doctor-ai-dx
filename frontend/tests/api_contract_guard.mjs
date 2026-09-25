@@ -56,5 +56,41 @@ for (const [path, method] of Object.entries(spec.paths)) {
 }
 if (fail === 0) console.log(`PASS 入站边界响应码：4 个 POST 均声明并由 limits 常量产出 ${GUARD_STATUSES.join("/")}`)
 
+// 错误目录（docs/ERRORS.md）↔ 契约 ↔ 实现三方对账（v1.20.0 第二十二轮）。
+// 为什么值得单独立判据：集成方（HIS、脚本、AI Agent）写重试分支时只看文档，不看 openapi 的 $ref；
+// 文档一旦落后，"能用但会误导"比"直接报错"更糟。所以：**码集合双向全等 + 文案逐字等于常量**。
+const errDoc = readFileSync(new URL("../../docs/ERRORS.md", import.meta.url), "utf8")
+const rows = [...errDoc.matchAll(/^\|\s*`(\d{3})`\s*\|([^|]*)\|([^|]*)\|/gm)]
+  .map((m) => ({ code: Number(m[1]), msg: m[3].replace(/`/g, "").trim() }))
+const declaredCodes = new Set(
+  Object.values(spec.paths).flatMap((ops) => Object.values(ops).flatMap((op) => Object.keys(op.responses || {})))
+    .map(Number),
+)
+checkRows(rows, declaredCodes)
+
+function checkRows(list, declared) {
+  if (list.length < 5) { console.log(`FAIL ERRORS.md 表行过少(${list.length})＝文档没写全或表格格式变了`); fail++; return }
+  const docCodes = new Set(list.map((r) => r.code))
+  const missing = [...declared].filter((c) => !docCodes.has(c))
+  const extra = [...docCodes].filter((c) => !declared.has(c))
+  if (missing.length) { console.log(`FAIL ERRORS.md 缺状态码行：${missing}（openapi 已声明却没写进文档）`); fail++ }
+  if (extra.length) { console.log(`FAIL ERRORS.md 出现 openapi 未声明的码：${extra}（文档领先实现）`); fail++ }
+  // 有常量的三个码，文案必须逐字相等（404/500 由路由拼装、不在此列，由 error_parity 三方对账兜）
+  const wantMsg = {
+    [limits.STATUS_BAD_JSON]: limits.BAD_JSON_MESSAGE,
+    [limits.STATUS_TOO_LARGE]: limits.TOO_LARGE_MESSAGE,
+    [limits.STATUS_BAD_SHAPE]: limits.BAD_SHAPE_MESSAGE,
+  }
+  for (const r of list) {
+    const want = wantMsg[r.code]
+    if (want === undefined) continue
+    const got = r.msg.replace(/（.*$/, "").trim()
+    if (got !== want) { console.log(`FAIL ERRORS.md ${r.code} 文案与实现常量不等：文档="${got}" 常量="${want}"`); fail++ }
+  }
+  if (!missing.length && !extra.length) {
+    console.log(`PASS 错误目录与契约双向全等（${list.length} 行 / 声明码 ${declared.size} 个），三处文案等于 limits 常量`)
+  }
+}
+
 console.log(`API 契约守卫: ${fail === 0 ? "ALL PASS" : `FAIL(${fail})`}（${CONTRACT.length} 端点双向对账）`)
 process.exit(fail === 0 ? 0 : 1)

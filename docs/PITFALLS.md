@@ -138,6 +138,32 @@
 
 ---
 
+## G. 容器与多架构（第二十二轮新增）
+
+### G1 配了 `platforms` 却只发布出一个架构
+- 症状：`docker run` 在 Apple Silicon 上 `exec format error`；manifest 看得到（HTTP 200），但里面只有一个平台。
+- 根因：buildx 缺 QEMU（`docker/setup-qemu-action`）、或 `--load` 与多平台互斥被静默降级、或只在单个 `docker build` 里加 `--platform`。
+- 处置：`release.yml` 先注册 QEMU 再 `platforms: linux/amd64,linux/arm64`，推完读 index 断言两个平台都在。
+- 常驻判据：`.github/workflows/release.yml` 的匿名 manifest 步骤（`[GATE:multiarch-pass]`，缺平台即 rc=1）。
+
+### G2 同一句 `uv pip compile` 写出两种结果（看着像架构差异）
+- 症状：仓内 `requirements.lock` 是 `uvicorn 0.53.0`，新建的 `requirements.arm64.lock` 是 `0.54.0`，像"两架构版本不同"。
+- 根因：**uv 复用输出文件里已有的钉版**（in-source caching）。写已存在的文件＝保持旧版本，写新文件＝取当前最新 ⇒ 差异纯属"有没有缓存"，与平台无关。
+- 处置：多平台锁只能由 `scripts/recompile_locks.py` **同一时刻**产出（内部带 `--upgrade`），日常不要单跑一把。
+- 常驻判据：`scripts/lock_guard.py` 的"各锁版本集全等 + 每把锁头注平台与文件名匹配 + 额外锁必须被 RUN 选用"三条（各自反例实测 rc=1）。
+
+### G3 本机 buildkit 取不到 Docker Hub token
+- 症状：`failed to fetch oauth token: Post "https://auth.docker.io/token": ... timed out`，而同一台机器 `docker pull --platform linux/arm64 <base>` 却成功。
+- 根因：buildkit 自己走 auth.docker.io，与 daemon 的取 token 路径不同；网络对域名×路径的可达性不一样。
+- 处置：先 `docker pull --platform <目标架构> <base>` 预热，再 `docker buildx build --load --provenance=false`。
+- 判据口径：本机能不能跑不改变 CI 的断言——**发布后 index 双架构那一步才是判据**，本机结果只作为"已验证/未验证"如实记录（同 D 类"可达性按域名×时刻记"）。
+
+### G4 覆盖面阈值靠拍脑袋
+- 症状：新写的"扫描面非空"判据写了 `≥120`，本机一跑实际只有 87 ⇒ 上线即假红。
+- 根因：分母没量。分母必须由枚举器当场产出，不能凭印象写整数（同 B3 的近亲）。
+- 处置：改成实测 87 → 取下限 80（留删改余量），并在注释里写"本轮实测 87"。
+- 常驻判据：`.github/workflows/ci.yml` infra-lint 的 codespell 步骤（`受检文件数` 先算再断言）。
+
 ## F. 提交前自检顺序（照抄即可）
 
 ```bash
