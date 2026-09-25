@@ -5,6 +5,22 @@
 
 ## [Unreleased]
 
+## [1.18.2] - 2026-09-25
+
+### Fixed
+- 🔴 **CodeQL `py/stack-trace-exposure` 的处置方式＝改代码追上承诺，而不是申辩误报**。v1.18.1 发布后 `gh api .../code-scanning/alerts?state=open` 实测开放告警 **0 → 1**（`backend/app/main.py:49`，severity=error）。逐行核验后确认**按当前实现它确实是误报**：`RequestTooLarge.__str__` 返回的是医生文案「请求内容超出可处理范围…」，归因细节走 `.reason` 只进日志（且 `test_limits.py` 第 5 节早已断言 `">" not in str(e)`）。但"异常对象直接进响应体"这个**形状**恰好是本项目红线（错误响应不展示堆栈或内部路径）要防的东西，留着规则就只能靠人记住"这次碰巧没事"。故出口改为模块常量 `limits.TOO_LARGE_PUBLIC_MESSAGE`（两处 `str(exc)` → `exc.public_message`），并新增 `test_limits.py` 第 6 节把它钉成判据：全 `app/` 源码扫 `"message": str(` 命中即红（**变异实测**：任一处回退 `str(exc)` → 该条 FAIL、rc=1）、`public_message` 与常量逐字同值、不含 `[`/`>`/字段名、`reason` 仍保留细节（日志侧信息量不降）、413 实际响应真的走常量。
+- 新判据第一版**自己就是假的**：扫描根写成 `os.path.join(REPO, "app")`，而 `REPO` 是上三层 = `backend/`，`backend/app` 不存在 ⇒ `os.walk` 对不存在路径**静默返回空**，"扫 0 个文件"照样判绿。改成 `Path(__file__).resolve().parent.parent / "app"` 并加一条"扫描面 ≥5 个 .py 且目录真实存在"的反空判据（镜像内 `REPO` 会解析成 `/srv`，那里根本没有 `app/`——同一 bug 在镜像里会长期静默）。教训与 r12/r18 同族：**枚举器必须自带会红的非空断言**。
+
+### Added（把"发布正文"从一次性生成升级为可复算真值）
+- 阈值单一源 `frontend/tests/fixtures/release_notes.json`（`min_body_chars=200`）：`release.yml` 的正文步骤现**读该 fixture**而不是写死 200，fixture 缺失/非法一律 `exit 2`（fail-closed，实测 rc=2 + 指名 FileNotFoundError）。
+- `version_guard.mjs` 五→**九项**，新增三条与本文件同源的升版预检：① `release.yml` 真的引用该 fixture（防"fixture 成摆设、改数字只改一处"）；② 阈值形态合法（整数且 ≥50）；③ `CHANGELOG.md` 有 `## [当前版本]` 小节**且正文 ≥ 阈值**——把"CI 出包时才判红"前移到"升版本当轮就红"。**两组反例实测 rc=1**：`package.json` 改成无小节的 1.18.9 → 报「CHANGELOG.md 有 ## [1.18.9] 小节」；把 `release.yml` 里的 fixture 路径改掉 → 报「正文长度阈值取自 fixture」。改动后两个受控文件按 sha256 逐字节还原自检通过。
+- `release.yml` 末尾新增一步「线上正文 ↔ 本次生成结果逐字节对账」：`gh release view --json body` 与 `dist-release/NOTES.md` 比非空白字符数，不等即红并打出 diff（防"改了生成逻辑但 Release 还挂着旧正文"这种只有第二次发布才会暴露的残留）。
+- 本版同时是 1.18.1 那套新链条的**首次自证**：v1.18.2 的 Release 正文完全由 `CHANGELOG.md` 本节机器产出，资产与正文在 CI 内对账，本机可用 `scripts/release_repro_check.py --ref v1.18.2 --against <CI 包>` 独立复算。
+
+### 度量与红线
+运行时对外行为**逐字不变**（413/400 的响应体文案与码完全相同，改的是取文案的出口）：`npm test` 十六件套 exit 0（`version_guard` 5→9）、`test_limits.py` 34→**40 项**（第 6 节 6 条）、`coverage:py` 全局 93.51%≥90、pre-commit 10 钩 Passed、离线评测 31/31 + 红旗 27/27 零回归。三条产品红线逻辑零改动、默认档仍 bm25、评测仍是同一批 31 例。
+
+
 ## [1.18.1] - 2026-09-25
 
 ### Fixed（v1.18.0 发布作业判红后的三处自查——**拦下来就是拦下来，不绕**）

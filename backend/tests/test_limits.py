@@ -135,6 +135,38 @@ except limits.RequestTooLarge:
     check("超大 Content-Length 抛 RequestTooLarge", True)
 check("合法声明不抛", (limits.check_declared_size("512") or True) is True)
 
+print("== 6. 对外出口的机器判据（CodeQL py/stack-trace-exposure 归因后的收口）==")
+# 起因：CodeQL 在 main.py 的 `"message": str(exc)` 上开了一条 **error 级** 告警。该处 str(exc)
+# 取到的是医生文案（细节在 .reason），按本项目实现是误报；但"异常对象直接进响应体"正是
+# 「错误响应不展示堆栈或内部路径」这条红线的形状——所以不向规则申辩，而是把出口换成模块常量，
+# 让承诺变成可判红的判据（下面第 1 条就是拦这个形状的，改回 str(exc) 立刻红）。
+import re  # noqa: E402
+from pathlib import Path as _Path  # noqa: E402
+
+BACKEND_ROOT = _Path(__file__).resolve().parent.parent  # 本机=…/backend，镜像内=/srv/backend
+# 用 __file__ 而不是 REPO：REPO 在镜像里解析成 /srv，那里根本没有 app/ 目录，
+# os.walk 对不存在的路径**静默返回空** ⇒ "扫了 0 个文件"也能判绿，正是本项目反复踩的假通过形状。
+scan_root = BACKEND_ROOT / "app"
+hits: list[str] = []
+scanned: list[str] = []
+for fp in sorted(scan_root.rglob("*.py")):
+    scanned.append(fp.name)
+    text = fp.read_text(encoding="utf-8")
+    for m in re.finditer(r'"message":\s*str\(', text):
+        hits.append(f"{fp.name}:{text[:m.start()].count(chr(10)) + 1}")
+check("扫描目录真实存在且扫到 ≥5 个 .py（防空路径/空目录假绿）",
+      scan_root.is_dir() and len(scanned) >= 5, f"root={scan_root} 实测 {len(scanned)}")
+check("零处把 str(异常) 直接写进响应 message（红线出口）", not hits, f"命中 {hits}")
+e = limits.RequestTooLarge("history[0].content 长度 2300 > 2000")
+check("public_message 与模块常量逐字同值", e.public_message == limits.TOO_LARGE_PUBLIC_MESSAGE)
+check("public_message 不含字段路径/比较符（不可当归因通道）",
+      "[" not in e.public_message and ">" not in e.public_message and "content" not in e.public_message)
+check("reason 仍保留归因细节（日志侧信息量不降）", "history[0].content" in e.reason and ">" in e.reason)
+code413, body413 = post("/api/dx/c1", {"history": hist(limits.MAX_HISTORY_ITEMS + 1)})
+check("413 实际响应 message == 常量（出口真的用了它，不是只改了类）",
+      code413 == 413 and body413.get("message") == limits.TOO_LARGE_PUBLIC_MESSAGE,
+      json.dumps(body413, ensure_ascii=False)[:120])
+
 print(f"\nRESULT: {passed} pass / {len(failed)} fail")
 for line in failed:
     print("  FAIL", line)

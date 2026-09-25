@@ -21,13 +21,23 @@ MAX_DX_JSON_BYTES = 65536
 STATUS_TOO_LARGE = 413
 STATUS_BAD_JSON = 400
 
+# 对外唯一文案（与 Functions 侧 `lib/limits.js` 同字）；细节只进日志的 msg 字段。
+TOO_LARGE_PUBLIC_MESSAGE = "请求内容超出可处理范围，请精简问诊记录后重试"
+
 
 class RequestTooLarge(Exception):
-    """超限：对外只出医生可理解文案，细节留在 reason（服务端日志用）。"""
+    """超限：对外只出医生可理解文案，细节留在 reason（服务端日志用）。
+
+    对外文案取**模块常量**而不是 `str(exc)`：`str(exc)` 恰好是 CodeQL
+    `py/stack-trace-exposure` 的污点形状（"异常对象进响应体"），留着它就会常驻一条
+    error 级开放告警——而本项目自己承诺"错误响应不展示堆栈或内部路径"。改成常量后，
+    这条承诺第一次有了可判红的出口（见 `tests/test_limits.py` 第 6 节 + 变异实测）。
+    """
 
     def __init__(self, reason: str) -> None:
-        super().__init__("请求内容超出可处理范围，请精简问诊记录后重试")
+        super().__init__(TOO_LARGE_PUBLIC_MESSAGE)
         self.reason = reason
+        self.public_message = TOO_LARGE_PUBLIC_MESSAGE
         self.status = STATUS_TOO_LARGE
 
 

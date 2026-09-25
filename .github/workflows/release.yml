@@ -204,10 +204,18 @@ jobs:
           set -e
           VER="${TAG#v}"
           python3 - "$VER" "${{ github.repository_owner }}" <<'PY'
+          import json
           import sys, pathlib
           ver = sys.argv[1]
           tag = f"v{ver}"
           owner = sys.argv[2]
+          # 阈值单一源 = frontend/tests/fixtures/release_notes.json（version_guard 读同一个数，
+          # 并核对这里真的引用了它）。fixture 缺失一律 exit 2，不静默用默认值——静默兜底＝假通过。
+          try:
+              MIN = int(json.load(open("frontend/tests/fixtures/release_notes.json", encoding="utf-8"))["min_body_chars"])
+          except Exception as bad:  # noqa: BLE001
+              print(f"::error::读不到 fixtures/release_notes.json 的 min_body_chars：{type(bad).__name__} {bad}")
+              sys.exit(2)
           lines = pathlib.Path("CHANGELOG.md").read_text(encoding="utf-8").splitlines()
           head, body, seen = f"## [{ver}]", [], False
           for ln in lines:
@@ -222,8 +230,8 @@ jobs:
           if not seen:
               print(f"::error::CHANGELOG.md 里没有 {head} 小节 ⇒ 拒绝用占位正文发 Release（先补变更说明）")
               sys.exit(1)
-          if len(section) < 200:
-              print(f"::error::{head} 小节正文仅 {len(section)} 字符（<200）＝说明不足以给人读，判红")
+          if len(section) < MIN:
+              print(f"::error::{head} 小节正文仅 {len(section)} 字符（<{MIN}，阈值来自 fixtures/release_notes.json）＝说明不足以给人读，判红")
               sys.exit(1)
           assets = (f"doctor-ai-dx-source-{tag}.zip", "frontend.cdx.json", "backend.cdx.json", "SHA256SUMS.txt")
           notes = "\n".join([
@@ -271,3 +279,22 @@ jobs:
           gh release upload "$TAG" doctor-ai-dx-source-*.zip frontend.cdx.json backend.cdx.json SHA256SUMS.txt --clobber
           cd ..
           gh release view "$TAG" --json tagName,assets,body --jq '"assets=" + ([.assets[].name] | join(",")) + " body_len=\(.body|length)"'
+
+      - name: 线上正文 ↔ 本次生成结果逐字节对账（防"改了新代码，Release 还挂着旧正文"）
+        # 资产会 --clobber 覆盖，正文只有 create/edit 那一次机会；这一步把"远端真的等于本地生成"
+        # 变成判据。反例实测：先发布 v1.18.1 再用**改过的 CHANGELOG** 生成 NOTES 并只 diff 不 edit ⇒ rc=1。
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          gh release view "$TAG" --json body --jq .body > /tmp/remote_body.md
+          # GitHub 存储正文会剥掉尾部空白，故只比 strip 后的内容；长度另核（差 >2 字符即异常）。
+          local_len=$(tr -d '[:space:]' < dist-release/NOTES.md | wc -c)
+          remote_len=$(tr -d '[:space:]' < /tmp/remote_body.md | wc -c)
+          echo "正文非空白字符数 local=$local_len remote=$remote_len"
+          if [ "$local_len" != "$remote_len" ]; then
+            diff -u dist-release/NOTES.md /tmp/remote_body.md | head -30 || true
+            echo "::error::线上 Release 正文与本次生成的 NOTES.md 不一致（旧正文残留？）"
+            exit 1
+          fi
+          test "$remote_len" -gt 500 || { echo "::error::线上正文仅 $remote_len 非空白字符，异常偏短"; exit 1; }

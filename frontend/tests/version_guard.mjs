@@ -47,5 +47,34 @@ if (tags === null) {
   }
 }
 
+console.log("== CHANGELOG 小节与发布正文阈值（与 release.yml 同源，防『预检放行、出包判红』）==")
+const REL_YML = read("../../.github/workflows/release.yml")
+check("release.yml 的正文长度阈值取自 fixtures/release_notes.json（不抄第二份数字）",
+  REL_YML.includes("frontend/tests/fixtures/release_notes.json"),
+  "步骤里没读 fixture ⇒ fixture 成摆设，改数字只改一处会漂移")
+let minChars = 0
+try {
+  minChars = JSON.parse(read("./fixtures/release_notes.json")).min_body_chars
+} catch { /* 下面按 0 判红，不静默跳过 */ }
+check(`fixture 阈值形态合法（≥50）`, Number.isInteger(minChars) && minChars >= 50, `实测 ${minChars}`)
+let changelog = ""
+try {
+  changelog = read("../../CHANGELOG.md")
+} catch {
+  check("CHANGELOG.md 可读", false, "读不到＝工作目录不对，不得当作通过")
+}
+if (changelog) {
+  const lines = changelog.split(/\r?\n/)
+  const head = `## [${pkg}]`
+  const i = lines.findIndex((l) => l.startsWith(head))
+  check(`CHANGELOG.md 有 ${head} 小节（升版本必须同轮写变更说明）`, i >= 0, "缺失则 Release 只有占位正文")
+  if (i >= 0) {
+    const j = lines.findIndex((l, k) => k > i && l.startsWith("## ["))
+    const body = lines.slice(i + 1, j < 0 ? undefined : j).join("\n").trim()
+    check(`${head} 正文 ≥ ${minChars} 字符（Release 正文给人读，不是一句空话）`,
+      body.length >= minChars, `实测 ${body.length}`)
+  }
+}
+
 console.log(`RESULT: ${pass} pass / ${fail} fail`)
 process.exit(fail ? 1 : 0)
