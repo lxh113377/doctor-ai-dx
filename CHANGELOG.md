@@ -38,6 +38,7 @@
 - 🔴 **把聚合检查配成了永远不会满足的 required check**：`required_status_checks.contexts` 我写的是 job key `all-checks-passed`，而 GitHub 上报的 check 名是 job 的 **`name: All Checks Passed`** ⇒ 保护指向现实中永不出现的 check，**每个 PR 会被永久卡死**（比形同虚设更坏）。更难看到的是我的 `branch_guard --remote` 当时判绿——它拿"我写在常量里的 key"去比"我写进保护的 key"，属**自证式对账**。修法＝context 真值一律从 ci.yml 的 `name` 字段推导（无 name 才回落 job key），线上核 `期望=实测` 逐字对账；保护已改回 `["All Checks Passed"]` 并实测 PASS。教训：**判据的期望值必须来自被测系统的实际产出，不能来自我自己写的常量。**
 - 🔴 **声明面坏掉而生成器不报**：给 `requirements.txt` 加的注释有一段续行漏了 `#`。`uv pip compile` 照样解析成功（生成器宽容），CI 里 `pip install -r` 直接 `ERROR: Invalid requirement`（run 36105388164 的 `build-and-test` 判红，聚合检查如实跟着判红——这一层工作正常）。`lock_guard` 当时也判绿，因为它的行解析器**跳过**不认识的行。新增第 11 条判据按 **pip 的行规则**逐行核（非 `#` 又不是 requirement 语法即判红），反例＝原样复刻本次漏 `#` 的那行，实测 rc=1 并指名 `11: 把"靠传递依赖"写成声明依赖…`。教训：**校验要用消费者的口径，不是生成器的口径**（同一逻辑也解释"锁必须按运行时平台解析"）。
 - 顺带把 `build-and-test` 里最后一处浮动安装（`pip install -r requirements.txt`）改成从锁安装 ⇒ 三个 CI 作业 + 运行时镜像现在共用同一份依赖真值。
+- 🔴 **第三个（也是由发布链自己抓出来的）：SBOM 名字比对假设两侧命名规范一致**。声明面按 r18 的口径把 `pyyaml` 从"传递依赖"改成显式声明后，`release.yml` 的 pip SBOM 对账直接判红（run 36106279797：`FAIL 每个声明依赖都出现在清单里 :: pyyaml`）。实测归因：锁里是 `pyyaml==…`（uv 按 PEP 503 归一），而 `cyclonedx-py environment` 出的组件名是发行包原始大小写 **`PyYAML`** ⇒ 精确匹配必然漏。**判据假定 ≠ 事实**。修法＝两侧名字都按 PEP 503 归一（小写、`_`/`.` 折叠为 `-`）后再比，并对反例做实测：把归一化退回精确匹配 ⇒ rc=1 且指名 `pyyaml`；恢复 ⇒ rc=0 九项全过。另注：这条缺陷在 r16 落地时就存在，只是当时声明面恰好没有一个"包名 ≠ 分发名"的项，**判据的覆盖面缺陷往往要等下一次真实变更才暴露**。
 
 ## [1.16.0] - 2026-09-25
 

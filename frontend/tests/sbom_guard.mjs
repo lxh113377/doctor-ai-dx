@@ -101,11 +101,18 @@ if (manifest === "npm") {
   }
 }
 check(`本仓声明的依赖数 ≥ 5（${manifest}，防"声明侧为空⇒零缺失"假通过）`, declared.length >= 5, `实测 ${declared.length}`)
-const missing = declared.filter((d) => !byName.has(d.name))
-check("每个声明依赖都出现在清单里", missing.length === 0, missing.slice(0, 5).map((d) => d.name).join(","))
-const verBad = declared.filter((d) => d.wantVersion && byName.has(d.name) && !byName.get(d.name).includes(d.wantVersion))
+// 名字必须按**消费者口径归一化**后再比（PEP 503：小写、`_`/`.` 折叠为 `-`）。
+// v1.17.0 实测踩过：声明面新加 `pyyaml`，锁里也是 `pyyaml==6.0.x`，但装完后 SBOM 组件名是
+// `PyYAML`（发行包元数据的原始大小写）⇒ 精确比对直接判红（run 36106279797 的 verify-and-package，tag v1.17.0 首次出包失败）。
+// 这类"只在某个包上首次触发"的比对缺陷，本质是判据假定了两侧命名规范一致，而事实不是。
+const canonName = (x) => String(x).toLowerCase().replace(/[_.]+/g, "-")
+const norm = new Map([...byName].map(([k, v]) => [canonName(k), v]))
+for (const d of declared) d.key = canonName(d.name)
+const missing = declared.filter((d) => !norm.has(d.key))
+check("每个声明依赖都出现在清单里（名字按 PEP 503 归一后比对）", missing.length === 0, missing.slice(0, 5).map((d) => d.name).join(","))
+const verBad = declared.filter((d) => d.wantVersion && norm.has(d.key) && !norm.get(d.key).includes(d.wantVersion))
 check("每个声明依赖的锁定版本与清单一致（仅 npm 侧有 lock 解析版本；pip 侧声明为区间故自然通过）", verBad.length === 0,
-  verBad.slice(0, 5).map((d) => `${d.name}: lock ${d.wantVersion} vs bom [${byName.get(d.name)?.join("|")}]`).join(" ; "))
+  verBad.slice(0, 5).map((d) => `${d.name}: lock ${d.wantVersion} vs bom [${norm.get(d.key)?.join("|")}]`).join(" ; "))
 
 console.log(`\nSBOM GUARD SUMMARY: 文件=${sbomPath} 组件=${comps.length} 声明依赖=${declared.length} 判据通过=${pass} `
   + `sha256=${createHash("sha256").update(raw).digest("hex").slice(0, 16)}`)
