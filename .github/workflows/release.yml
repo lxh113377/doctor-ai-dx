@@ -77,9 +77,15 @@ jobs:
           node tests/sbom_guard.mjs --sbom docs/sbom/backend.cdx.json --manifest pip
 
       - name: 源码包 = tag 内容（可复现，git archive 不含未跟踪文件）
-        # --mtime 钉成 tag 提交时间：实测**同一环境下重复构建逐字节相同**（本地两次 sha 均为 ded085dc…）。
-        # 边界（实测，别写过头）：CI 产物与本机包因 git 版本/zip 容器元数据不同，sha 仍不同（CI fddaa3da…），
-        # 故这里主张的是"内容集合可复现 + 同环境字节可复现"，不是"跨环境字节一致"。
+        # --mtime 钉成 tag 提交时间 + TZ 钉成 UTC0：实测**同一环境下重复构建逐字节相同**。
+        # 第十七轮把"跨环境为何不等"归因清楚了（**不是** git 版本/容器元数据）：
+        #   ① 行尾：Windows 默认 core.autocrlf=true 使 git archive 导出时 LF→CRLF（实测 119/122 文件字节不同）
+        #       ⇒ 已由仓内 .gitattributes（* text=auto eol=lf）钉死；
+        #   ② 时间戳：zip 的 MS-DOS 时间字段按归档进程时区渲染 ⇒ TZ=UTC0。
+        # 两个成因都消掉后实测：本机 `TZ=UTC0 git -c core.autocrlf=false archive --mtime=<tag 时间>`
+        # 产出的包与本作业产出的包 **SHA256 全等**（v1.15.0 实测 168f697d…，由 scripts/release_repro_check.py 判定）。
+        env:
+          TZ: UTC0
         run: |
           mkdir -p dist-release
           MT=$(git log -1 --format=%ct "$TAG")
@@ -92,6 +98,11 @@ jobs:
           print(f"源码包文件数={len(names)} sha256={digest}")
           assert len(names) > 100, "源码包文件数异常（可能 tag checkout 不完整）"
           PY
+
+      - name: 可复现性自证（同环境二次构建全等 + 零 CRLF + 非空证明）
+        # 只跑一次出包不算"可复现"——本步把主张变成判据：同一 ref 连出两个包必须同 sha，
+        # 且包内文本零 CRLF（防 .gitattributes 被删或被 tree 外因素绕过）。
+        run: python scripts/release_repro_check.py --ref "$TAG"
 
       - name: SHA256SUMS（三个工件逐一可核验）
         run: |

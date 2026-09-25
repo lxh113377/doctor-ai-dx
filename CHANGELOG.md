@@ -5,6 +5,16 @@
 
 ## [Unreleased]
 
+## [1.15.1] - 2026-09-25
+
+### Fixed（发布工件跨环境可复现：给第十六轮的"边界"翻案）
+- **归因翻案**：第十六轮实测记录"CI 产物与本机包 sha 不同，疑因 git 版本 / zip 容器元数据"，并据此把文档主张降级为"同环境字节可复现"。本轮按同一 ref 逐文件 **CRC** 对账，抓出真实成因是两个、且**都可消除**：① **行尾**——Git for Windows 默认 `core.autocrlf=true` 使 `git archive` 导出时做 LF→CRLF，实测本机包与 CI 包 **119/122 个文件字节不同，且差异全部只是行尾**（EOL 归一后 122/122 CRC 全等）⇒ 新增 `.gitattributes`（`* text=auto eol=lf`，另列二进制禁转换、`.bat/.cmd` 保 CRLF）；② **时区**——zip 的 MS-DOS 时间字段按**归档进程所在时区**渲染，CI runner 是 UTC、本机 UTC+8，同一 commit 同一 `--mtime` 仍差 284 个单字节（每个条目 1 字节）⇒ 出包与环境变量都钉 `TZ=UTC0`。教训：**"跨环境不可复现"是未归因，不是物理限制**——元数据类差异要先按字段定位再下结论
+- **实测结果**：`TZ=UTC0 git -c core.autocrlf=false archive --format=zip --mtime=<tag 提交时间>` 本机重建 v1.15.0 源码包，与 GitHub Release 资产 **SHA256 全等**（`168f697d9e0f42bb…`，381160 B / 122 文件）⇒ 主张从"内容集合可复现 + 同环境字节可复现"升级为**跨环境逐字节可复现**
+- 新增 `scripts/release_repro_check.py`（判据，纳入 ruff/mypy 受控面并被 `release.yml` 调用）：① 同 ref 二次构建 SHA256 全等；② **包内文本文件零 CRLF**（防 `.gitattributes` 被删或被 tree 外因素绕过）；③ 文件数 >100 非空证明；④ 给 `--against` 时与外部（CI）包 SHA256 全等。**两组反例实测 rc=1**：拿未钉 TZ 的本机包对账 → 报 `local=168f697d external=e148782e`；变异脚本（同时去掉 `-c core.autocrlf=false` 与 `TZ=UTC0`）→ 报 `包内文本文件零 CRLF … CRLF 文件=['.github/ISSUE_TEMPLATE/bug_report.yml', …]` 且 sha 不等。还原后 4 项 PASS rc=0
+- `release.yml`：出包步骤显式 `env: TZ: UTC0`，并新增"可复现性自证"步骤调用上述门禁（**只出一次包不算可复现**）；步骤注释改写为"两个成因已定位并消除"，不再保留被证伪的旧边界表述
+- **交付链同源事实（新增可核验点）**：`交付物/iCAN-参赛交付物/源码-…-v1.1.zip` 改由上述钉好行尾与时区的命令产出 ⇒ **参赛源码包与公开 Release 资产逐字节相同**（第三方下载公开包即可与本包 SHA256 直接对账，无须信任本机）
+- 三条产品红线、运行时链路、检索默认档与评测口径零改动（JS 分支 75.24% / Py 92.78% / mypy 23 文件 0 error / 十四件套全绿，均与 v1.15.0 同值）
+
 ## [1.15.0] - 2026-09-25
 
 ### Added（端到端浏览器回归进 CI：对标 OpenEMR 的 Acceptance 常驻作业）
