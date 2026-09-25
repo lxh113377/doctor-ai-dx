@@ -1,0 +1,26 @@
+# 行尾规范：仓内一律以 LF 入库，检出与导出也为 LF。
+# 为什么必须写死（2026-09-25 实测）：本机 core.autocrlf=true（Git for Windows 默认）会让
+# `git archive` 在导出时做 LF→CRLF 转换，实测本机出的源码包与 CI（Linux，无此转换）产出的同名包
+# **119/122 个文件字节不同**（逐个核到只是行尾差，`eol=lf` 归一后 122/122 CRC 全等）。
+# 也就是说"跨环境字节可复现"此前不是被 git 版本差掉的，而是被这台机器的 autocrlf 差掉的。
+# 加本文件后：任意平台 clone 再 `git archive` 都不必记得加 `-c core.autocrlf=false`。
+* text=auto eol=lf
+
+# 二进制：禁止任何行尾转换（这些一旦被当文本处理即损坏）
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.mp4 binary
+*.mp3 binary
+*.wav binary
+*.pdf binary
+*.zip binary
+*.ttf binary
+*.woff binary
+*.woff2 binary
+
+# Windows 批处理必须保持 CRLF（cmd.exe 对纯 LF 的 .bat/.cmd 有历史解析问题）
+*.bat text eol=crlf
+*.cmd text eol=crlf
