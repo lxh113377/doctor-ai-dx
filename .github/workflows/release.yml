@@ -64,13 +64,17 @@ jobs:
         run: |
           cd frontend
           npm run sbom
-          node ../scripts/sbom_guard.mjs --sbom docs/sbom/frontend.cdx.json --manifest npm
+          node tests/sbom_guard.mjs --sbom docs/sbom/frontend.cdx.json --manifest npm
 
       - name: SBOM · pip 侧（cyclonedx-bom 钉版 + 与 requirements 对账）
+        # 用 environment 模式而非 requirements 模式：实测 `cyclonedx-py requirements backend/requirements.txt`
+        # 只出 5 条且全部无版本（本仓 requirements 用区间不钉死），SBOM 就成了空壳。
+        # CI 里环境 = 本仓两份 requirements 的解析结果 ⇒ environment 模式给出解析版本与传递闭包。
         run: |
           python -m pip install --quiet "cyclonedx-bom==7.4.0"
-          cyclonedx-py requirements backend/requirements.txt -o docs/sbom/backend.cdx.json
-          node scripts/sbom_guard.mjs --sbom docs/sbom/backend.cdx.json --manifest pip
+          cyclonedx-py environment --of JSON --output-reproducible -o docs/sbom/backend.cdx.json
+          cd frontend
+          node tests/sbom_guard.mjs --sbom docs/sbom/backend.cdx.json --manifest pip
 
       - name: 源码包 = tag 内容（可复现，git archive 不含未跟踪文件）
         run: |

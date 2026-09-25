@@ -9,13 +9,14 @@
 
 ### Added（交付物可审计性：对标 OpenEMR / ragflow / phlox 的"打 tag 即由机器出包"）
 - 对标实测（`gh api actions/workflows`）：**OpenEMR** 有 `Build Release on Tag` / `Build Release` / `Build Patch Release` / `Dependabot Auto-Merge`；**ragflow** 有 `release`；**phlox** 有 `Build and Release` + `release-please`；**medical-rag** 零工作流。我方发布链此前全靠本机手工 `git archive` + `gh release create`，同一轮内因"包内容与 tag 不同步"重锚三次 ⇒ 新增 `.github/workflows/release.yml`（tag 触发）：**先跑全部门禁**（ruff / type_gate / 文本卫生 / ESLint / 十四件套 / 双端覆盖率地板 / build / bundle / openapi 漂移）绿了才产出 `doctor-ai-dx-source-<tag>.zip` + 双端 SBOM + `SHA256SUMS.txt`，并挂到该 tag 的 Release；源码包由 `git archive HEAD` 产出（＝tag 内容，不含未跟踪文件），并自检"文件数 >100 且打印 SHA256"防半成品工件。
-- SBOM 采用**成熟工具 + 钉版 + 门禁对账**：npm 侧 `@cyclonedx/cyclonedx-npm@6.0.1`（`npm run sbom`），pip 侧 `cyclonedx-bom==7.4.0`（CI 内）。新增 `scripts/sbom_guard.mjs`（`npm run sbom:check`）：校 `bomFormat/specVersion`、组件数 ≥50（**空清单不得判绿**）、每组件必有 name/version/purl、生成工具主版本与 manifest 相符（npm=6 / pip=7，**换大版本＝换判据**）、**本仓声明的 17 个 npm 直接依赖连同 lock 解析版本逐一在清单内**。四组反例实测 rc=1（删掉一条声明依赖 / 把 vite 版本改脏 / 组件表清空 / `bomFormat` 改成 SPDX）。
+- SBOM 采用**成熟工具 + 钉版 + 门禁对账**：npm 侧 `@cyclonedx/cyclonedx-npm@6.0.1`（`npm run sbom`），pip 侧 `cyclonedx-bom==7.4.0`（CI 内）。新增 `frontend/tests/sbom_guard.mjs`（`npm run sbom:check`；放 tests/ 而非 scripts/ 是与 kb_guard/fhir_guard 同族，且能进 ESLint 覆盖范围）：校 `bomFormat/specVersion`、组件数 ≥50（**空清单不得判绿**）、每组件必有 name/version/purl、生成工具主版本与 manifest 相符（npm=6 / pip=7，**换大版本＝换判据**）、**本仓声明的 17 个 npm 直接依赖连同 lock 解析版本逐一在清单内**。四组反例实测 rc=1（删掉一条声明依赖 / 把 vite 版本改脏 / 组件表清空 / `bomFormat` 改成 SPDX）。
 - SBOM 定位为**发布期产物不入库**（`.gitignore` 加 `docs/sbom/`）：入库就会产生"陈旧副本 vs 当前 lock"的第二真值，与本轮要消灭的漂移同类；改为随 tag 生成并公布 SHA256，可独立复核。
 - 台账#18 关闭：`scripts/type_gate.py` 增**零豁免机器判据**——扫 `backend/app` + `scripts` 的行尾类型抑制注释与 `mypy.ini` 的 `disable_error_code`/`ignore_errors`/`follow_imports` 整段关闸，预算取 `fixtures/type_floor.json` 的 `max_suppressions`（实测全仓为 0 ⇒ 钉 0）。反例实测：临时文件注入一条抑制注释 → rc=1 且精确报 `文件:行`，删除后 rc=0。范围刻意**不含 ruff 的行尾 noqa**（那是另一套判据，理由逐条写在 `ruff.toml` 头注，混判会把已论证的余量一起打掉）。
 
-### 由门禁自己抓出的两处"判据自指"缺陷（如实登记）
+### 由门禁自己抓出的三处"判据自指 / 覆盖缺口"缺陷（如实登记）
 - 扫描器把**自身文档字符串里引用的被扫字面量**当成违规（`type_gate.py` 首跑自判红 1 处）。修法不是加白名单——按既有立规「文档引用不等于规则本体，不得据此豁免」，这里反过来同样成立：**扫描器自身文案不得内嵌被扫字面量**，改写为描述式表述。
-- SBOM 负例跑完后我用 `json.dumps` 往返"复原"清单，结果对账仍判红 ⇒ 生成型产物的正确复位是**重跑生成器**（`npm run sbom`），不是把内存对象写回去。已按此复核并记录 sha256 变化。
+- 生成型产物的复位必须重跑生成器：负例跑完我用 `json.dumps` 往返"复原"清单，对账仍判红 ⇒ 正确复位是 `npm run sbom` 重新生成（已按此复核并记录 sha256 变化）。
+- **lint 覆盖缺口自查**：新写的 SBOM 守卫放在 `scripts/` 时**不在任何 lint 范围内**（ESLint 判据基准锁在 `frontend/`，实测把配置上移仓根又因插件解析不到 `frontend/node_modules` 而 rc=2）。正解是回到既有约定——`*.mjs` 门禁一律放 `frontend/tests/`（与 `kb_guard`/`fhir_guard`/`coverage_floor_guard` 同族），`scripts/` 只放 Python 工具。移入后 ESLint **立刻抓出该文件里一个只自增从不输出的死变量**（`pass`），证明"有 lint 覆盖"不是纸面属性。现两模式各 9 条判据通过，pip 侧改用 `cyclonedx-py environment`（实测 `requirements` 模式因本仓不钉死版本只出 5 条空壳清单，正是"清单存在但没用"的假门禁形态）。
 
 ### Changed
 - 平台侧依赖图实测**不可用**：`GET/PUT /repos/lxh113377/doctor-ai-dx/dependency-graph/sbom` 均返回 404，而同法在 3/3 peer 上可读（1817 / 3038 / 1223 组件）⇒ 属账号/仓库设置面（需本人开启），**不以代码冒充已完成**，登记为待办；本轮因此把可审计性做在仓库自证产物上。

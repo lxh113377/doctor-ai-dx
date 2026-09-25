@@ -20,10 +20,15 @@ import { createHash } from "node:crypto"
 import { fileURLToPath } from "node:url"
 import { dirname, resolve } from "node:path"
 
-const REPO = resolve(dirname(fileURLToPath(import.meta.url)), "..")
+// 本文件在 frontend/tests/ 下（与 kb_guard / fhir_guard / coverage_floor_guard 同一族，
+// 因此也在 ESLint 覆盖范围内；仓根 scripts/ 只放 Python 工具链。）
+const REPO = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..")
 // 生成工具主版本按 manifest 分列（唯一一处，换大版本＝换判据须复核后同步改）：
 // npm → @cyclonedx/cyclonedx-npm 6.x；pip → cyclonedx-bom 7.x
 const TOOL_MAJOR = { npm: 6, pip: 7 }
+// 组件数下限同样按 manifest 分列：npm 是整棵 lock（实测 362）；pip 侧 CI 只装本仓两份
+// requirements（闭包约 30），换环境数字会大幅浮动 ⇒ 下限取"足以证明非空"的量级，不取实测值。
+const MIN_COMPONENTS = { npm: 50, pip: 15 }
 const LOCK = resolve(REPO, "frontend/package-lock.json")
 const PKG = resolve(REPO, "frontend/package.json")
 const REQS = [resolve(REPO, "backend/requirements.txt"), resolve(REPO, "backend/requirements-dev.txt")]
@@ -64,7 +69,8 @@ for (const c of comps) {
 console.log("== 清单本体 ==")
 check("bomFormat 为 CycloneDX", bom.bomFormat === "CycloneDX", String(bom.bomFormat))
 check("specVersion 存在且为 1.x", /^1\.\d+$/.test(String(bom.specVersion)), String(bom.specVersion))
-check("组件数 ≥ 50（输入非空证明：空清单不得判绿）", comps.length >= 50, `实测 ${comps.length}`)
+check(`组件数 ≥ ${MIN_COMPONENTS[manifest]}（${manifest} 侧输入非空证明：空清单不得判绿）`,
+  comps.length >= MIN_COMPONENTS[manifest], `实测 ${comps.length}`)
 check("每个组件都有 name 与非空 version", comps.every((c) => c.name && String(c.version ?? "").length > 0),
   comps.filter((c) => !c.name || !c.version).slice(0, 3).map((c) => c.name || "(无名)").join(","))
 check("每个组件都有 purl（可跨源追溯源）", comps.every((c) => typeof c.purl === "string" && c.purl.startsWith("pkg:")),
@@ -98,10 +104,10 @@ check(`本仓声明的依赖数 ≥ 5（${manifest}，防"声明侧为空⇒零�
 const missing = declared.filter((d) => !byName.has(d.name))
 check("每个声明依赖都出现在清单里", missing.length === 0, missing.slice(0, 5).map((d) => d.name).join(","))
 const verBad = declared.filter((d) => d.wantVersion && byName.has(d.name) && !byName.get(d.name).includes(d.wantVersion))
-check("每个声明依赖的锁定版本与清单一致（npm 侧）", verBad.length === 0,
+check("每个声明依赖的锁定版本与清单一致（仅 npm 侧有 lock 解析版本；pip 侧声明为区间故自然通过）", verBad.length === 0,
   verBad.slice(0, 5).map((d) => `${d.name}: lock ${d.wantVersion} vs bom [${byName.get(d.name)?.join("|")}]`).join(" ; "))
 
-console.log(`\nSBOM GUARD SUMMARY: 文件=${sbomPath} 组件=${comps.length} 声明依赖=${declared.length} `
+console.log(`\nSBOM GUARD SUMMARY: 文件=${sbomPath} 组件=${comps.length} 声明依赖=${declared.length} 判据通过=${pass} `
   + `sha256=${createHash("sha256").update(raw).digest("hex").slice(0, 16)}`)
 if (manifest === "npm") console.log("  NOTE 传递闭包规模差属正常：lock 节点含本平台未安装的可选二进制变体，按声明层对账不按其全等")
 if (fail) {
