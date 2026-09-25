@@ -42,8 +42,8 @@ repos:
         files: \.(js|jsx|mjs)$
 
       - id: ruff
-        name: 后端 ruff 静态检查（规则集钉在 backend/ruff.toml）
-        entry: ruff check backend/app backend/tests
+        name: ruff 静态检查（backend + scripts，规则集钉在 ruff.toml）
+        entry: ruff check backend/app backend/tests scripts
         language: system
         pass_filenames: false
         files: \.py$

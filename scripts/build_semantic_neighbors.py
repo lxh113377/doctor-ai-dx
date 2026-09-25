@@ -76,7 +76,7 @@ def encode(rows: list[dict], engine_dir: str):
     try:
         from bge_onnx_engine import BgeOnnxEncoder
     except Exception as exc:  # noqa: BLE001
-        raise SystemExit(f"FAIL: 无法导入 bge_onnx_engine（engine-dir={engine_dir}）：{exc}")
+        raise SystemExit(f"FAIL: 无法导入 bge_onnx_engine（engine-dir={engine_dir}）：{exc}") from exc
     enc = BgeOnnxEncoder()
     vec = enc.encode([r["doc"] for r in rows])
     if vec.shape[1] != DIM:
@@ -126,7 +126,7 @@ def main() -> int:
           "// 生成器/模型/参数/语料指纹见 SEMANTIC_META；运行时零模型零网络，纯查表，双端同源。",
           f"// {HEADER.replace(chr(10), ' | ')}",
           "// 语料指纹（knowledge.js 变更须重跑本脚本，semantic_guard 会拦漂移）：",
-          f"export const SEMANTIC_META = {{",
+          "export const SEMANTIC_META = {",
           f"  modelId: {json.dumps(MODEL_ID)}, modelSha256: {json.dumps(MODEL_SHA256)}, dim: {DIM},",
           f"  topKeep: {TOP_KEEP}, minCos: {MIN_COS}, scoreScale: {SCORE_SCALE},",
           f"  corpusSha256: {json.dumps(sha)}, entries: {len(rows)}, generatedAt: {json.dumps(date.today().isoformat())},",

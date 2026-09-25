@@ -1,4 +1,4 @@
-# 后端静态检查唯一权威配置。CI 与本地均按本文件判定（不依赖任何上级/默认配置）。
+# 全仓 Python 静态检查唯一权威配置（backend 业务码 + tests + scripts 工具链）。CI 与本地均按本文件判定。
 # 钉死规则集的理由（2026-09-25 实测）：ruff 各版本默认 select 并不相同（本机 0.16 默认已含
 # I/B/UP/RUF100，旧版只含 E4/E7/E9/F）。不写本文件 ⇒ 换 ruff 版本即换判据，本地绿不代表 CI 绿。
 # 升级 ruff 时必须重跑本门禁并逐条复核新增规则，禁止一次性打开新规则。
@@ -11,7 +11,7 @@
 # scripts/build_semantic_neighbors.py 生成并被 semantic_guard.mjs 按语料指纹核对，禁止手工重排。
 line-length = 120
 target-version = "py312"
-src = ["app", "tests"]
+src = ["backend/app", "backend/tests", "scripts"]
 
 [lint]
 select = [

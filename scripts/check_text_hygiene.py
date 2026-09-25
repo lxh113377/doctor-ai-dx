@@ -37,7 +37,7 @@ def scan_file(path: Path) -> list[str]:
     if b"\x00" in raw[:8192]:
         return []  # 真二进制（ZIP/PNG 等）不归本门禁管
     text = raw.decode("utf-8", errors="replace")
-    if "�" in text:  # U+FFFD：解码替换符，说明非 UTF-8 字节
+    if "\ufffd" in text:  # U+FFFD：解码替换符，说明文件含非 UTF-8 字节（本行只写转义序列，不写字面量）  # U+FFFD：解码替换符，说明非 UTF-8 字节
         problems.append(f"{path}: 非 UTF-8 字节（解码出现替换符）")
     for lineno, line in enumerate(text.split("\n"), 1):
         for col, ch in enumerate(line, 1):

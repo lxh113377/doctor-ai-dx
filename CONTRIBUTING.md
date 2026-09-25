@@ -36,10 +36,10 @@ CI 会跑同样的东西；`main` 分支保护要求 `build-and-test` 与 `backe
 
 静态检查判据的维护约定（v1.12.0 起）：
 
-- 规则集**钉在仓内**（`frontend/eslint.config.mjs`、`backend/ruff.toml`），不依赖工具默认值。
+- 规则集**钉在仓内**（`frontend/eslint.config.mjs`、`仓根 ruff.toml`），不依赖工具默认值。
   实测理由：ruff 0.16 的默认 select 与旧版不同，靠默认值 ⇒ 换工具版本即换判据，本地绿不代表 CI 绿。
 - 新增/关闭规则须写**为什么**（现有两处关闭：`require-await` 会误判 fetch 桩与同形 async 签名；
-  ruff 不选 `BLE001`/`RUF100` 的理由见 `backend/ruff.toml` 头注）。禁止用 `// eslint-disable` 批量压告警凑绿。
+  ruff 不选 `BLE001`/`RUF100` 的理由见 `仓根 ruff.toml` 头注）。禁止用 `// eslint-disable` 批量压告警凑绿。
 - 关闭规则不等于关闭问题：判据本身要能被反例证明"会红"（注入违例文件跑 `npm run lint` 应 rc=1）。
 
 ## 三条不能碰的红线

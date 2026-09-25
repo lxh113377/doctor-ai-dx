@@ -10,7 +10,7 @@
 ### Added（静态质量门禁：对标实测同类 5 家中 3 家有 linter，我方此前全仓零静态检查）
 - 对标取证（`gh api contents` 实测）：`OpenEMR` 有 `eslint.config.mjs` + `.pre-commit-config.yaml` + 专门 Linting 工作流；`ragflow` 有 `pyproject.toml`(ruff) + `web-lint` 工作流 + CodeQL；`phlox` 有 `eslint.config.js` + CI + CodeQL；`medical-rag` 无任何工作流；`CDSS-RAG-Chatbot` 现已 404（仓库消失，登记为「维护状态」证据）。我方前端无 ESLint、后端无 ruff/flake8/mypy ⇒ 本轮补齐
 - `frontend/eslint.config.mjs`（ESLint 9.39.4 flat config，插件 `@eslint/js` 9.39.5 / `eslint-plugin-react` 7.37.5 / `react-hooks` 7.1.1 / `react-refresh` 0.5.7 / `globals` 17.12.0）+ `frontend/lint.mjs`（把执行目录钉在 `frontend/` 的薄壳，理由见文件头注）+ `npm run lint:js|lint:py|lint`，**`--max-warnings=0`：警告也算红**
-- `backend/ruff.toml`（ruff 0.16.5，`requirements-dev.txt` 钉 `>=0.16.5,<0.17`）：**规则集显式钉文件**——实测 ruff 0.16 默认 select 已含 `I/B/UP/RUF100` 而旧版只含 `E4/E7/E9/F`，靠默认值等于"换工具版本即换判据"。刻意不选 `BLE001`（失败安全降级本就靠宽 `except` 兜，逐条断言在 `test_live_path.py`）与 `RUF100`（ruff 与 pycodestyle 对 `E402` 的判定不同，钉它会随换检查器而判据反转），理由写进配置头注
+- `仓根 ruff.toml`（ruff 0.16.5，`requirements-dev.txt` 钉 `>=0.16.5,<0.17`）：**规则集显式钉文件**——实测 ruff 0.16 默认 select 已含 `I/B/UP/RUF100` 而旧版只含 `E4/E7/E9/F`，靠默认值等于"换工具版本即换判据"。刻意不选 `BLE001`（失败安全降级本就靠宽 `except` 兜，逐条断言在 `test_live_path.py`）与 `RUF100`（ruff 与 pycodestyle 对 `E402` 的判定不同，钉它会随换检查器而判据反转），理由写进配置头注
 - `scripts/coverage_gate.py`：Python 侧模块级地板门禁，与 JS 侧 `coverage_floor_guard.mjs` 读**同一份** `fixtures/coverage_floor.json`（新增 `py_modules` 9 项模块地板）
 - `scripts/check_text_hygiene.py`（新增文本卫生门禁，CI 第 4 个 job + 第 7 枚 pre-commit 钩子）：扫 `git ls-files` 的 105 个受控文本文件，禁止 C0 控制字符（`\t \n \r` 之外）与 DEL。**立论依据是同类缺陷两次实测**：v1.11.0 的 `\b`→`0x08` 死判据、v1.12.0 写本文档时同一机制当场复发——"记得用原始字符串"防不住，需要与语言无关的字节层门禁。清单条目数低于 40 即判红（防"清单来源坏了 ⇒ 零违规"的假通过）
 - 双端同表红旗探针 6 条（`engine_smoke.mjs` 的 `RED_FLAG_PROBES` ↔ `smoke_engine.py` 的 `RED_FLAG_PROBES` 逐字同表）：覆盖数值血压判定、组合线索、超生理值域拒收、同名去重、空输入。两端各自做变异实测——取消 JS 侧值域守卫 → JS rc=1；取消 Py 侧同一守卫 → Py rc=1
@@ -24,6 +24,7 @@
 5. 死代码与缺陷类告警清零：后端 `F401`（`SEMANTIC_META` 死导入）、`F841`（`fhir.py` 死变量，与 JS 端逐行核对确认非漏用）、5 处 `B904`（`raise ... from None`，与「日志不写堆栈」的隐私声明一致）、10 处导入次序；前端死类 `Http404`、4 处死导入、恒真三元 `filter(x ? true : true)`、`no-useless-escape`
 6. `App.jsx` 三处 `exhaustive-deps` 告警按规则建议改为解构稳定成员（`useCallback` 已稳定，语义零变化）——而非写死 disable；`require-await` 经实测确认会误判 fetch 桩与同形 async 签名，故不启用并写明理由
 7. 新立的文本卫生门禁**首跑即抓出 2 处同族缺陷**（`ARCHITECTURE.md` 与 `EVAL_CARD.md` 各 1 处 `0x08`，均为本轮用 Python heredoc 写文档时 `\b` 被转义），另在自己刚写的 CHANGELOG 里当场抓到 6 处 ⇒ 该门禁不是假想需求。反例实测：临时文件混入退格符 → 精确报出 `文件:行:列 + U+0008` 且 rc=1
+8. 该门禁**第一次在 CI 上跑就判红了自己**：它自己的源码里"非 UTF-8 检测"用的字面量替换符被当作内容写进文件（合法 UTF-8，但扫描器把它当违规字节报出）⇒ 改为只写转义序列。同时把 ruff 配置从 `backend/ruff.toml` 上移为**仓根 `ruff.toml`**，`scripts/` 一并纳入静态检查 —— 顺带暴露 `build_semantic_neighbors.py` 的 B904 与无占位符 f-string 两处真问题（均修）；生成器只改源码未重跑，`semantic_guard` 22 项与语料指纹复验零漂移
 
 ### 度量与地板（口径变更如实标注）
 - `backend/.coveragerc` 开启 **`branch = True`**：Python 口径由「仅语句」改为「语句+分支弧」（更严）。同批测试新口径实测 **90.53%**（旧语句口径 87%）；`rules.py` 75→**98**、`routers/api.py` 57→**100**、`main.py` 96→98；地板 85→**88**

@@ -50,7 +50,7 @@ docker compose run --rm selftest   # 镜像内自带 19+15+16 项断言，全绿
 ```bash
 cd frontend
 npm test       # 十四件套：49 冒烟(含双端同表红旗探针) + 31 例引擎评测 + 检索分层回归 + 检索器 3 档双端一致 + 语义表守卫 + live 路径红线 36 项 + 双端契约 31:31 + FHIR 导出 45 项 + 隐私声明对账 59 项（契约需本机 Python）
-npm run lint     # 静态检查：ESLint（frontend，--max-warnings=0）+ ruff（backend，规则集钉在 backend/ruff.toml）
+npm run lint     # 静态检查：ESLint（frontend，--max-warnings=0）+ ruff（backend，规则集钉在 仓根 ruff.toml）
 npm run coverage:js   # c8 覆盖率 + 模块级地板棘轮（红线模块退化会被单独拦下）
 npm run coverage:py   # coverage.py（语句+分支弧）汇总 5 套后端测试 → scripts/coverage_gate.py 按模块地板对账
 npm run build  # Vite 生产构建

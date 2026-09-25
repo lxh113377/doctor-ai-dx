@@ -1,5 +1,5 @@
 # 开发/CI 依赖（不进运行时镜像：backend/Dockerfile 只装 requirements.txt）
 coverage>=7.16.0
 # 静态检查。上界钉到 0.17：ruff 在 0.x Minor 跳版会改默认规则集与既有规则语义，
-# 判据必须稳定（规则集本身钉在 backend/ruff.toml）。升版需人工复核新增告警后另开一轮。
+# 判据必须稳定（规则集本身钉在 仓根 ruff.toml）。升版需人工复核新增告警后另开一轮。
 ruff>=0.16.5,<0.17
