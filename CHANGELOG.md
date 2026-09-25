@@ -5,6 +5,27 @@
 
 ## [Unreleased]
 
+## [1.14.0] - 2026-09-25
+
+### Added（交付物可审计性：对标 OpenEMR / ragflow / phlox 的"打 tag 即由机器出包"）
+- 对标实测（`gh api actions/workflows`）：**OpenEMR** 有 `Build Release on Tag` / `Build Release` / `Build Patch Release` / `Dependabot Auto-Merge`；**ragflow** 有 `release`；**phlox** 有 `Build and Release` + `release-please`；**medical-rag** 零工作流。我方发布链此前全靠本机手工 `git archive` + `gh release create`，同一轮内因"包内容与 tag 不同步"重锚三次 ⇒ 新增 `.github/workflows/release.yml`（tag 触发）：**先跑全部门禁**（ruff / type_gate / 文本卫生 / ESLint / 十四件套 / 双端覆盖率地板 / build / bundle / openapi 漂移）绿了才产出 `doctor-ai-dx-source-<tag>.zip` + 双端 SBOM + `SHA256SUMS.txt`，并挂到该 tag 的 Release；源码包由 `git archive HEAD` 产出（＝tag 内容，不含未跟踪文件），并自检"文件数 >100 且打印 SHA256"防半成品工件。
+- SBOM 采用**成熟工具 + 钉版 + 门禁对账**：npm 侧 `@cyclonedx/cyclonedx-npm@6.0.1`（`npm run sbom`），pip 侧 `cyclonedx-bom==7.4.0`（CI 内）。新增 `scripts/sbom_guard.mjs`（`npm run sbom:check`）：校 `bomFormat/specVersion`、组件数 ≥50（**空清单不得判绿**）、每组件必有 name/version/purl、生成工具主版本与 manifest 相符（npm=6 / pip=7，**换大版本＝换判据**）、**本仓声明的 17 个 npm 直接依赖连同 lock 解析版本逐一在清单内**。四组反例实测 rc=1（删掉一条声明依赖 / 把 vite 版本改脏 / 组件表清空 / `bomFormat` 改成 SPDX）。
+- SBOM 定位为**发布期产物不入库**（`.gitignore` 加 `docs/sbom/`）：入库就会产生"陈旧副本 vs 当前 lock"的第二真值，与本轮要消灭的漂移同类；改为随 tag 生成并公布 SHA256，可独立复核。
+- 台账#18 关闭：`scripts/type_gate.py` 增**零豁免机器判据**——扫 `backend/app` + `scripts` 的行尾类型抑制注释与 `mypy.ini` 的 `disable_error_code`/`ignore_errors`/`follow_imports` 整段关闸，预算取 `fixtures/type_floor.json` 的 `max_suppressions`（实测全仓为 0 ⇒ 钉 0）。反例实测：临时文件注入一条抑制注释 → rc=1 且精确报 `文件:行`，删除后 rc=0。范围刻意**不含 ruff 的行尾 noqa**（那是另一套判据，理由逐条写在 `ruff.toml` 头注，混判会把已论证的余量一起打掉）。
+
+### 由门禁自己抓出的两处"判据自指"缺陷（如实登记）
+- 扫描器把**自身文档字符串里引用的被扫字面量**当成违规（`type_gate.py` 首跑自判红 1 处）。修法不是加白名单——按既有立规「文档引用不等于规则本体，不得据此豁免」，这里反过来同样成立：**扫描器自身文案不得内嵌被扫字面量**，改写为描述式表述。
+- SBOM 负例跑完后我用 `json.dumps` 往返"复原"清单，结果对账仍判红 ⇒ 生成型产物的正确复位是**重跑生成器**（`npm run sbom`），不是把内存对象写回去。已按此复核并记录 sha256 变化。
+
+### Changed
+- 平台侧依赖图实测**不可用**：`GET/PUT /repos/lxh113377/doctor-ai-dx/dependency-graph/sbom` 均返回 404，而同法在 3/3 peer 上可读（1817 / 3038 / 1223 组件）⇒ 属账号/仓库设置面（需本人开启），**不以代码冒充已完成**，登记为待办；本轮因此把可审计性做在仓库自证产物上。
+- 文档：`ARCHITECTURE.md` §7 新增「发布工件与 SBOM」行、`EVAL_CARD.md` 供应链行、`CONTRIBUTING.md` 增加"改依赖必须重跑 SBOM 对账"、README 命令表补 `npm run sbom` / `sbom:check`。
+- 🔴 **同族缺陷第五次复发，被 r14 立的门禁当场抓住**：本轮给 `type_gate.py` 加零豁免判据时，正则里的词边界又在经 Python 字符串落地时变成裸 `0x08`（1 处），`check_text_hygiene.py` 首扫即报 `scripts/type_gate.py:39:82 控制字符 U+0008`。这是该缺陷类第四次在**本项目内**复发（r13 隐私判据 3 条 → r14 文档 2 处 + CHANGELOG 6 处 → r14 收口 AGENTS.md 1 处 → 本轮 1 处），也是"为什么必须留字节层门禁、不能靠记得用 raw 字符串"的最强证据。
+
+### 红线影响
+无。三条产品红线逻辑零改动；本轮只动发布与门禁基础设施（新增工作流/脚本/判据），运行时代码零变更；默认检索档仍 bm25，评测仍是同一批 31 例。
+
+
 ## [1.13.0] - 2026-09-25
 
 ### Added（类型层门禁：对标 OpenEMR 的 phpstan level 10 + baseline-diff，我方直接钉零错误档）

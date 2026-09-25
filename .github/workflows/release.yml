@@ -1,0 +1,113 @@
+name: Release artifacts (tag)
+
+# 第十六轮对标落地：OpenEMR `Build Release on Tag` / ragflow `release` / phlox `Build and Release`
+# 三家都是"打 tag 即由机器产出发布工件"，我方此前全靠本机手工 `git archive` + `gh release create`，
+# 于是出现过"源码包内容与 tag 不同步"的人工漂移（同一轮内三次重锚）。本工作流把该链变成机器判据：
+#   全部门禁绿 ⇒ 才产出「tag 源码包 + 双端 SBOM + SHA256SUMS」并挂到 Release 上。
+# 边界（如实声明）：本站点部署仍由本机 wrangler 手工执行（`ci.yml` 的 deploy 作业按 AUTO_DEPLOY 决定，
+# 未配 Cloudflare Token 前不接管）；本工作流只管"发布工件的可复现与可审计"。
+on:
+  push:
+    tags: ['v[0-9]+.[0-9]+.[0-9]+']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: '要为哪个 tag 出包（留空则用当前 ref）'
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+
+jobs:
+  verify-and-package:
+    runs-on: ubuntu-latest
+    env:
+      TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+    steps:
+      - uses: actions/checkout@v7
+        if: github.event_name != 'workflow_dispatch'
+      - uses: actions/checkout@v7
+        if: github.event_name == 'workflow_dispatch'
+        with:
+          ref: ${{ inputs.tag }}
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Install（运行时 + dev 件，与 ci.yml 同源）
+        run: |
+          python -m pip install -r backend/requirements.txt -r backend/requirements-dev.txt
+          cd frontend && npm ci --no-audit --no-fund
+
+      - name: 出包前置门禁（任一失败即不产出工件）
+        run: |
+          set -e
+          ruff check backend/app backend/tests scripts
+          python scripts/type_gate.py --quiet
+          python scripts/check_text_hygiene.py --quiet
+          cd frontend
+          npm run lint:js
+          npm test
+          npm run coverage:js
+          npm run coverage:py
+          npm run build
+          npm run test:bundle
+          python ../scripts/gen_openapi.py --check
+
+      - name: SBOM · npm 侧（cyclonedx-npm 钉版 + 与声明对账）
+        run: |
+          cd frontend
+          npm run sbom
+          node ../scripts/sbom_guard.mjs --sbom docs/sbom/frontend.cdx.json --manifest npm
+
+      - name: SBOM · pip 侧（cyclonedx-bom 钉版 + 与 requirements 对账）
+        run: |
+          python -m pip install --quiet "cyclonedx-bom==7.4.0"
+          cyclonedx-py requirements backend/requirements.txt -o docs/sbom/backend.cdx.json
+          node scripts/sbom_guard.mjs --sbom docs/sbom/backend.cdx.json --manifest pip
+
+      - name: 源码包 = tag 内容（可复现，git archive 不含未跟踪文件）
+        run: |
+          mkdir -p dist-release
+          git archive --format=zip -o "dist-release/doctor-ai-dx-source-${TAG}.zip" HEAD
+          python - <<'PY'
+          import hashlib, os, zipfile
+          p = os.path.join("dist-release", f"doctor-ai-dx-source-{os.environ['TAG']}.zip")
+          names = [n for n in zipfile.ZipFile(p).namelist() if not n.endswith("/")]
+          digest = hashlib.sha256(open(p, "rb").read()).hexdigest()
+          print(f"源码包文件数={len(names)} sha256={digest}")
+          assert len(names) > 100, "源码包文件数异常（可能 tag checkout 不完整）"
+          PY
+
+      - name: SHA256SUMS（三个工件逐一可核验）
+        run: |
+          cd dist-release
+          cp ../docs/sbom/frontend.cdx.json ../docs/sbom/backend.cdx.json .
+          sha256sum * | tee SHA256SUMS.txt
+          cd ..
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ env.TAG }}
+          path: dist-release/*
+          if-no-files-found: error
+
+      - name: 挂到 Release（不存在则先建占位，正文随后由人工补双语说明）
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            echo "::warning::tag $TAG 尚无 Release，先建占位（正文含双语说明由发布流程补齐）"
+            gh release create "$TAG" --title "$TAG" --notes "Auto-created by release.yml; 详细双语说明见编辑后的正文。"
+          fi
+          cd dist-release
+          gh release upload "$TAG" doctor-ai-dx-source-*.zip frontend.cdx.json backend.cdx.json SHA256SUMS.txt --clobber
+          cd ..
+          gh release view "$TAG" --json tagName,assets --jq '"assets=" + ([.assets[].name] | join(","))'

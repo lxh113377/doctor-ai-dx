@@ -51,7 +51,9 @@ docker compose run --rm selftest   # 镜像内自带 19+15+16 项断言，全绿
 cd frontend
 npm test       # 十四件套：49 冒烟(含双端同表红旗探针) + 31 例引擎评测 + 检索分层回归 + 检索器 3 档双端一致 + 语义表守卫 + live 路径红线 43 项（含追问 live 分支与续问上限零外呼） + 双端契约 31:31 + FHIR 导出 45 项 + 隐私声明对账 59 项（契约需本机 Python）
 npm run lint     # 静态检查：ESLint（frontend，--max-warnings=0）+ ruff（backend 与 scripts，规则集钉在仓根 ruff.toml）
-npm run typecheck  # Python 类型门禁：mypy 严格档（check_untyped_defs）+ 阈值单一源，实测 23 文件 0 error
+npm run typecheck  # Python 类型门禁：mypy 严格档（check_untyped_defs）+ 阈值单一源，实测 23 文件 0 error、抑制项 0（零豁免有机器判据）
+npm run sbom       # 生成前端 CycloneDX SBOM（钉版 @cyclonedx/cyclonedx-npm）；属发布期产物，不入库
+npm run sbom:check # SBOM 对账门禁：声明依赖连同 lock 版本逐一在单 + 组件数/purl/工具版本核验
 npm run coverage:js   # c8 覆盖率 + 模块级地板棘轮（红线模块退化会被单独拦下）
 npm run coverage:py   # coverage.py（语句+分支弧）汇总 5 套后端测试 → scripts/coverage_gate.py 按模块地板对账
 npm run build  # Vite 生产构建

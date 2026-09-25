@@ -37,3 +37,7 @@ htmlcov/
 .coverage.json
 coverage-py.json
 .mypy_cache/
+
+# SBOM 为发布期产物（scripts/sbom_guard.mjs 校验、release.yml 作为 Release 资产上传），不入库防陈旧副本
+frontend/report.cdx.json
+docs/sbom/

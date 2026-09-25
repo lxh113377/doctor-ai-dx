@@ -35,6 +35,32 @@ def parse_version(text: str) -> tuple[int, ...]:
     return tuple(int(x) for x in text.split(".")[:3] if x.isdigit())
 
 
+SUPPRESS_CODE = re.compile(r"#\s*type:\s*ignore")
+SUPPRESS_CFG = re.compile(r"^\s*(disable_error_code|ignore_errors|follow_imports)\b")
+
+
+def find_suppressions() -> list[str]:
+    """扫 mypy 抑制项：源码里的行尾类型抑制注释（井号 + type 冒号 ignore 形态）
+    与 mypy.ini 里的整段关闸（disable_error_code / ignore_errors / follow_imports），台账#18。
+
+    本行刻意不写那条字面量：扫描器若在自身文案里出现被扫字面量，就会自判红（实测发生一次）。
+    只针对 mypy 一类，**不碰 ruff 的行尾 noqa**——后者在 ruff.toml 头注里逐条写明理由，
+    属不同判据体系，混在一起判红会把已论证的余量也一起打掉。
+    """
+    hits: list[str] = []
+    for base in (REPO / "backend" / "app", REPO / "scripts"):
+        for f in sorted(base.rglob("*.py")):
+            for n, line in enumerate(f.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
+                if SUPPRESS_CODE.search(line):
+                    hits.append(f"{f.relative_to(REPO)}:{n}")
+    cfg = REPO / "mypy.ini"
+    if cfg.is_file():
+        for n, line in enumerate(cfg.read_text(encoding="utf-8").splitlines(), 1):
+            if SUPPRESS_CFG.match(line):
+                hits.append(f"mypy.ini:{n} {line.strip()}")
+    return hits
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="mypy 阈值棘轮")
     ap.add_argument("--fixture", default=str(FIXTURE))
@@ -69,7 +95,11 @@ def main() -> int:
     checked = int(m.group("checked"))
     errors = int(m.groupdict().get("err", 0) or 0)
 
+    budget = int(floor.get("max_suppressions", 0))
+    sup = find_suppressions()
     checks: list[tuple[str, bool, str]] = [
+        (f"mypy 抑制项 {len(sup)} 处 ≤ 预算 {budget}（零豁免要有机器判据，台账#18）",
+         len(sup) <= budget, "; ".join(sup[:6])),
         ("mypy 运行版本 ≥ 阈值最低版本", parse_version(run_version) >= parse_version(str(floor["min_version"])),
          f"实跑 {run_version} / 最低 {floor['min_version']}"),
         ("requirements-dev.txt 钉住 mypy 版本区间（换版本=换判据）", bool(pinned),

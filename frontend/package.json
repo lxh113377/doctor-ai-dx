@@ -1,7 +1,7 @@
 {
   "name": "doctor-ai-dx-frontend",
   "private": true,
-  "version": "1.13.0",
+  "version": "1.14.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -11,6 +11,8 @@
     "lint:py": "cd .. && ruff check backend/app backend/tests scripts",
     "lint": "npm run lint:js && npm run lint:py",
     "typecheck": "cd .. && python scripts/type_gate.py",
+    "sbom": "npx --yes @cyclonedx/cyclonedx-npm@6.0.1 --sv 1.5 --mc-type application -o ../docs/sbom/frontend.cdx.json",
+    "sbom:check": "node ../scripts/sbom_guard.mjs --sbom docs/sbom/frontend.cdx.json --manifest npm",
     "test:smoke": "node tests/engine_smoke.mjs",
     "test:engine": "node tests/engine_eval.mjs",
     "test:retrieval": "node tests/retrieval_eval.mjs",

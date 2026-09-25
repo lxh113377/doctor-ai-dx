@@ -18,10 +18,12 @@
         "build_semantic_neighbors.py 空列表 pairs 无元素类型（var-annotated 抓出，生成器侧真实形状为 list[list[str|int]]）"
       ]
     },
-    "ratchet_note": "只准收紧：expected_errors 下调需实测；上调必须写明原因并交用户决策（自动化任务不代决）。files_checked_min 同理由只升不降——它是『mypy 真的检查了东西』的输入非空证明（R247），掉下去说明 scope 或配置坏了。"
+    "ratchet_note": "只准收紧：expected_errors 下调需实测；上调必须写明原因并交用户决策（自动化任务不代决）。files_checked_min 同理由只升不降——它是『mypy 真的检查了东西』的输入非空证明（R247），掉下去说明 scope 或配置坏了。",
+    "suppression_note": "max_suppressions=0 由 scripts/type_gate.py 机器核（台账#18）：源码出现 `# type: ignore` 或 mypy.ini 出现 disable_error_code/ignore_errors/follow_imports 即判红。实测本轮起全仓 mypy 抑制项为 0；ruff 的 `# noqa` 不在此列（其理由逐条写在 ruff.toml 头注）。"
   },
   "min_version": "2.3.1",
   "config": "mypy.ini",
   "files_checked_min": 23,
-  "expected_errors": 0
+  "expected_errors": 0,
+  "max_suppressions": 0
 }
