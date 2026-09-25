@@ -67,6 +67,7 @@ python tests/smoke_engine.py
 - **架构与不变式**：[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) —— 六段链路图、三条产品红线的代码插入点、JS/Py 双端镜像对账矩阵、检索层实测参数、环境变量与门禁清单（数字均为磁盘实测）。
 - **提交前快检**：[`.pre-commit-config.yaml`](.pre-commit-config.yaml) —— `pre-commit install` 后复用仓内既有守卫（版本真值 / 知识库零漂移 / 契约对账），秒级；全量十件套仍由 CI 兜底。
 - **安全边界与未保障项**：[`SECURITY.md`](SECURITY.md) —— 已实现的控制、明确未提供的保障（无认证/无审计/日志不留存）、漏洞报告渠道。
+- **数据留存与隐私**：[`docs/PRIVACY.md`](docs/PRIVACY.md) —— 服务端零持久化、日志不落请求体、脱敏形态清单、唯一出站为 LLM 供应商（必然携带问诊文本）、明确未提供项；**声明与代码一致性由 `npm run test:privacy` 机器核对**（漂移即判红，非纯文档承诺）。
 - **接手与贡献**：[`CONTRIBUTING.md`](CONTRIBUTING.md) —— 双端同步矩阵、提交前必跑门禁、知识库条目与评测集变更规范。
 
 ## 部署上线（已上线 ✅）
