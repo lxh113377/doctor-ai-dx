@@ -360,13 +360,15 @@ jobs:
         run: |
           set -e
           gh release view "$TAG" --json body --jq .body > /tmp/remote_body.md
-          # GitHub 存储正文会剥掉尾部空白，故只比 strip 后的内容；长度另核（差 >2 字符即异常）。
+          # GitHub 存储正文会剥掉尾部空白，故只比 strip 后的内容；长度另核（不等即异常）。
+          # 单位如实写"字节"：`wc -c` 数的是字节而非字符（中文一字三字节，实测正文 2500 字符＝4453 字节）。
+          # 相等性判定与单位无关，但把字节标成"字符"会让下一个读日志的人按字符去核对不上账。
           local_len=$(tr -d '[:space:]' < dist-release/NOTES.md | wc -c)
           remote_len=$(tr -d '[:space:]' < /tmp/remote_body.md | wc -c)
-          echo "正文非空白字符数 local=$local_len remote=$remote_len"
+          echo "正文非空白字节数 local=$local_len remote=$remote_len"
           if [ "$local_len" != "$remote_len" ]; then
             diff -u dist-release/NOTES.md /tmp/remote_body.md | head -30 || true
             echo "::error::线上 Release 正文与本次生成的 NOTES.md 不一致（旧正文残留？）"
             exit 1
           fi
-          test "$remote_len" -gt 500 || { echo "::error::线上正文仅 $remote_len 非空白字符，异常偏短"; exit 1; }
+          test "$remote_len" -gt 500 || { echo "::error::线上正文仅 $remote_len 非空白字节，异常偏短"; exit 1; }

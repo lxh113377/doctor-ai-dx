@@ -120,7 +120,7 @@ Py 覆盖率维持 93.6% 档、mypy 30 文件 0 error、ruff 全绿、pre-commit
 ### Added（把"发布正文"从一次性生成升级为可复算真值）
 - 阈值单一源 `frontend/tests/fixtures/release_notes.json`（`min_body_chars=200`）：`release.yml` 的正文步骤现**读该 fixture**而不是写死 200，fixture 缺失/非法一律 `exit 2`（fail-closed，实测 rc=2 + 指名 FileNotFoundError）。
 - `version_guard.mjs` 五→**九项**，新增三条与本文件同源的升版预检：① `release.yml` 真的引用该 fixture（防"fixture 成摆设、改数字只改一处"）；② 阈值形态合法（整数且 ≥50）；③ `CHANGELOG.md` 有 `## [当前版本]` 小节**且正文 ≥ 阈值**——把"CI 出包时才判红"前移到"升版本当轮就红"。**两组反例实测 rc=1**：`package.json` 改成无小节的 1.18.9 → 报「CHANGELOG.md 有 ## [1.18.9] 小节」；把 `release.yml` 里的 fixture 路径改掉 → 报「正文长度阈值取自 fixture」。改动后两个受控文件按 sha256 逐字节还原自检通过。
-- `release.yml` 末尾新增一步「线上正文 ↔ 本次生成结果逐字节对账」：`gh release view --json body` 与 `dist-release/NOTES.md` 比非空白字符数，不等即红并打出 diff（防"改了生成逻辑但 Release 还挂着旧正文"这种只有第二次发布才会暴露的残留）。
+- `release.yml` 末尾新增一步「线上正文 ↔ 本次生成结果逐字节对账」：`gh release view --json body` 与 `dist-release/NOTES.md` 比非空白字节数（第二十二轮校正单位：`wc -c` 数的是字节，实测 2500 字符＝4453 字节），不等即红并打出 diff（防"改了生成逻辑但 Release 还挂着旧正文"这种只有第二次发布才会暴露的残留）。
 - 本版同时是 1.18.1 那套新链条的**首次自证**：v1.18.2 的 Release 正文完全由 `CHANGELOG.md` 本节机器产出，资产与正文在 CI 内对账，本机可用 `scripts/release_repro_check.py --ref v1.18.2 --against <CI 包>` 独立复算。
 
 ### 度量与红线
