@@ -34,7 +34,7 @@ jobs:
           docker run -d --rm --name smoke -p 8787:8000 "$IMAGE"
           trap 'docker stop smoke >/dev/null 2>&1 || true' EXIT
           ok=""
-          for i in $(seq 1 40); do
+          for _ in $(seq 1 40); do
             if curl -fsS http://127.0.0.1:8787/api/health >/dev/null 2>&1; then ok=1; break; fi
             sleep 2
           done

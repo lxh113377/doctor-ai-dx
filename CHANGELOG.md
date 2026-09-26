@@ -5,6 +5,19 @@
 
 ## [Unreleased]
 
+## [1.21.1] - 2026-09-26
+
+补丁版，零功能改动。两处都是**本轮刚装的判据在 CI 上真跑时抓到的**，本机因 Docker Desktop 守护进程中途不可达而没能提前发现。
+
+### Fixed
+- 🔴 **`infra-lint` 在 main 上判红**：`.github/workflows/live-smoke.yml:32` 被 actionlint 内嵌的 shellcheck 报 `SC2034: i appears unused`（就绪等待循环只数次数不用循环变量）。改 `for _ in ...`，不放宽 actionlint、不给规则加豁免。第二十一轮那句话再次成立：这套静态把关上线后第一轮就拦到作者本人——区别是这次拦它的判据本身也是本轮新装的。
+- 🔴 **出包链与预检链不同闸（真实后果，不是理论风险）**：`release.yml` 的「出包前置门禁」此前**不含** `infra-lint` 的任何一步，所以 main 的 CI 已红的提交照样产出了 `ghcr.io/lxh113377/doctor-ai-dx:v1.21.0` + `:latest` 与 GitHub Release。本次即实证：v1.21.0 的镜像与 Release 来自一个 actionlint 红的提交，且已公开可拉 ⇒ 按既有规矩**不重锚 tag**，改出 v1.21.1。
+  处置＝把三条**不依赖 docker** 的新闸并进出包前置门禁：`scripts/dep_completeness.py`（import↔声明、非 optional peer↔锁）、`scripts/action_pin.py --verify`（钉版与上游 tag 逐字对账）、`scripts/live_smoke.py --selftest`（判据先自证）。
+  仍留在 CI 侧的边界（如实登记，不假称已同闸）：`actionlint` / `hadolint` / `docker compose config` 需要拉镜像，不进 release 门禁——否则出包链会被外部可用性绑死。
+
+### 影响面
+三条产品红线（红旗独立于 LLM、引用白名单、"辅助参考 · 医生终审"文案）逻辑零改动；默认检索档仍 bm25；评测仍是同一批 31 例；对外 API 行为零变化（线上 `version` 由 1.21.0 变 1.21.1，`live_smoke.py` 12 条断言全过）。
+
 ## [1.21.0] - 2026-09-26
 
 第二十三轮对标发布轮。主题＝**CI 自身的供给链 + 上游反馈闭环 + 已发布交付物的持续可用**。

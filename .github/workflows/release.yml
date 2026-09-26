@@ -56,9 +56,17 @@ jobs:
           cd frontend && npm ci --no-audit --no-fund
 
       - name: 出包前置门禁（任一失败即不产出工件）
+        # 第二十三轮补三闸：`release.yml` 此前与 `ci.yml` **不同闸**——CI 的 infra-lint 判红也照样出包
+        # （实证：v1.21.0 就是从一个 actionlint 红的提交产出了镜像与 Release）。补的这三条都不依赖
+        # docker 镜像，能在这一步零成本跑；actionlint/hadolint 仍需镜像，边界如实留在 §"出包与预检同闸"台账。
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -e
           python scripts/lock_guard.py
+          python scripts/dep_completeness.py
+          python scripts/action_pin.py --verify
+          python scripts/live_smoke.py --selftest
           ruff check backend/app backend/tests scripts
           python scripts/type_gate.py --quiet
           python scripts/check_text_hygiene.py --quiet
