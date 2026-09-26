@@ -84,10 +84,17 @@ if (changelog) {
 console.log("== CHANGELOG 小节单调性（append-only 机器核）==")
 const headsOf = (text) => new Set([...text.matchAll(/^## \[([^\]]+)\][^\n]*$/gm)].map((m) => m[1]))
 const cur = headsOf(changelog)
+// 环境判定：CI 的 actions/checkout 默认 depth 1 浅克隆 ⇒ 本地根本没有 tag。
+// 这条判据的发力点在**本地提交时**（本轮我就是用编辑器把 `## [1.23.0]` 整行弄丢的，pre-commit 跑得它）。
+// 所以：取到 tag ⇒ 硬核；浅克隆取不到 ⇒ **显式 SKIPPED**（既不静默记绿，也不做成 CI 里永远响的假警报）；
+// 非浅克隆却仍取不到 tag ⇒ 异常，判红（那种环境下"没有 tag"才真的是问题）。
+const gitCwd = fileURLToPath(new URL("../..", import.meta.url))
+let shallow = "unknown"
+try { shallow = execFileSync("git", ["rev-parse", "--is-shallow-repository"], { encoding: "utf8", cwd: gitCwd }).trim() } catch { /* 交给下面的分支处理 */ }
 let prevRef = ""
 try {
   prevRef = execFileSync("git", ["describe", "--tags", "--abbrev=0", "--exclude", `v${pkg}`],
-    { encoding: "utf8", cwd: fileURLToPath(new URL("../..", import.meta.url)) }).trim()
+    { encoding: "utf8", cwd: gitCwd }).trim()
 } catch { prevRef = "" }
 if (prevRef) {
   let prevHeads = new Set()
@@ -108,9 +115,12 @@ if (prevRef) {
   } else {
     check("上一版本小节非空（取到 tag 却解析出 0 个＝正则失效）", false, `tag=${prevRef}`)
   }
+} else if (shallow === "true") {
+  console.log("  SKIPPED 浅克隆（CI checkout 默认 depth 1）本地无 tag 可对照 ⇒ 本判据在本地 pre-commit 生效；"
+    + "这是**具名跳过**，不得读作已通过（同 test_limits 镜像内显式 SKIP 的口径）")
 } else {
-  check("能取到上一个已发布 tag（取不到就跳过＝本判据在无 tag 环境恒绿，如实点名）", false,
-    "git describe 未返回 tag")
+  check(`能取到上一个已发布 tag（非浅克隆环境取不到＝异常，浅克隆才允许具名跳过；实测 shallow=${shallow}）`,
+    false, "git describe 未返回 tag")
 }
 
 console.log(`RESULT: ${pass} pass / ${fail} fail`)
