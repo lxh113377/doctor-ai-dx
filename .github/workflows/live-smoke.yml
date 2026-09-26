@@ -1,0 +1,54 @@
+name: Delivered artifact smoke
+
+# 第二十三轮对标落地：OpenEMR 有 `recovery-path-smoketest.yml` 与 `release-mechanism-smoketest.yml`
+# ——发布机制与恢复路径本身被定时真跑。我方 release.yml 只在**打 tag 那一刻**验一次镜像与线上，
+# 之后 ghcr 的 `:latest` 与 pages.dev 再没有任何常驻判据：基础镜像被上游重建、Pages 侧配置漂移、
+# 或线上被别的版本手工覆盖，都不会有东西变红。「发布完成」与「仍然可用」是两件事，此前只有前者有判据。
+# 落点选择：不依赖本机（本机不可达 ghcr 是实测事实），全部在 runner 上做，零新增凭据。
+on:
+  schedule:
+    - cron: "30 4 * * *"   # 每天 12:30 UTC+8，与 dep-audit（周一）/link-health（周三）/dep-triage（周二）错开
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+env:
+  IMAGE: ghcr.io/lxh113377/doctor-ai-dx:latest
+
+jobs:
+  published-image:
+    name: 已发布镜像可拉 + 容器内自证 + 起服务打接口
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - name: 匿名拉取 :latest（不带任何登录态——评审拿到的就是这一条命令）
+        run: docker pull --platform linux/amd64 "$IMAGE"
+      - name: 镜像内套件自证（清单单一源 backend/tests/suite.json）
+        run: docker run --rm --workdir /srv/backend --entrypoint python "$IMAGE" selftest.py
+      - name: 真起服务跑同一套线上断言（健康检查 + 三条红线 + 错误契约）
+        run: |
+          set -eu
+          docker run -d --rm --name smoke -p 8787:8000 "$IMAGE"
+          trap 'docker stop smoke >/dev/null 2>&1 || true' EXIT
+          ok=""
+          for i in $(seq 1 40); do
+            if curl -fsS http://127.0.0.1:8787/api/health >/dev/null 2>&1; then ok=1; break; fi
+            sleep 2
+          done
+          test -n "$ok" || { echo "容器 80s 内未就绪"; docker logs smoke 2>&1 | tail -30; exit 1; }
+          python scripts/live_smoke.py --base-url http://127.0.0.1:8787
+
+  live-site:
+    name: 线上 Pages 持续可用（外部观察者视角）
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - name: 判据先自证（离线，喂合成响应给同一组断言）
+        run: python scripts/live_smoke.py --selftest
+      - name: 打线上：version 对账 + 404/413 契约 + 三红线在场 + 单次耗时
+        run: python scripts/live_smoke.py
