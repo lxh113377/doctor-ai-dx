@@ -276,5 +276,25 @@ check("文档里的 `文件:行号` 引用其行确实指向所声称的符号�
 check(`行号引用判据有输入（扫到 ${lineTotal} 处 ` + "`文件:行号`" + "，≥3 才算在射程内）", lineTotal >= 3,
   "扫到 0 处＝正则失效或文档不再引用行号，两种都要点名而不是静默")
 
+// 「N 段链路」也是派生值：本轮加第⑦步（弃权）后 README/ARCHITECTURE 仍写着"六段"，
+// 与上面的套件数/条数同族——同一个事实抄在几份文档里，就必须有一个人人都过的真值源。
+const archText = existsSync(resolve(ROOT, "docs", "ARCHITECTURE.md")) ? mdOf("docs/ARCHITECTURE.md") : ""
+const CIRCLED = "①②③④⑤⑥⑦⑧⑨⑩"
+const chainSteps = new Set([...archText].filter((c) => CIRCLED.includes(c))).size
+const chainBad = []
+let chainTotal = 0
+for (const file of mdFiles) {
+  if (HISTORY_FILES.has(file)) continue
+  for (const m of mdOf(file).matchAll(/(\d+|[一二三四五六七八九十]{1,3})\s*段(?:链路|流程)/g)) {
+    chainTotal++
+    const n = toNum(m[1])
+    if (n !== chainSteps) chainBad.push(`${file} → "${m[0]}" 应为 ${chainSteps} 段（ARCHITECTURE 图内 ①..${CIRCLED[chainSteps - 1]} 实测）`)
+  }
+}
+check(`文档里的「N 段链路」== ARCHITECTURE 图内实际步数（实测 ${chainSteps} 段）`,
+  chainBad.length === 0, chainBad.slice(0, 5).join(" | "))
+check(`链路步数判据有输入（扫到 ${chainTotal} 处「N 段」声明，≥2 才算在射程内）`, chainTotal >= 2 && chainSteps >= 5,
+  `扫到 ${chainTotal} 处、图内 ${chainSteps} 步——任一为 0 即判据失效，不许静默通过`)
+
 console.log(`\nRESULT: ${pass} pass / ${fail} fail`)
 process.exit(fail ? 1 : 0)

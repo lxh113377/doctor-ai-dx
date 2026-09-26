@@ -70,7 +70,7 @@ python tests/smoke_engine.py
 - 检索指标用于工程回归，不代表诊断准确率或真实临床有效性。
 - `frontend/tests/contract_parity.mjs` 用同一 31 组黄金输入分别跑 Functions(JS) 与 FastAPI 镜像(Python)，逐字段比对 dx/workup/report，拦截双端静默漂移。
 - **评测卡 / 安全卡**：[`docs/EVAL_CARD.md`](docs/EVAL_CARD.md) —— 能力边界、病种覆盖清单（60 条 · 20 域）、红旗与安全口径、指标日期一页可查。
-- **架构与不变式**：[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) —— 六段链路图、三条产品红线的代码插入点、JS/Py 双端镜像对账矩阵、检索层实测参数、环境变量与门禁清单（数字均为磁盘实测）。
+- **架构与不变式**：[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) —— 七段链路图、三条产品红线的代码插入点、JS/Py 双端镜像对账矩阵、检索层实测参数、环境变量与门禁清单（数字均为磁盘实测）。
 - **提交前快检**：[`.pre-commit-config.yaml`](.pre-commit-config.yaml) —— `pre-commit install` 后复用仓内既有守卫（版本真值 / 知识库零漂移 / 契约对账 / OpenAPI 漂移 / ESLint / ruff / 类型门禁 / 依赖锁定 / 文本控制字符 九钩子），秒级；全量二十一件套仍由 CI 兜底。
 - **安全边界与未保障项**：[`SECURITY.md`](SECURITY.md) —— 已实现的控制、明确未提供的保障（无认证/无审计/日志不留存）、漏洞报告渠道。
 - **错误契约一览**：[`docs/ERRORS.md`](docs/ERRORS.md) —— 集成方只需这张表就能写对重试分支；由 `npm run test:api` 双向核对（表里的码集合 == openapi 声明、三处文案逐字等于 `limits` 常量），改码不改表或表领先实现都判红。
