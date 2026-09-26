@@ -1,0 +1,19 @@
+{
+  "_note": "红旗表不变量的变异夹具（第三十轮 #83）。双端各自施加**同一份**夹具再比结论，避免把同一组反例在 JS/Py 各抄一遍（那会造出第二真值，且两侧改不同步就永远绿）。",
+  "_applier": "cases[] 逐条：target∈{danger,combo}；index 指定被改的规则；set 浅覆盖字段；copy_name_from{target,index} 取**活表**里另一条的 name（写死字面量会随改名静默失效）；op=replace 整条换成给定值；op=empty 清空两张表。expect 是错误信息里必须出现的片段。",
+  "invariant_classes": ["severity", "重复", "name", "advice", "裸单字", "非空数组", "非字符串", "纯标点", "≥2 组", "空值", "须为对象", "整体为空"],
+  "cases": [
+    { "id": "severity 越值域", "target": "danger", "index": 0, "set": { "severity": "危急" }, "expect": "severity" },
+    { "id": "name 与另一条重复", "target": "combo", "index": 0, "copy_name_from": { "target": "danger", "index": 0 }, "expect": "重复" },
+    { "id": "name 空白", "target": "danger", "index": 2, "set": { "name": "   " }, "expect": "name" },
+    { "id": "advice 过短", "target": "danger", "index": 3, "set": { "advice": "转诊" }, "expect": "advice" },
+    { "id": "关键词裸单字", "target": "danger", "index": 4, "set": { "keywords": ["痛"] }, "expect": "裸单字" },
+    { "id": "关键词空数组", "target": "danger", "index": 5, "set": { "keywords": [] }, "expect": "非空数组" },
+    { "id": "关键词含非字符串", "target": "danger", "index": 6, "set": { "keywords": ["反跳痛", 42] }, "expect": "非字符串" },
+    { "id": "关键词纯标点", "target": "danger", "index": 7, "set": { "keywords": ["……"] }, "expect": "纯标点" },
+    { "id": "组合规则只剩单组", "target": "combo", "index": 1, "set": { "all": [["哭闹", "呕吐"]] }, "expect": "≥2 组" },
+    { "id": "组合规则某组含空串", "target": "combo", "index": 2, "set": { "all": [["尿不出", "不能排尿"], [""]] }, "expect": "空值" },
+    { "id": "规则整条不是对象", "target": "danger", "index": 8, "op": "replace", "replace": "这不是一条规则", "expect": "须为对象" },
+    { "id": "两张表都被清空", "target": "danger", "index": 0, "op": "empty", "expect": "整体为空" }
+  ]
+}

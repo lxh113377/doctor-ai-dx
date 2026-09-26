@@ -113,6 +113,55 @@ function matchFlagRules(t) {
 
 export const RULE_TABLES = { DANGER: DANGER_RULES, COMBO: COMBO_RULES, NEGATIONS: NEGATION_TOKENS, POSITIVES: POSITIVE_TERMS }
 
+// ---------- 红旗表载入即校验（第三十轮 #83）----------
+// 为什么现在做：红旗层是三条红线里唯一"数据即代码"的表，而"改了会不会炸"此前无人问津——
+//   第二十九轮只给范围表建了载入期校验，红旗表反而零校验（实测 rules.py 里 validate 函数只有 1 个、
+//   且不读 DANGER_RULES）。它比范围表更要命：表坏＝危险信号漏报，或多条同名被去重分支静默合并成一条。
+// 规格抄 peer（本人 gh api 实测 kheireddinedev00/Medico `triage/rules.py` size=13599B sha=19fc7fcc）：
+//   不变量写进注释、载入即 raise、错误信息点名违规项、**无降级模式**。
+export const RED_FLAG_SEVERITIES = ["高", "中", "低"]
+
+export function validateRedFlagTables(danger = DANGER_RULES, combo = COMBO_RULES) {
+  const errs = []
+  const owner = new Map()
+  const tag = (kind, i, name) => `${kind}#${i}(${name || "?"})`
+  const nameOf = (r) => (r && typeof r.name === "string" && r.name.trim() ? r.name.trim() : "")
+  const terms = (list, at, where) => {
+    if (!Array.isArray(list) || list.length === 0) { errs.push(`${at}: ${where} 须为非空数组`); return }
+    for (const k of list) {
+      if (typeof k !== "string" || !k.trim()) { errs.push(`${at}: ${where} 含空值或非字符串项 ${JSON.stringify(k)}`); continue }
+      if (k.trim().length < 2) errs.push(`${at}: ${where}「${k}」是裸单字（子串会横扫全文，第二十四轮假阳性同族）`)
+      else if (/^[\p{P}\p{S}\s]+$/u.test(k)) errs.push(`${at}: ${where}「${k}」是纯标点/空白（分词层已剔除标点 ⇒ 永不命中＝死规则）`)
+    }
+  }
+  const one = (r, i, kind) => {
+    if (!r || typeof r !== "object") { errs.push(`${kind}#${i}: 规则须为对象`); return }
+    const nm = nameOf(r)
+    const at = tag(kind, i, nm)
+    if (!nm) errs.push(`${at}: name 缺失或为空`)
+    else if (owner.has(nm)) errs.push(`${at}: name 与 ${owner.get(nm)} 重复（同名会被去重分支静默合并＝少报一条危险信号）`)
+    else owner.set(nm, at)
+    if (!RED_FLAG_SEVERITIES.includes(r.severity)) errs.push(`${at}: severity 只能是 ${RED_FLAG_SEVERITIES.join("/")}，实测 ${JSON.stringify(r.severity)}`)
+    if (typeof r.advice !== "string" || r.advice.trim().length < 10) errs.push(`${at}: advice 缺失或短于 10 字（医生看不到处置＝等于没提示）`)
+    if (kind === "DANGER") terms(r.keywords, at, "keywords")
+    else {
+      if (!Array.isArray(r.all) || r.all.length < 2) errs.push(`${at}: 组合规则须 ≥2 组线索（单组等价于关键词规则，放这里只会掩盖分母）`)
+      else r.all.forEach((g, gi) => terms(g, `${at}/组${gi + 1}`, "线索"))
+    }
+  }
+  ;(danger || []).forEach((r, i) => one(r, i, "DANGER"))
+  ;(combo || []).forEach((r, i) => one(r, i, "COMBO"))
+  if ((danger?.length || 0) + (combo?.length || 0) === 0) errs.push("红旗表整体为空（读空＝判据失效，不许当通过）")
+  return errs
+}
+
+export function assertRedFlagTables(danger = DANGER_RULES, combo = COMBO_RULES) {
+  const errs = validateRedFlagTables(danger, combo)
+  if (errs.length) throw new Error(`红旗规则表非法，拒绝载入（无降级模式）：\n  - ${errs.join("\n  - ")}`)
+}
+
+assertRedFlagTables()
+
 // ---------- 能力级适用范围（第二十九轮 #76）----------
 // 与红旗层共用同一份否定词表（NEGATION_TOKENS），但窗口宽度取自数据（scope_rules.json）：
 // 范围触发词常隔一个动词，如「没做过CT」里 CT 前是「没做过」，4 字窗口挡不住 ⇒ 会误判成"要求解读影像"。

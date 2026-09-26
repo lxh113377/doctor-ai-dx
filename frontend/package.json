@@ -1,7 +1,7 @@
 {
   "name": "doctor-ai-dx-frontend",
   "private": true,
-  "version": "1.26.1",
+  "version": "1.27.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -17,6 +17,7 @@
     "test:smoke": "node tests/engine_smoke.mjs",
     "test:engine": "node tests/engine_eval.mjs",
     "test:scope": "node tests/scope_guard.mjs",
+    "test:table": "node tests/red_flag_table_guard.mjs",
     "test:abstain": "node tests/abstain_guard.mjs",
     "test:accuracy": "node tests/accuracy_guard.mjs",
     "test:retrieval": "node tests/retrieval_eval.mjs",
@@ -27,7 +28,7 @@
     "test:api": "node tests/api_contract_guard.mjs",
     "test:error-parity": "node tests/error_parity_guard.mjs",
     "test:bundle": "node tests/bundle_size_guard.mjs",
-    "test": "npm run test:smoke && npm run test:engine && npm run test:accuracy && npm run test:abstain && npm run test:scope && npm run test:negation && npm run test:retrieval && npm run test:retrieval-parity && npm run test:semantic && npm run test:live && npm run test:contract && npm run test:fhir && npm run test:kb && npm run test:route && npm run test:privacy && npm run test:env && npm run test:limits && npm run test:docs && npm run test:api && npm run test:error-parity && npm run test:components && npm run test:version",
+    "test": "npm run test:smoke && npm run test:engine && npm run test:accuracy && npm run test:abstain && npm run test:scope && npm run test:table && npm run test:negation && npm run test:retrieval && npm run test:retrieval-parity && npm run test:semantic && npm run test:live && npm run test:contract && npm run test:fhir && npm run test:kb && npm run test:route && npm run test:privacy && npm run test:env && npm run test:limits && npm run test:docs && npm run test:api && npm run test:error-parity && npm run test:components && npm run test:version",
     "test:retrieval-parity": "node tests/retriever_parity.mjs",
     "test:components": "vitest run",
     "test:version": "node tests/version_guard.mjs",

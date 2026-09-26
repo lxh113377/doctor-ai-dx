@@ -86,7 +86,8 @@ check("弃权理由含「医生」主导口径（第三条红线）",
 // 红线文案是**裸子串**判据（e2e 全站扫 `not.toContain("替代医生")`），所以新增的每一句对外文案
 // 都必须自己过这条扫描——本轮我自己写的"不替代医生判断"就撞上了（含否定语义但子串命中），
 // 与第二十四轮 `无气促` 命中 `气促` 同族。修法：改文案，不改判据。
-const RED_LINE_FORBIDDEN = ["替代医生", "自动诊断", "确诊为"]
+const RED_LINE_FORBIDDEN = JSON.parse(
+  readFileSync(new URL("./fixtures/red_line_phrases.json", import.meta.url), "utf8")).forbidden_phrases
 const abstainTexts = [ABSTAIN_PRIMARY, ABSTAIN_NOTE, ...jsAb.map((r) => r.reason)]
 const rlBad = []
 for (const t of abstainTexts) {

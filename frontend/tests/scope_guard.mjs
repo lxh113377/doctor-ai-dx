@@ -138,7 +138,8 @@ for (const [text, pyId] of rows) {
 check(`逐探针双端结论一致（${rows.length} 条）`, mismatch === 0, `${mismatch} 条不一致`)
 
 console.log("== ⑥ 对外文案过红线裸子串扫描 ==")
-const bad = ["替代医生", "自动诊断", "确诊为"]
+// 禁用词唯一源＝fixtures/red_line_phrases.json（第三十轮 #85：本行与 abstain_guard.mjs 曾各抄一份同值数组）
+const bad = JSON.parse(readFileSync(new URL("./fixtures/red_line_phrases.json", import.meta.url), "utf8")).forbidden_phrases
 const texts = SCOPE_RULES.flatMap((r) => [r.title, r.rationale, r.doctor_note])
 const hits = []
 for (const t of texts) for (const b of bad) if (t && t.includes(b)) hits.push(`${t.slice(0, 18)} 含 ${b}`)

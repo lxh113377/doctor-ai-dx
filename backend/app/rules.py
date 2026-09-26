@@ -3,6 +3,7 @@
 设计：关键词须特异（防"出冷汗"等词单独误触发）；支持血压数值解析；命中即强制转诊。
 """
 import re
+import unicodedata
 from typing import Any
 
 from .scope_rules import SCOPE_META, SCOPE_RULES
@@ -88,6 +89,84 @@ COMBO_RULES: list[dict[str, Any]] = [
 ]
 
 _HYPERTENSION_ADVICE = next(r["advice"] for r in DANGER_RULES if "高血压急症" in r["name"])
+
+# ---------- 红旗表载入即校验（第三十轮 #83，镜像端与 rules.js 同语义）----------
+# 红旗层是三条红线里唯一"数据即代码"的表；表坏＝危险信号漏报，或多条同名被去重分支静默合并成一条。
+# 规格抄 peer：kheireddinedev00/Medico `triage/rules.py`（gh api 实测 size=13599B sha=19fc7fcc）——
+# 不变量写在注释里、载入即 raise、错误信息点名违规项、无降级模式。
+RED_FLAG_SEVERITIES = ["高", "中", "低"]
+
+
+def _all_punct_or_blank(s: str) -> bool:
+    """纯标点/符号/空白——分词层（第二十七轮）已把这类字符整体剔除，这样的关键词永不命中。"""
+    return all(unicodedata.category(ch)[0] in ("P", "S", "Z") or ch.isspace() for ch in s)
+
+
+def validate_red_flag_rules(danger: list | None = None, combo: list | None = None) -> list[str]:
+    danger = DANGER_RULES if danger is None else danger
+    combo = COMBO_RULES if combo is None else combo
+    errs: list[str] = []
+    owner: dict[str, str] = {}
+
+    def terms(vals, at: str, where: str) -> None:
+        if not isinstance(vals, list) or not vals:
+            errs.append(f"{at}: {where} 须为非空数组")
+            return
+        for k in vals:
+            if not isinstance(k, str) or not k.strip():
+                errs.append(f"{at}: {where} 含空值或非字符串项 {k!r}")
+                continue
+            if len(k.strip()) < 2:
+                errs.append(f"{at}: {where}「{k}」是裸单字（子串会横扫全文，第二十四轮假阳性同族）")
+            elif _all_punct_or_blank(k.strip()):
+                errs.append(f"{at}: {where}「{k}」是纯标点/空白（分词层已剔除标点 ⇒ 永不命中＝死规则）")
+
+    def one(r, i: int, kind: str) -> None:
+        if not isinstance(r, dict):
+            errs.append(f"{kind}#{i}: 规则须为对象")
+            return
+        raw = r.get("name")
+        nm = raw.strip() if isinstance(raw, str) else ""
+        at = f"{kind}#{i}({nm or '?'})"
+        if not nm:
+            errs.append(f"{at}: name 缺失或为空")
+        elif nm in owner:
+            errs.append(f"{at}: name 与 {owner[nm]} 重复（同名会被去重分支静默合并＝少报一条危险信号）")
+        else:
+            owner[nm] = at
+        if r.get("severity") not in RED_FLAG_SEVERITIES:
+            errs.append(f"{at}: severity 只能是 {'/'.join(RED_FLAG_SEVERITIES)}，实测 {r.get('severity')!r}")
+        adv = r.get("advice")
+        if not isinstance(adv, str) or len(adv.strip()) < 10:
+            errs.append(f"{at}: advice 缺失或短于 10 字（医生看不到处置＝等于没提示）")
+        if kind == "DANGER":
+            terms(r.get("keywords"), at, "keywords")
+        else:
+            groups = r.get("all")
+            if not isinstance(groups, list) or len(groups) < 2:
+                errs.append(f"{at}: 组合规则须 ≥2 组线索（单组等价于关键词规则，放这里只会掩盖分母）")
+            else:
+                for gi, g in enumerate(groups):
+                    terms(g, f"{at}/组{gi + 1}", "线索")
+
+    for i, r in enumerate(danger or []):
+        one(r, i, "DANGER")
+    for i, r in enumerate(combo or []):
+        one(r, i, "COMBO")
+    if len(danger or []) + len(combo or []) == 0:
+        errs.append("红旗表整体为空（读空＝判据失效，不许当通过）")
+    return errs
+
+
+def assert_red_flag_tables(danger: list | None = None, combo: list | None = None) -> None:
+    """载入即拒绝（无降级模式）。写成函数而非裸 if，是为了让镜像端测试能**直接驱动这条抛异常路径**
+    ——覆盖它和验证它生效是同一件事，藏在模块顶层的一次性 if 里就只能靠改源码做变异实验。"""
+    errs = validate_red_flag_rules(danger, combo)
+    if errs:
+        raise RuntimeError("红旗规则表非法，拒绝载入（无降级模式）：\n  - " + "\n  - ".join(errs))
+
+
+assert_red_flag_tables()
 
 
 def _bp_crisis(text: str) -> bool:

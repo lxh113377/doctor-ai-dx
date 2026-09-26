@@ -5,6 +5,36 @@
 
 ## [Unreleased]
 
+## [1.27.0] - 2026-09-26
+
+第三十轮。对标轴＝**「规则表改了会不会炸」——红旗表此前零载入校验**，并顺手消灭两类第二真值（交付锚点手改常量、禁用词清单两份手抄）。
+**零对外行为变化**（校验只在载入期生效；表合法时输出与 v1.26.1 完全一致，线上响应体逐字段未变）。
+
+### Added
+- 双端 `validate_red_flag_rules()` / `validateRedFlagTables()` ＋ 导入期 `assert_red_flag_tables()`／`assertRedFlagTables()`
+  （**无降级模式**：红旗表坏＝拒绝载入）。六类不变量：① 全表 `name` 唯一 ② `keywords` 非空数组、每项 ≥2 字且非纯标点
+  ③ `severity ∈ {高,中,低}` ④ `advice` 非空且 ≥10 字 ⑤ COMBO 须 ≥2 组线索 ⑥ 整表非空（读空不许当通过）。
+  规格抄 peer：`kheireddinedev00/Medico` `triage/rules.py`（本人 gh api 实测 size=13599B sha=19fc7fcc；
+  docstring 明写「Bands do not overlap / cover every aggregate from 0 upward」，`load_rules` 4 处 `raise RuleSetError`）。
+- 新件套 `frontend/tests/red_flag_table_guard.mjs`（**第 23 件，28 项**）：双端**整表**逐字段全等含顺序
+  （把既往「探针同表」升级为「规则本体同表」）＋ 同一份变异夹具 `fixtures/red_flag_mutations.json` 在两端各施一遍、
+  逐条必须拒且点名同一不变量 ＋ 12 类不变量全覆盖判定 ＋ advice 过裸子串红线 ＋ 反向扫"还有没有人手抄禁用词清单"。
+- `backend/tests/test_red_flag_rules.py`（镜像端**原生** 27 项，selftest 7→**8 套**）：含直接驱动 raise 路径的
+  `assert_red_flag_tables(坏表)`——fail-fast 写成函数而非裸 `if`，正是为了让这条路径**能被测到**而不用改源码做变异。
+- `fixtures/red_line_phrases.json`＝禁用词单一源。`abstain_guard.mjs:89` 与 `scope_guard.mjs:141` 此前**各抄一份同值数组**，
+  现两处改读该 fixture；反向扫描实测 122 个源文件，注入一份手抄即点名判红（实测 rc=1，随后按 sha256 逐字节还原）。
+
+### Fixed
+- 「两条同名红旗会被去重分支静默合并＝少报一条危险信号」这条风险，此前只有运行时兜底、无人主张：
+  现在**载入期就拒绝重名**，`_match_flag_rules` 的去重分支由"恒不可达"改为"由校验保证不可达"（代码保留不删——
+  删它属对外行为改动且需双端同步，与"少改一处就少一处风险"的判断无关）。
+
+### Notes
+- 覆盖率地板**一位未放宽**：`app/rules.py` 加校验器后仍 100%，全局 94.65→**95.02%**；JS 全局分支 81.02→**81.73%**。
+- 工作区侧治理（不在本仓，同轮完成）：`work/delivery_anchor.mjs` 让交付锚点由 CHANGELOG+git 派生（台账 #41 关闭）；
+  `work/freeze_check.mjs` 第 7 检从「手改常量相等」升级为「交付源码包与该 tag 的 `git archive` 逐字节相同」；
+  `work/rebuild_delivery.py` 收编交付重建链并断言"旧件入 `_trash` ⇒ 新件必须在场"（台账 #80 关闭，含 `--selftest` 真实缺席正例）。
+
 ## [1.26.1] - 2026-09-26
 
 第二十九轮收口补丁。起因是 v1.26.0 的 CI `backend-test` 判红，而本机当时 `npm test` 二十二件套与 `coverage:js` 全绿——
