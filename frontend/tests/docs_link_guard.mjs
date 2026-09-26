@@ -6,6 +6,7 @@
 import { readFileSync, existsSync, readdirSync, statSync } from "node:fs"
 import { dirname, resolve, relative, sep } from "node:path"
 import { fileURLToPath } from "node:url"
+import { KNOWLEDGE_BASE } from "../functions/lib/knowledge.js"
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..")
 let pass = 0
@@ -164,6 +165,11 @@ const toNum = (raw) => (/^\d+$/.test(raw) ? Number(raw)
           : NaN))
 const docClaims = []
 let countTotal = 0
+// 第三个派生真值：知识库条目数。第二十七轮实测——扩库 5 条后 README/ARCHITECTURE/EVAL_CARD 各写各的条数，
+// 「55 条」这种手抄数一旦进文档，评审按它核对仓库就会对不上；条数只准由 KNOWLEDGE_BASE 现算。
+const KB_COUNT = KNOWLEDGE_BASE.length
+const KB_RE = [/知识库[^\d\n]{0,6}(\d{1,4})\s*条/g, /(\d{1,4})\s*条(?:知识|知识库|条目|逐条)/g, /(\d{1,4})\s*条\s*\/\s*\d+\s*病种域/g]
+let kbTotal = 0
 for (const file of mdFiles) {
   if (HISTORY_FILES.has(file)) continue
   for (const m of mdOf(file).matchAll(/(\d+|[一二三四五六七八九十]{1,3})\s*件套/g)) {
@@ -176,11 +182,45 @@ for (const file of mdFiles) {
     const n = toNum(m[1])
     if (n !== wfCount) docClaims.push(`${file} → "${m[0]}" 应为 ${wfCount} 份`)
   }
+  const text = mdOf(file)
+  for (const re of KB_RE) {
+    for (const m of text.matchAll(re)) {
+      kbTotal++
+      if (Number(m[1]) !== KB_COUNT) docClaims.push(`${file} → "${m[0]}" 应为 ${KB_COUNT} 条`)
+    }
+  }
 }
-check(`文档中的套件数与工作流份数全部为派生真值（套件=${suiteCount}、工作流=${wfCount}）`,
+check(`文档中的套件数/工作流份数/知识库条数全部为派生真值（套件=${suiteCount}、工作流=${wfCount}、条目=${KB_COUNT}）`,
   docClaims.length === 0, docClaims.slice(0, 8).join(" | "))
 check(`该判据确有输入（扫到 ${countTotal} 处计数声明，≥3 才算在射程内）`, countTotal >= 3,
   "一处都没扫到＝正则失效，判红而不是跳过")
+check(`知识库条数判据有输入（扫到 ${kbTotal} 处条数声明，≥3 才算在射程内）`, kbTotal >= 3,
+  "扫到 0 处＝KB_RE 失效或文档已不写条数，两种都要点名而不是静默")
+
+// EVAL_CARD 第 4 节「病种覆盖清单」逐域逐条与知识库对账（第二十七轮 #53 扩库后新增）。
+// 为什么：这一节此前手抄 55 条·19 域，扩库当天就会变成"评审按它核对仓库对不上"的假清单；
+// 光对账条数不够——条目改名、挪域、漏列都看不见，所以按 (域 → 诊断名集合) 做全等比对。
+const covBad = []
+{
+  const card = "docs/EVAL_CARD.md"
+  const text = existsSync(resolve(ROOT, card)) ? mdOf(card) : ""
+  const sec = text.split(/^## /m).find((b) => b.startsWith("4. 病种覆盖清单")) || ""
+  const declared = new Map()
+  for (const m of sec.matchAll(/([^\s（｜]+)（(\d+)）：([^\n｜]+)/g)) {
+    for (const name of m[3].split("、")) declared.set(name.trim(), m[1])
+    if (Number(m[2]) !== m[3].split("、").length) covBad.push(`${card} ${m[1]} 声明 ${m[2]} 条但列举 ${m[3].split("、").length} 条`)
+  }
+  const actual = new Map()
+  for (const k of KNOWLEDGE_BASE) actual.set(k.condition, String(k.scope).split("/")[0].trim())
+  if (declared.size === 0) covBad.push(`${card} 第 4 节一条都没解析出来＝判据失效，不许记绿`)
+  for (const [name, dom] of actual) {
+    if (!declared.has(name)) covBad.push(`库内有「${name}」但清单未列`)
+    else if (declared.get(name) !== dom) covBad.push(`「${name}」清单记在 ${declared.get(name)}，库内 scope 为 ${dom}`)
+  }
+  for (const name of declared.keys()) if (!actual.has(name)) covBad.push(`清单有「${name}」但库内已无此条`)
+}
+check("EVAL_CARD 病种覆盖清单与知识库逐条逐域全等（防手抄清单漂移）",
+  covBad.length === 0, covBad.slice(0, 6).join(" | "))
 
 console.log(`\nRESULT: ${pass} pass / ${fail} fail`)
 process.exit(fail ? 1 : 0)

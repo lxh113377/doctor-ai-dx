@@ -13,8 +13,9 @@ const MAX_TOP_K = 10
 const normalize = (s) => String(s ?? "").toLowerCase().slice(0, 2000)
 
 // 中文分词：双字滑窗 + 单字兜底（无外部分词依赖，适配 Workers 运行时）
+const PUNCT_RE = /[\s\p{P}\p{S}]/gu
 function tokenize(text) {
-  const t = (text || "").replace(/\s+/g, "")
+  const t = (text || "").replace(PUNCT_RE, "")
   const toks = []
   for (let i = 0; i < t.length; i++) {
     toks.push(t[i])

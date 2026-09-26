@@ -69,7 +69,7 @@ python tests/smoke_engine.py
 - `frontend/tests/retrieval_eval.mjs` 对 20 条 silver 查询计算 Recall@1/3/5/10、MRR、nDCG@5/10；当前 BM25 基线为 Recall@5=0.95、MRR=0.95、nDCG@5=0.90727。
 - 检索指标用于工程回归，不代表诊断准确率或真实临床有效性。
 - `frontend/tests/contract_parity.mjs` 用同一 31 组黄金输入分别跑 Functions(JS) 与 FastAPI 镜像(Python)，逐字段比对 dx/workup/report，拦截双端静默漂移。
-- **评测卡 / 安全卡**：[`docs/EVAL_CARD.md`](docs/EVAL_CARD.md) —— 能力边界、病种覆盖清单（55 条 · 19 域）、红旗与安全口径、指标日期一页可查。
+- **评测卡 / 安全卡**：[`docs/EVAL_CARD.md`](docs/EVAL_CARD.md) —— 能力边界、病种覆盖清单（60 条 · 20 域）、红旗与安全口径、指标日期一页可查。
 - **架构与不变式**：[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) —— 六段链路图、三条产品红线的代码插入点、JS/Py 双端镜像对账矩阵、检索层实测参数、环境变量与门禁清单（数字均为磁盘实测）。
 - **提交前快检**：[`.pre-commit-config.yaml`](.pre-commit-config.yaml) —— `pre-commit install` 后复用仓内既有守卫（版本真值 / 知识库零漂移 / 契约对账 / OpenAPI 漂移 / ESLint / ruff / 类型门禁 / 依赖锁定 / 文本控制字符 九钩子），秒级；全量二十件套仍由 CI 兜底。
 - **安全边界与未保障项**：[`SECURITY.md`](SECURITY.md) —— 已实现的控制、明确未提供的保障（无认证/无审计/日志不留存）、漏洞报告渠道。
@@ -139,7 +139,7 @@ curl http://127.0.0.1:8000/health
 2. **所有评测数字都是合成病例自洽度，不是真实世界准确率。** 病例、金标准标注、知识库三者同源自产，
    未经任何真实患者、外部临床评审或随访。`docs/EVAL_CARD.md` 每一行都标了口径；
    引用其中任何数字都必须带上这条限定。
-3. **知识库只有 55 条，且扩容需要一个本机外部产物。** 语义邻接表由
+3. **知识库只有 60 条，且扩容需要一个本机外部产物。** 语义邻接表由
    `scripts/build_semantic_neighbors.py` 用本地 `BAAI/bge-small-zh-v1.5` ONNX 权重蒸馏，
    而 `semantic_guard` 会以「条目数必须等于知识库条目数＋语料指纹一致」拦住任何未重建的增删
    （这是刻意设计：宁可拦住也不放行一张陈旧表）。**该权重与 `bge_onnx_engine.py` 不随本仓库发布**，

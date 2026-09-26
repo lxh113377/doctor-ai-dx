@@ -90,15 +90,23 @@ console.log(`知识库缺口病例（单列，不计入"错"）: ${gaps.length} 
 if (misses.length) console.log(`top-3 未命中: ${misses.join(" | ")}`)
 
 // —— 地板断言：分母与命中都现场算，地板数字来自 fixture 单一源 ——
-if (!floors.min_cases || !Number.isFinite(floors.critical_top3_min) || !Number.isFinite(floors.top3_min)) {
-  bad(`floors 缺失或形态非法（min_cases/critical_top3_min/top3_min）：${JSON.stringify(floors)}`)
+// 第二十七轮实测缺陷：fixture 一直写着 top1_min=80，但本文件从不读它——地板形同没有（同族案例：
+// ci_watch 的"不在第一轮就下结论"写在 docstring 而实现走另一条路）。补齐接线并纳入形态校验。
+if (!floors.min_cases || !Number.isFinite(floors.critical_top3_min)
+  || !Number.isFinite(floors.top3_min) || !Number.isFinite(floors.top1_min)) {
+  bad(`floors 缺失或形态非法（min_cases/top1_min/top3_min/critical_top3_min）：${JSON.stringify(floors)}`)
 }
 if (scored < (floors.min_cases || Infinity)) bad(`计分用例数 ${scored} < 地板 ${floors.min_cases}（覆盖面缩水即判红）`)
 if (top1 === 0) bad("top-1 全零——要么链路断了要么是死判据，两种都不许记绿")
 if (crit.length === 0) bad("危急类用例数为 0：主指标失去分母，判红而不是跳过")
 const critRate = crit.length ? (critTop3 / crit.length) * 100 : 0
 if (critRate < (floors.critical_top3_min || 0)) bad(`危急类 top-3 召回 ${critRate.toFixed(1)}% < 地板 ${floors.critical_top3_min}%`)
+if (pct(top1) < (floors.top1_min || 0)) bad(`top-1 命中 ${pct(top1).toFixed(1)}% < 地板 ${floors.top1_min}%`)
 if (pct(top3) < (floors.top3_min || 0)) bad(`top-3 命中 ${pct(top3).toFixed(1)}% < 地板 ${floors.top3_min}%`)
+// kb_gap 与"命中"语义冲突防线：标了缺口的用例若同时靠 expect_other 计入命中，指标会在扩库当天倒退。
+// 第二十七轮就是这么踩到的（26→22 虚警），故把该口径钉成断言而不是靠人记得。
+const gapHits = rows.filter((r) => r.kb_gap && r.top1).map((r) => r.id)
+if (gapHits.length) bad(`kb_gap 用例被判为 top-1 命中（口径自相矛盾，须先摘掉 kb_gap 或清空 expect_other）：${gapHits.join(",")}`)
 
 console.log(`\nRESULT: ${fail} fail / ${scored} 例 | ${JSON.stringify(summary)}`)
 process.exit(fail ? 1 : 0)

@@ -5,6 +5,7 @@
 top_k 钳制 1..10、稳定排序）；tests/contract_parity.mjs 双端契约测试防漂移。
 """
 import math
+import unicodedata
 
 from .knowledge import KNOWLEDGE_BASE, RED_FLAG_KEYWORDS, SYMPTOM_TO_KB, SYNONYMS
 
@@ -20,8 +21,16 @@ def _normalize(s) -> str:
     return str(s if s is not None else "").lower()[:2000]
 
 
+def _indexable(ch: str) -> bool:
+    """标点与符号不进索引（与 JS 侧 Unicode 标点/符号类同口径）：逗号曾被当作检索词，df 高到 54，
+    一次偶然匹配就能把无关条目顶到榜首——第二十七轮扩库实测抓到，逐字对齐双端。"""
+    if ch.isspace():
+        return False
+    return unicodedata.category(ch)[0] not in ("P", "S")
+
+
 def _tokenize(text: str) -> list[str]:
-    t = "".join(ch for ch in (text or "") if not ch.isspace())
+    t = "".join(ch for ch in (text or "") if _indexable(ch))
     toks = []
     for i in range(len(t)):
         toks.append(t[i])

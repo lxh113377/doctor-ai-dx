@@ -9,6 +9,10 @@ import { getRetriever, DEFAULT_RETRIEVER, SEMANTIC_NAME } from "../functions/lib
 
 const suite = JSON.parse(readFileSync(new URL("./fixtures/retrieval_cases.json", import.meta.url), "utf8"))
 const queries = suite.cases.map((c) => c.query)
+// 第二十七轮：把带标点/单位的查询也送进双端比对——标点过滤是本次改动，任何一端单边生效都会在这里露出来
+// （此前双端比对用的是同一份 fixture 查询，全是干净文本，覆盖不到这条面）。
+const PUNCT_QUERIES = ["胸痛，伴发热、咳嗽。", "血压 190/110 mmHg（视物模糊）", "持续高热≥39℃，伴寒战！"]
+queries.push(...PUNCT_QUERIES)
 const TOP_K = 5
 const NAMES = [DEFAULT_RETRIEVER, "hybrid", SEMANTIC_NAME]
 
@@ -64,8 +68,39 @@ for (const name of NAMES) {
 }
 
 for (const line of lines) console.log(line)
-if (totalFail) {
-  console.error("RETRIEVER PARITY FAIL")
-  process.exit(1)
+// 不在这里 exit：先让下面的标点判据也跑完，两条判据各自出结论（防止一条红把另一条的遮蔽掉）。
+if (totalFail) console.error(`PARITY MISMATCH: ${totalFail} 例`)
+console.log(`RETRIEVER PARITY ${totalFail ? "FAIL" : "ALL PASS"}（${NAMES.length} 档 × ${queries.length} 例）`)
+
+// 标点不进索引（第二十七轮新增，与 rag.js/rag.py 的 tokenize 同批改动）。
+// 为什么值得钉成判据：实测「，」曾以 df=54 被当作检索词，一次偶然匹配就能把无关条目顶到榜首——
+// 这是扩库当天把 recall@5 从 0.85 打到 0.83 的真因，不是内容问题，所以要用行为断言锁住而不是靠 review 记着。
+// 正反双向：只断言"加标点结果不变"会因"检索器整体失灵返回空"而假绿，故同时断言"改真字结果必变"。
+{
+  let punctBad = 0
+  for (const name of NAMES) {
+    const r = getRetriever(name)
+    const shape = (list) => list.map((e) => `${e.id}:${e.score}`).join(",")
+    const clean = "胸痛伴发热咳嗽"
+    const noisy = "胸痛，伴发热、咳嗽。"
+    if (shape(r.search(clean, TOP_K)) !== shape(r.search(noisy, TOP_K))) {
+      console.error(`FAIL ${name}: 标点改变了结果（标点仍进索引）`)
+      punctBad++
+    }
+    const changed = shape(r.search(clean, TOP_K)) !== shape(r.search("胸痛伴腹泻咳嗽", TOP_K))
+    if (!changed) {
+      console.error(`FAIL ${name}: 改真字结果不变＝检索器无判别力，本判据失去分母`)
+      punctBad++
+    }
+    if (!r.search(noisy, TOP_K).length) {
+      console.error(`FAIL ${name}: 带标点查询召回 0 条（不许用空结果冒充"标点已过滤"）`)
+      punctBad++
+    }
+  }
+  if (punctBad) {
+    console.error(`PUNCT FILTER FAIL（${punctBad} 处）`)
+  } else {
+    console.log(`PUNCT FILTER PASS（${NAMES.length} 档：标点无关 + 真字敏感 + 非空召回 双向自证）`)
+  }
+  if (totalFail || punctBad) process.exit(1)
 }
-console.log(`RETRIEVER PARITY ALL PASS（${NAMES.length} 档 × ${queries.length} 例）`)

@@ -111,6 +111,7 @@ if (process.argv.includes("--write-baseline")) {
     console.error(`基线缺失：${report.retriever}（先跑 --retriever=${report.retriever} --write-baseline）`)
     process.exit(1)
   }
+  const outputEarly = process.env.RETRIEVAL_REPORT_PATH
   const checks = [
     ["case_count", !holdout && report.overall.cases === baseline.case_count],
     ["recall_at_5", report.overall.recall_at_5 >= baseline.minimum.recall_at_5],
@@ -120,6 +121,8 @@ if (process.argv.includes("--write-baseline")) {
   ]
   const failed = checks.filter(([, ok]) => !ok).map(([name]) => name)
   if (failed.length) {
+    // 判红更要落报告：红跑时最需要逐用例数据。此前写盘在门禁之后 ⇒ 一红就没有归因材料（第二十七轮实测踩到）。
+    if (outputEarly) writeFileSync(outputEarly, `${JSON.stringify(report, null, 2)}\n`)
     console.error(`Retrieval regression (${report.retriever}): ${failed.join(", ")}`)
     console.error(JSON.stringify(report.overall, null, 2))
     process.exit(1)
