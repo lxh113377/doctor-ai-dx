@@ -41,14 +41,14 @@ def _tokenize(text: str) -> list[str]:
 
 def _count_occurrences(hay: str, needle: str) -> int:
     """非重叠出现次数。不用 re：加权词表里有含正则元字符的词形，构造一次就埋一个死判据。"""
-    nd = str(needle or "")
-    if not nd:
+    pat = str(needle or "")
+    if not pat:
         return 0
     c = 0
-    i = hay.find(nd)
+    i = hay.find(pat)
     while i >= 0:
         c += 1
-        i = hay.find(nd, i + len(nd))
+        i = hay.find(pat, i + len(pat))
     return c
 
 
