@@ -5,6 +5,34 @@
 
 ## [Unreleased]
 
+## [1.21.0] - 2026-09-26
+
+第二十三轮对标发布轮。主题＝**CI 自身的供给链 + 上游反馈闭环 + 已发布交付物的持续可用**。
+三条产品红线（红旗独立于 LLM、引用白名单、"辅助参考 · 医生终审"文案）逻辑零改动；默认检索档仍 bm25；评测仍是同一批 31 例。
+
+### Added
+- **Actions 供应链钉版与最小权限判据** `scripts/action_pin.py`（`--resolve` 迁移与 `--verify` 判据共用同一枚举器，不留第二真值；15 项判据）。对标实测：peer `bloodworks-io/phlox` 4 份工作流 33/33 处 `uses:` 全钉 40 位提交号，`openemr/openemr` 79 份里 61 份显式 `permissions:`，而我方 5 份 31 处**全部**浮动在 major tag 上、仅 1 份有顶层 `permissions:`。major tag 可被上游随时移指 ⇒ 每次 CI 实际执行什么代码由第三方仓库决定（与 v1.16.0「pip 侧只有区间声明」同族，只是发生在 CI 自己的供给链上）。钉版对账取**外部真值**：注释声明的版本 tag 由 GitHub 解析成提交号后与工作流钉值逐字比，"仓内常量比仓内常量"这种自证式判绿一律不采用；上游读不到即 rc=2，不静默判绿。`--selftest` 14 项含正向对照（防"永远判红"的判据被自证当成合格）。落点：`infra-lint` 新增带 Token 的权威判定步 + pre-commit 第 12 钩（`--offline` 快检，SKIPPED 一律可见）+ `npm run actions` / `actions:selftest`。
+- **依赖声明完整性判据** `scripts/dep_completeness.py`（10 项 + `--selftest` 12 项）：Python 侧 AST 枚举、JS 侧行首锚定 import/require 语句，与**三面声明面**（`requirements.txt` / `-dev` / 新增 `-build`）对账；package-lock 里**非 optional** 的 peer 必须与实际解析版本相容（31 条 optional 跳过会打印数量，不静默）。对标 `openemr/composer-require-checker.yml`。
+- **Dependabot 分诊闭环** `scripts/dep_triage.py` + `fixtures/dep_triage.json`（14 天）+ `.github/workflows/dep-triage.yml` 每周作业：开放中的依赖 PR 超龄、缺 `dep-triage:v1` 分诊痕迹、或 `created_at` 脏 ⇒ 判红；API 取不到 ⇒ rc=2 而非"没有 PR"；零 PR 如实报数。对标 `openemr/dependabot-auto-merge.yml`——刻意不自动合并（major 升版必须过双视口 E2E 与 bundle/fhir 判据），改判"超龄即红"。
+- **已发布交付物持续可用烟测** `scripts/live_smoke.py`（12 条线上断言 + 零网络 17 项反例自证）+ `.github/workflows/live-smoke.yml`：匿名拉 `ghcr.io/...:latest` → 镜像内 `selftest.py` → 真起容器把同一套断言打在镜像上；另一作业判据先自证再打 pages.dev。对标 `openemr/recovery-path-smoketest.yml` / `release-mechanism-smoketest.yml`——我方此前只在打 tag 那一刻验一次，「发布完成」与「仍然可用」是两件事。
+- **公开仓 agent 入口 `AGENTS.md`**：对标实测 ragflow 仓根带 agent 指引与 `.agents/` 目录、openemr 带 copilot 指引，我方公开仓为零；内容限定在"该跑哪些命令 / 三条红线为什么不能改 / 改 X 前先知道 Y"，并已纳入 `docs_link_guard` 的关键文档在场清单。
+
+### Fixed
+- 🔴 **`starlette` 一直只是 fastapi 的传递依赖却被直接 import**：`backend/app/main.py:8` 的 `from starlette.exceptions import HTTPException` 是 v1.17.0 把 404 处理器注册到 Starlette 基类时引入的，声明面从未有过它——新判据**首跑即点名**。修法＝补 `starlette>=1.7.0`（下限取锁内实装版本，与本轮 pydantic 同一口径），而不是给判据开豁免。
+- **依赖批 #19/#12/#20 清偿**（三张 Dependabot PR 自 9/24 无人处置）：`pydantic` 声明下限由 `>=2.8` 抬到 `>=2.13.5`，与锁内实装一致（旧声明在承诺一个从未测过的下限；本机把环境升到该下限后 `backend/selftest.py` 6/6 套件 exit0、44 pass / 0 fail）。`vite` `^6.3.0 → ^8.3.0` 与 `@vitejs/plugin-react` `^4.5.0 → ^6.1.1` **必须成对**：四组 `npm install --dry-run` 解析实测——单升任一张都 `ERESOLVE`（plugin-react 6 声明非 optional `peer vite ^8.0.0`），两张一起升才解析干净；这就是台账#12/#14/#15 十三轮里两次失败的根因，不是网络问题。成对升后 `npm ci` 清装 387 包 → build 两次同哈希 → 十八件套 exit0 → Playwright **5 passed** → coverage:js 28 项地板全过 → bundle 主 chunk gzip 72,083B ≤ 77,500B。
+- **`upload-artifact` 全仓分裂**：`ci.yml` 用 `@v7`、`release.yml` 用 `@v4`（同一 action 两套实现，产物元数据差异只在特定作业暴露）。新增"同一 action 全仓只钉一个提交号"判据并收敛到 v7.0.1。
+- **`package-lock.json` 的 `version` 字段长期停在 1.14.0**（与 package.json 1.20.1 不一致），本轮随升版一并归位。
+- **README 一处指向仓外目录的说法**：「完整线上评测与原始报告见工作区 `../iCAN大学生创新创业大赛/03-评测/`」在公开仓里必落空（此前逃过对账只因该判据对以 `/` 结尾的目录写法不做强判定）。改为如实写"随参赛提交包交付，不在本仓库内"。
+- 🔴 **`env_guard` 的口径缺陷（被本轮新钩子上岗即抓到）**：它把 `scripts/` 读的键与 `backend/app` 读的键混成一个面，于是 CI 令牌必须写进 `backend/.env.example` 才能变绿——那会误导"从零启动"的使用者（跑演示并不需要 GitHub token）。改为**分面对账**：应用面必须入 `.env.example`，工具面可由工作流声明担保，且任何键一旦被应用面读取就回到 `.env.example` 口径（生产代码偷偷读 CI 令牌仍判红）。三组反例实测 rc=1，跑完按 sha256 校验回滚。
+
+### 边界与代价（如实登记，不拿调低判据掩盖）
+- 客户端入口哈希变化（`index-DmXZVgwe.js` → `index-CBNGoXmQ.js`）：此前多轮以「hash 零变化」当"无前端改动"的证据，本轮起该证据形态不成立。
+- 主 chunk gzip 约 65KB → 72.1KB，体积棘轮余量降到 5.4KB，下次升构建器必须重量。
+- 本机 `actionlint` 本轮**未能真跑**（Docker Desktop 守护进程中途不可达），其权威判定由 CI `infra-lint` 出；`live-smoke` 的镜像作业同理，本机只验到线上作业那一路。
+- 对标事实自纠：`infiniflow/ragflow` 工作流数由 12 **降为 3**（`release.yml` / `sep-tests.yml` / `serenedb.yml`），`web-lint` 已下线 ⇒ 第二十一轮"ragflow 仅 `web-lint`"的口径只对当时为真；`.trivyignore`、`codecov.yml` 仍在。同轮实测 `yolo-hyl/medical-rag`(303★) 与 `wizardlancet/OpenOE-Lite`(94★) 的 `.github/workflows` 均 404 ⇒ 三个新样本工程面为零，不作追赶锚点。
+- GitHub license 字段显示 `Other`：因为 `LICENSE` 是**自定义参赛授权**（不得商用/临床部署/二次分发），属刻意选择而非漏配；已在 `AGENTS.md` 与 README 写明，不为了显示成 MIT 而改授权。
+
+
 ## [1.20.1] - 2026-09-25
 
 ### Fixed（`v1.20.0` 的 CI 被上一轮刚装上的判据拦下——这次轮到拦作者本人）
