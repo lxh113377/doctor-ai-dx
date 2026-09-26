@@ -7,7 +7,7 @@ repos:
   - repo: local
     hooks:
       - id: version-truth
-        name: 版本真值五方对账（四处声明 + 最新 tag 单调不减）
+        name: 版本真值五方对账（五处声明：package.json/version.js/version.py/openapi.json/package-lock + 最新 tag 单调不减）
         entry: node frontend/tests/version_guard.mjs
         language: system
         pass_filenames: false
