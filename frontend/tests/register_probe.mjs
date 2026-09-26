@@ -117,15 +117,15 @@ if (dupBad.length > REGISTER_DUP_MAX) fail++
 // 同义词扩展 token 只追加一次**（扩展集由词汇总量决定，与重复无关）⇒ 靠扩展通道得分的条目相对权重被砍半。
 // 这里用公开导出的 SYNONYMS/KNOWLEDGE_BASE 现算归因，不往生产模块加诊断出口、不重写 BM25（那是第二真值）。
 if (dupBad.length) {
-  const normL = (x) => String(x ?? "").toLowerCase()
-  const members = [...new Set(Object.entries(SYNONYMS).flatMap(([c, sy]) => [String(c), ...(Array.isArray(sy) ? sy : []).map(String)]).map(normL))]
+  const low = (x) => String(x ?? "").toLowerCase()
+  const members = [...new Set(Object.entries(SYNONYMS).flatMap(([c, sy]) => [String(c), ...(Array.isArray(sy) ? sy : []).map(String)]).map(low))]
   const isExpandedOnly = (textL, rawL) => members.some((m) => m.length >= 2 && textL.includes(m) && !rawL.includes(m))
   const byId = new Map(suite.cases.map((c) => [c.id, c]))
   let expandedDriven = 0
   const lines = []
   for (const d of dupBad) {
     const c = byId.get(d.id)
-    const rawL = normL(c.query)
+    const rawL = low(c.query)
     const before = searchIds(c.query).slice(0, TOP_K)
     const after = searchIds(c.query + c.query).slice(0, TOP_K)
     const gained = after.filter((id) => !before.includes(id))
@@ -134,7 +134,7 @@ if (dupBad.length) {
     // ⇒ 它的分数完全靠扩展通道挣来，重复原始 token 时它不跟着涨，相对权重被砍。
     const tag = (id) => {
       const e = KNOWLEDGE_BASE.find((k) => k.id === id)
-      return e && isExpandedOnly(normL(`${e.text} ${e.title} ${(e.keywords || []).join(" ")}`), rawL) ? "*" : ""
+      return e && isExpandedOnly(low(`${e.text} ${e.title} ${(e.keywords || []).join(" ")}`), rawL) ? "*" : ""
     }
     const isExp = [...gained, ...lost].some((id) => tag(id) === "*")
     if (isExp) expandedDriven++
