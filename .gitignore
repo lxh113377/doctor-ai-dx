@@ -46,3 +46,6 @@ docs/sbom/
 test-results/
 playwright-report/
 blob-report/
+
+# 线上评测原始报告（每次跑都变；入库即造第二真值，见 scripts/perf_gate.mjs 的 UNKNOWN 口径）
+.eval/

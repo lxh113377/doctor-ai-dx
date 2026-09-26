@@ -52,3 +52,27 @@ jobs:
         run: python scripts/live_smoke.py --selftest
       - name: 打线上：version 对账 + 404/413 契约 + 三红线在场 + 单次耗时
         run: python scripts/live_smoke.py
+
+  # 第二十四轮对标落地：peer 侧 openemr 有 `docker/container_benchmarking/`、ragflow 有 `test/benchmark/`，
+  # 而我方 docs/EVAL_CARD.md 的 p50 4.1s / p95 4.73s 长期是**一次本机运行的记录**——产出脚本不在仓里
+  # （README 指的是一个 clone 后不存在的工作区路径），第三方既复现不了也无从知道它后来有没有退化。
+  # 本作业把它变成每周机器复现：真跑 31 例 live + 同套硬门禁（P95≤10s、结构/引用/红旗全过）。
+  online-eval:
+    name: 线上性能与质量指标复现（EVAL_CARD 头条数字的来源作业）
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - name: 31 例 live 评测（结构/引用/红旗 + P50/P95/max，内置硬门禁）
+        run: node scripts/live_eval.mjs
+      - name: 性能地板线复核（刚产出的报告必须新鲜且达标；缺报告判 UNKNOWN 而非放行）
+        run: node scripts/perf_gate.mjs
+      - name: 把复现结果写进作业摘要（评审看的数字要能对到具体某次运行）
+        if: always()
+        run: |
+          if [ -f .eval/eval_report_live.json ]; then
+            { echo '### 线上评测复现回执'; echo; echo '```json'; cat .eval/eval_report_live.json; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo '### 线上评测复现：无报告产出（作业在评测步之前即失败）' >> "$GITHUB_STEP_SUMMARY"
+          fi

@@ -1,7 +1,7 @@
 {
   "name": "doctor-ai-dx-frontend",
   "private": true,
-  "version": "1.21.1",
+  "version": "1.22.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -16,6 +16,7 @@
     "sbom:check": "node tests/sbom_guard.mjs --sbom docs/sbom/frontend.cdx.json --manifest npm",
     "test:smoke": "node tests/engine_smoke.mjs",
     "test:engine": "node tests/engine_eval.mjs",
+    "test:accuracy": "node tests/accuracy_guard.mjs",
     "test:retrieval": "node tests/retrieval_eval.mjs",
     "test:contract": "node tests/contract_parity.mjs",
     "test:fhir": "node tests/fhir_guard.mjs",
@@ -24,7 +25,7 @@
     "test:api": "node tests/api_contract_guard.mjs",
     "test:error-parity": "node tests/error_parity_guard.mjs",
     "test:bundle": "node tests/bundle_size_guard.mjs",
-    "test": "npm run test:smoke && npm run test:engine && npm run test:retrieval && npm run test:retrieval-parity && npm run test:semantic && npm run test:live && npm run test:contract && npm run test:fhir && npm run test:kb && npm run test:route && npm run test:privacy && npm run test:env && npm run test:limits && npm run test:docs && npm run test:api && npm run test:error-parity && npm run test:components && npm run test:version",
+    "test": "npm run test:smoke && npm run test:engine && npm run test:accuracy && npm run test:retrieval && npm run test:retrieval-parity && npm run test:semantic && npm run test:live && npm run test:contract && npm run test:fhir && npm run test:kb && npm run test:route && npm run test:privacy && npm run test:env && npm run test:limits && npm run test:docs && npm run test:api && npm run test:error-parity && npm run test:components && npm run test:version",
     "test:retrieval-parity": "node tests/retriever_parity.mjs",
     "test:components": "vitest run",
     "test:version": "node tests/version_guard.mjs",
@@ -47,7 +48,10 @@
     "test:limits": "node tests/limits_guard.mjs",
     "test:docs": "node tests/docs_link_guard.mjs",
     "test:backend": "cd ../backend && python selftest.py",
-    "test:suite": "cd .. && python scripts/suite_guard.py"
+    "test:suite": "cd .. && python scripts/suite_guard.py",
+    "kb:export": "node ../scripts/export_kb.mjs",
+    "eval:live": "node ../scripts/live_eval.mjs",
+    "perf:gate": "node ../scripts/perf_gate.mjs"
   },
   "dependencies": {
     "react": "^19.3.0",

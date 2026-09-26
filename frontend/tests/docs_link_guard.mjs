@@ -4,7 +4,7 @@
 // 文档指向仓内文件这条面此前无人守（实测：改名 scripts/ 下任一脚本文档全绿）。
 // 判据方向：既拦"引用不存在的文件"（假凭据），也拦"扫描面为空"（防"没扫到＝通过"的假绿）。
 import { readFileSync, existsSync, readdirSync, statSync } from "node:fs"
-import { dirname, resolve, relative } from "node:path"
+import { dirname, resolve, relative, sep } from "node:path"
 import { fileURLToPath } from "node:url"
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..")
@@ -110,6 +110,40 @@ const citedFiles = [...pitfalls.matchAll(PATH_RE)].map((m) => m[1])
 check(`被点名的判据文件全部存在（扫到 ${citedFiles.length} 个）`,
   citedFiles.length >= 12 && citedFiles.every((f) => existsSync(resolveRepoPath(f))),
   citedFiles.filter((f) => !existsSync(resolveRepoPath(f))).join(", "))
+
+// 引用面 3：以 `../` 起头的仓外凭据。为什么单独一条判据（第二十四轮）：
+// PATH_RE 只认四个顶层目录开头，`../iCAN…/live_eval.mjs` 这类写法**根本不在射程内**；
+// 而本机 clone 出来的仓外面恰好还摆着参赛工作区，existsSync 为真 ⇒ 「零假凭据」照样判绿。
+// 对评审/协作者而言交付物只有这个仓，仓外路径等于死链——只是在我这台机器上暂时不发作。
+// 只认「指向仓外某个具体对象」的写法；文档里以反引号单举 `../` 说明坑本身（PITFALLS §H、README 说明行）
+// 不是凭据引用，不该被判红。**注意**：这里刻意不用 [\w./-] 字符类——\w 是 ASCII-only，
+// 而本仓真实要拦的那条路径是 `../iCAN大学生创新创业大赛/…`（中文目录名），首版因此恒绿、被变异实测打回。
+const UP_RE = /`(\.\.[^`\n]*)`/g
+const upRefs = []
+for (const file of mdFiles) {
+  if (HISTORY_FILES.has(file)) continue
+  const text = mdOf(file)
+  for (const m of text.matchAll(UP_RE)) {
+    const p = m[1]
+    if (p === ".." || p === "../" || p === "../../") continue  // 讲坑本身的裸写法，不是路径凭据
+    upRefs.push(`${file} → ${p}`)
+  }
+  for (const m of text.matchAll(LINK_RE)) {
+    const target = m[1].split("#")[0]
+    if (!target || /^(https?:|mailto:)/.test(target)) continue
+    const abs = resolve(ROOT, dirname(file), target)
+    // 逃出仓根的 markdown 链接同样算假凭据（本机可解析 ≠ 第三方可解析）
+    if (abs !== ROOT && !abs.startsWith(ROOT + sep)) upRefs.push(`${file} → ](${target}) 链接逃出仓根`)
+  }
+}
+check("文档不得以仓外路径作凭据（`../` 起头或链接逃出仓根即红）",
+  upRefs.length === 0, upRefs.slice(0, 8).join(" | "))
+
+// —— 上面这条自身的接线证明：扫描面为空 = 判据失效，不许"没扫到＝通过" ——
+const backtickSpans = mdFiles.filter((f) => !HISTORY_FILES.has(f))
+  .reduce((n, f) => n + (mdOf(f).match(/`[^`\n]+`/g) || []).length, 0)
+check(`仓外路径判据确有输入（非 CHANGELOG 文档里反引号片段 ${backtickSpans} 处，≥200 才算扫到东西）`,
+  backtickSpans >= 200, "反引号片段过少＝文档没读进来，该判据会恒绿")
 
 console.log(`\nRESULT: ${pass} pass / ${fail} fail`)
 process.exit(fail ? 1 : 0)

@@ -58,17 +58,47 @@ function bpCrisis(text) {
   return sys >= BP_SYS || dia >= BP_DIA
 }
 
+// 否定修饰：中文临床文本用「无/没有/未/否认…」直接修饰症状词表达阴性。
+// 既往按子串命中 ⇒ "无气促" 命中 "气促"，脓毒症红旗假阳性（第二十四轮由产品路径评测实测抓到）。
+// 只收「明确阴性表述」：不收 "排除/不支持/不" —— "不能排除心前区闷痛" 若被抑制就是漏报，
+// 而本层的失败代价不对称（漏报危险信号远重于多提示），故宁缺毋滥。
+const NEGATION_TOKENS = ["没有", "未见", "未出现", "无明显", "无伴", "不伴", "否认", "阴性", "无", "未"]
+const NEG_LOOKBEHIND = 4
+// 形似否定实为阳性体征的词，必须先于否定判定放行，否则把「尿闭」当阴性 ⇒ 制造漏报。
+// follow 是该词之后不得紧跟的字：否则 "无尿痛" 会先命中 "无尿" 这条阳性例外。
+const POSITIVE_TERMS = [{ term: "无尿", follow: ["痛", "频", "急", "不尽"] }]
+
+// kw 在 t 中是否存在「未被否定」的一次出现（任一阳性出现即算命中，多出现取或）
+function hasPositiveOccurrence(t, kw) {
+  const k = String(kw).toLowerCase()
+  if (!k) return false
+  const positive = POSITIVE_TERMS.find((p) => p.term === k)
+  let from = 0
+  for (;;) {
+    const at = t.indexOf(k, from)
+    if (at < 0) return false
+    const head = t.slice(Math.max(0, at - NEG_LOOKBEHIND), at)
+    const tail = t.slice(at + k.length, at + k.length + 1)
+    // 阳性例外词若被这些字紧跟，说明这次出现不是该体征（"无尿痛" 里的 "无尿"），该次出现作废继续找。
+    const disqualified = positive !== undefined && positive.follow.includes(tail)
+    const negated = disqualified || NEGATION_TOKENS.some((n) => head.endsWith(n))
+    if (!negated) return true
+    from = at + k.length
+  }
+}
+
 // 结构化命中：按规则匹配并去重（按 name 去重，各规则 name 唯一，与原字符串去重等价）
 function matchFlagRules(t) {
   const hits = []
+  const hit = (k) => hasPositiveOccurrence(t, k)
   for (const r of DANGER_RULES) {
-    if (r.keywords.some((k) => t.includes(String(k).toLowerCase()))) {
+    if (r.keywords.some(hit)) {
       hits.push({ name: r.name, severity: r.severity, advice: r.advice })
     }
   }
   // 组合规则：每个线索组至少命中一词才触发（表达"症状组合"临床逻辑，降低单非特异词误报）
   for (const r of COMBO_RULES) {
-    if (r.all.every((group) => group.some((k) => t.includes(String(k).toLowerCase())))) {
+    if (r.all.every((group) => group.some(hit))) {
       hits.push({ name: r.name, severity: r.severity, advice: r.advice })
     }
   }

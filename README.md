@@ -15,7 +15,7 @@ backend/    FastAPI —— 同一链路的 Python 镜像（可选本地运行，
 ```
 
 - **线上 = Functions**：`https://doctor-ai-dx.pages.dev`，前端 dist + functions/ 单次部署。
-- **两端镜像**：`backend/app/{knowledge,rules,rag,retriever}.py` 与 `functions/lib/{knowledge,rules,rag,retriever}.js` 逻辑一致；`knowledge.py` 由 `../iCAN大学生创新创业大赛/03-评测/export_kb.mjs` 从 `knowledge.js` 自动生成，保证知识库数据零漂移。
+- **两端镜像**：`backend/app/{knowledge,rules,rag,retriever}.py` 与 `functions/lib/{knowledge,rules,rag,retriever}.js` 逻辑一致；`knowledge.py` 由 `scripts/export_kb.mjs` 从 `knowledge.js` 自动生成（`npm --prefix frontend run kb:export`），保证知识库数据零漂移。
 - `rules` 危险信号规则引擎（不依赖 LLM，可解释可测试，命中即强制转诊，**优先级高于模型不可覆盖**）
 - `rag` BM25 + 医学术语同义词扩展检索，输出带 `id/source/year/url/scope` 的证据
 - `retriever` 检索器适配边界；当前默认且唯一启用原 BM25，后续可增加混合检索，BM25 始终保留为安全回退
@@ -71,7 +71,7 @@ python tests/smoke_engine.py
 - `frontend/tests/contract_parity.mjs` 用同一 31 组黄金输入分别跑 Functions(JS) 与 FastAPI 镜像(Python)，逐字段比对 dx/workup/report，拦截双端静默漂移。
 - **评测卡 / 安全卡**：[`docs/EVAL_CARD.md`](docs/EVAL_CARD.md) —— 能力边界、病种覆盖清单（55 条 · 19 域）、红旗与安全口径、指标日期一页可查。
 - **架构与不变式**：[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) —— 六段链路图、三条产品红线的代码插入点、JS/Py 双端镜像对账矩阵、检索层实测参数、环境变量与门禁清单（数字均为磁盘实测）。
-- **提交前快检**：[`.pre-commit-config.yaml`](.pre-commit-config.yaml) —— `pre-commit install` 后复用仓内既有守卫（版本真值 / 知识库零漂移 / 契约对账 / OpenAPI 漂移 / ESLint / ruff / 类型门禁 / 依赖锁定 / 文本控制字符 九钩子），秒级；全量十五件套仍由 CI 兜底。
+- **提交前快检**：[`.pre-commit-config.yaml`](.pre-commit-config.yaml) —— `pre-commit install` 后复用仓内既有守卫（版本真值 / 知识库零漂移 / 契约对账 / OpenAPI 漂移 / ESLint / ruff / 类型门禁 / 依赖锁定 / 文本控制字符 九钩子），秒级；全量十九件套仍由 CI 兜底。
 - **安全边界与未保障项**：[`SECURITY.md`](SECURITY.md) —— 已实现的控制、明确未提供的保障（无认证/无审计/日志不留存）、漏洞报告渠道。
 - **错误契约一览**：[`docs/ERRORS.md`](docs/ERRORS.md) —— 集成方只需这张表就能写对重试分支；由 `npm run test:api` 双向核对（表里的码集合 == openapi 声明、三处文案逐字等于 `limits` 常量），改码不改表或表领先实现都判红。
 - **排障手册**：[`docs/PITFALLS.md`](docs/PITFALLS.md) —— 本仓真实踩过的坑按「可 grep 的报错症状 → 根因 → 处置 → 常驻判据」编排；条目必须点名兜住它的判据文件，由 `npm run test:docs` 核对（引用失效即判红）。
@@ -87,7 +87,8 @@ python tests/smoke_engine.py
   - `node node_modules/wrangler/bin/wrangler.js pages deploy dist --project-name=doctor-ai-dx --branch=main`
   - ⚠️ **必须带 `--branch=main`**：production 分支是 main，不带则只更新 preview 别名，裸域名不变
   - ⚠️ 代理故障报 `fetch failed` 时：清空 HTTPS_PROXY/HTTP_PROXY 并设 `NO_PROXY=*` 直连（api.cloudflare.com 可直连）
-- 线上验证：`node ../iCAN大学生创新创业大赛/03-评测/live_eval.mjs`（31例结构/引用/红旗 + P95 时延，2026-09-16 全绿）
+- 线上验证（本仓可跑，无需工作区）：`npm run eval:live`（31 例结构/引用/红旗 + P50/P95/max 时延，报告落 `.eval/`，不入库）
+  随后 `npm run perf:gate` 核性能地板线（P95 ≤10s + 全过 + 报告新鲜度 ≤14 天；报告缺失判 UNKNOWN/exit 2 而不是放行）
 
 **离线/本地演示**：`start-demo.ps1`（wrangler pages dev，静态+Functions 一体化，:8788，与线上零漂移）。
 
@@ -95,9 +96,9 @@ python tests/smoke_engine.py
 
 > 公开仓内已包含 `frontend/tests/` 的无密钥冒烟、31 例引擎评测和 20 例检索分层评测；下列 `../` 相对路径指向工作区中的完整 iCAN 材料与历史报告，随最终提交包提供。
 
-- **iCAN 参赛材料（主）** —— 见 `../iCAN大学生创新创业大赛/`：应用方案 PDF（20页·官方九类）、来源台账、评审差距矩阵、31例评测、五步截图、视频分镜脚本；冻结交付副本在 `../交付物/iCAN-参赛交付物/`
+- **iCAN 参赛材料（主）** —— 在参赛工作区的 iCAN大学生创新创业大赛 目录（不随本仓库发布）：应用方案 PDF（20页·官方九类）、来源台账、评审差距矩阵、31例评测、五步截图、视频分镜脚本；冻结交付副本在参赛工作区的 交付物/iCAN-参赛交付物 目录（不随本仓库发布）
 - `archive/` —— 旧商业计划书与旧 3 分钟路演稿，**均为非 iCAN 提交材料**；保留仅作历史记录，不用于答辩或评审
-- 项目叙事与答辩数据卡 —— 见 `../memory/08-ac-obs.md`
+- 项目叙事与验收标准 —— 仓内见 `docs/EVAL_CARD.md`（指标卡）与 `docs/ARCHITECTURE.md`（链路与红线插入点）；答辩用的叙事数据卡随参赛提交包提供，不在本仓库内
 
 ## 健康自检
 
@@ -121,7 +122,7 @@ curl http://127.0.0.1:8000/health
 > 机器可读契约：[`docs/openapi.json`](docs/openapi.json)（OpenAPI 3.0.3，与实现对账由 `npm run test:api` 守卫；集成方/AI Agent 可直接消费）。
 > **HIS 集成**：`/api/dx` 响应含 `data.fhir`——FHIR R4 light Bundle（Patient/Encounter/Condition/Observation/DiagnosticReport），双端逐字节一致、零时钟字段；`icd` 未映射的条目只出 `text` 不编造标准编码；本导出为**只读派生视图**，不改变红旗判定与引用白名单。详见 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) §9。
 > 版本真值：`backend/app/version.py` == `functions/lib/version.js` == `package.json` == `docs/openapi.json` == 最新 tag，由 `npm run test:version` 五方对账强制（升版本三处同改 + `python scripts/gen_openapi.py` 同步契约版本）。
-> 契约基线于 2026-09-24 完成 E2E 复核，两端（Functions / FastAPI）同步实现；公开仓门禁见 `frontend/tests/`，完整线上评测见工作区 `../iCAN大学生创新创业大赛/03-评测/`。
+> 契约基线于 2026-09-24 完成 E2E 复核，两端（Functions / FastAPI）同步实现；公开仓门禁见 `frontend/tests/`，完整线上评测脚本已收进本仓（见下一节的 eval:live），原始报告不入库。
 
 ## 安全定位（评审叙事）
 

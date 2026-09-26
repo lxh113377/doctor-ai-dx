@@ -15,7 +15,7 @@
 
 | 权威源（改这里） | 镜像（必须同步） | 同步方式 |
 |---|---|---|
-| `functions/lib/knowledge.js` | `backend/app/knowledge.py` | 跑 `node ../../iCAN大学生创新创业大赛/03-评测/export_kb.mjs` 生成，**不要手改 .py 数据** |
+| `functions/lib/knowledge.js` | `backend/app/knowledge.py` | 跑 `npm --prefix frontend run kb:export`（即 `scripts/export_kb.mjs`）生成，**不要手改 .py 数据** |
 | `functions/lib/engine.js` | `backend/app/services/engine.py` | 人工同步 + `contract_parity.mjs` 守门 |
 | `functions/lib/rag.js` / `rules.js` / `retriever.js` | `backend/app/rag.py` / `rules.py` / `retriever.py` | 人工同步 + 双端测试守门 |
 | `functions/lib/observe.js` | `backend/app/observe.py` | 人工同步（取整/脱敏规则必须两端一致） |
@@ -26,13 +26,13 @@
 ## 提交前必须全绿
 
 ```bash
-cd frontend && npm test                       # 十五件套，含双端契约、配置契约(env) 与知识库门禁
+cd frontend && npm test                       # 十九件套，含双端契约、配置契约(env)、诊断排序金标准与知识库门禁
 cd frontend && npm run lint                   # 静态检查门禁（ESLint + ruff；警告也算红）
 cd frontend && npm run typecheck              # Python 类型门禁（mypy 严格档，阈值 fixtures/type_floor.json）
 cd frontend && npm run lock                   # 依赖锁定对账（requirements.lock 钉版+哈希 且 Dockerfile 真从锁装）
 cd frontend && npm run build && npm run test:e2e   # 端到端浏览器回归（首次先 npx playwright install --with-deps chromium）
 cd backend && python tests/smoke_engine.py && python tests/test_api_observe.py
-node ../../work/perf_gate.mjs                 # 性能地板线（需 14 天内新鲜 live 报告）
+cd frontend && npm run eval:live && npm run perf:gate   # 线上 live 复现 + 性能地板线（需 14 天内新鲜报告与公网可达）
 ```
 
 CI 会跑同样的东西；`main` 分支保护要求 `build-and-test` 与 `backend-test` 通过。

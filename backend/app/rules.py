@@ -98,14 +98,47 @@ def _bp_crisis(text: str) -> bool:
     return sys_ >= 180 or dia >= 120
 
 
+# 否定修饰：中文临床文本用「无/没有/未/否认…」直接修饰症状词表达阴性。
+# 既往按子串命中 ⇒ "无气促" 命中 "气促"，脓毒症红旗假阳性（第二十四轮由产品路径评测实测抓到）。
+# 只收「明确阴性表述」：不收 "排除/不支持/不" —— "不能排除心前区闷痛" 若被抑制就是漏报，
+# 而本层的失败代价不对称（漏报危险信号远重于多提示），故宁缺毋滥。与 rules.js 逐字同表。
+_NEGATION_TOKENS = ["没有", "未见", "未出现", "无明显", "无伴", "不伴", "否认", "阴性", "无", "未"]
+_NEG_LOOKBEHIND = 4
+# 形似否定实为阳性体征的词，必须先于否定判定放行，否则把「尿闭」当阴性 ⇒ 制造漏报。
+# follow 是该词之后不得紧跟的字：否则 "无尿痛" 会先命中 "无尿" 这条阳性例外。
+_POSITIVE_TERMS = [{"term": "无尿", "follow": ["痛", "频", "急", "不尽"]}]
+
+
+def _has_positive_occurrence(text: str, kw: str) -> bool:
+    """kw 在 text 中是否存在「未被否定」的一次出现（任一阳性出现即算命中，多出现取或）。"""
+    k = kw.lower()
+    if not k:
+        return False
+    positive = next((p for p in _POSITIVE_TERMS if p["term"] == k), None)
+    start = 0
+    while True:
+        at = text.find(k, start)
+        if at < 0:
+            return False
+        head = text[max(0, at - _NEG_LOOKBEHIND):at]
+        tail = text[at + len(k):at + len(k) + 1]
+        # 阳性例外词若被这些字紧跟，说明这次出现不是该体征（"无尿痛" 里的 "无尿"），该次出现作废继续找。
+        disqualified = positive is not None and tail in positive["follow"]
+        negated = disqualified or any(head.endswith(n) for n in _NEGATION_TOKENS)
+        if not negated:
+            return True
+        start = at + len(k)
+
+
 def _match_flag_rules(text: str) -> list[dict]:
     hits: list[dict] = []
     for r in DANGER_RULES:
-        if any(kw.lower() in text for kw in r["keywords"]):  # 两侧小写归一（对齐 rules.js，d-二聚体不漏报）
+        # 两侧小写归一（对齐 rules.js，d-二聚体不漏报）
+        if any(_has_positive_occurrence(text, kw) for kw in r["keywords"]):
             hits.append({"name": r["name"], "severity": r["severity"], "advice": r["advice"]})
     # 组合规则：每个线索组至少命中一词才触发（表达"症状组合"临床逻辑，降低单非特异词误报）
     for r in COMBO_RULES:
-        if all(any(kw.lower() in text for kw in group) for group in r["all"]):
+        if all(any(_has_positive_occurrence(text, kw) for kw in group) for group in r["all"]):
             hits.append({"name": r["name"], "severity": r["severity"], "advice": r["advice"]})
     if _bp_crisis(text) and not any("高血压急症" in h["name"] for h in hits):
         hits.append({"name": "高血压急症红旗", "severity": "高", "advice": _HYPERTENSION_ADVICE})

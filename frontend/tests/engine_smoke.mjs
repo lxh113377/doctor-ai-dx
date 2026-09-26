@@ -1,4 +1,5 @@
 // 公开仓自包含冒烟测试：无 LLM Key，验证规则降级与安全链路。
+import { readFileSync } from "node:fs"
 import { buildDiagnosis, buildWorkup, buildReport, extractState } from "../functions/lib/engine.js"
 import { scanFlags, scanFlagDetails } from "../functions/lib/rules.js"
 import { search as legacySearch, hasEvidence } from "../functions/lib/rag.js"
@@ -115,11 +116,35 @@ const RED_FLAG_PROBES = [
   ["停经 6 周，阴道出血，下腹剧痛，面色苍白", ["异位妊娠（宫外孕）破裂红旗|高"]],
   ["高血压危象，血压 200/130", ["高血压急症红旗|高"]],
   ["", []],
+  // 否定修饰（第二十四轮补）：前 1 条是实测从产品路径抓到的假阳性，后 4 条锁住修复的边界。
+  // "无气促" 曾被当成 "气促" 阳性 ⇒ 脓毒症红旗误报；"无尿" 却是真阳性（尿闭），方向不能搞反。
+  ["最高超过39℃，黄脓痰，无气促，明显咽痛", []],
+  ["高热伴意识模糊", ["脓毒症红旗|高"]],
+  ["老年男性无尿伴下腹胀痛", ["急性尿潴留红旗|中"]],
+  ["无尿痛，无尿频", []],
+  // 鉴别探针：与上一条同前缀，但这条**带齐了尿潴留的第二组线索**——若把 "无尿痛" 里的 "无尿"
+  // 误当阳性体征，这条就会假阳性。本条是修复首版把排除条件写成互斥时实测判红补上的。
+  ["老年男性无尿痛伴下腹胀痛", []],
+  ["阵发性哭闹，没有呕吐", []],
 ]
 for (const [text, want] of RED_FLAG_PROBES) {
   const got = scanFlagDetails(text).map((h) => `${h.name}|${h.severity}`)
   check(`红旗探针 ${JSON.stringify(text)}`, JSON.stringify(got) === JSON.stringify(want),
     `实测 ${JSON.stringify(got)} 期望 ${JSON.stringify(want)}`)
+}
+
+// 双端探针表对账（第二十四轮补）：这张表在 backend/tests/smoke_engine.py 里"逐字复刻"是口头约定，
+// 实测全仓除定义处之外零引用 ⇒ 一端改表另一端不知道，双端"同事实"无判据。现按字面把两端对齐。
+const pyTable = readFileSync(new URL("../../backend/tests/smoke_engine.py", import.meta.url), "utf8")
+const pyBlock = pyTable.match(/RED_FLAG_PROBES\s*=\s*\[([\s\S]*?)\n\]/)
+check("镜像端探针表仍在场（表被删/改名不得静默通过）", !!pyBlock, "backend/tests/smoke_engine.py 未找到 RED_FLAG_PROBES")
+if (pyBlock) {
+  const rows = [...pyBlock[1].matchAll(/\("((?:[^"\\]|\\.)*)"\s*,\s*\[([^\]]*)\]\s*\)/g)]
+    .map((m) => [m[1].replace(/\\"/g, '"').replace(/\\n/g, "\n"),
+      [...m[2].matchAll(/"((?:[^"\\]|\\.)*)"/g)].map((s) => s[1])])
+  check("双端红旗探针表逐字全等（条目数与内容）",
+    JSON.stringify(rows) === JSON.stringify(RED_FLAG_PROBES),
+    `镜像端 ${rows.length} 条 / 权威端 ${RED_FLAG_PROBES.length} 条；差异面 镜像=${JSON.stringify(rows)} 权威=${JSON.stringify(RED_FLAG_PROBES)}`)
 }
 
 console.log(`\nRESULT: ${pass} pass / ${fail} fail`)

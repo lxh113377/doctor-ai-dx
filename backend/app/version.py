@@ -2,4 +2,4 @@
 改版本流程：① 同步改本文件 / functions/lib/version.js / package.json → ② python scripts/gen_openapi.py → ③ 打 tag vX.Y.Z。
 """
 
-APP_VERSION = "1.21.1"
+APP_VERSION = "1.22.0"

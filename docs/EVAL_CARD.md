@@ -22,11 +22,12 @@
 | 红旗召回（正负样例） | 27/27 = 100% | 离线评测集；silver 标注，非临床敏感度/特异度 |
 | 线上红旗（pages.dev live） | 14/14 | 2026-09-16 线上评测 |
 | 输入敏感性 | 31 例 → 31 种不同结论（≥5 门槛） | 离线，防"恒输出" |
+| **诊断排序金标准（合成病例自洽度）** | top-1 **26/31 = 83.9%** / top-3 **29/31 = 93.5%** / **危急类 top-3 召回 22/23 = 95.7%（主指标）** / 知识库缺口 5 例单列 | 第二十四轮新增，`tests/accuracy_guard.mjs` + `tests/fixtures/dx_gold.json` 入十九件套与 CI。⚠️ **口径限定（不可省略）**：病例与金标准同为自产、取材同一批公开指南，该数只衡量「自建病例 → 自建 55 条知识库 → 引擎排序」三者自洽，**不是真实世界诊断准确率、不是灵敏度/特异度**，未经任何真实患者或外部临床评审（此限定借鉴 urobot-tw 首页「目前没有任何可对外宣称的准确率」与 Medico「cases 与 rules 同作者 ⇒ 只测内部一致性」的自陈惯例）。主指标取危急类召回而非 top-1：漏一个危急诊断的代价远高于排序不优，且它可直接闸门化（漏检即非零退出） |
 | 检索质量 · 主口径（BM25+同义词，silver **50** 例） | R@1 0.547 / R@3 0.793 / **R@5 0.850** / MRR 0.867 / nDCG@5 0.789 | 2026-09-24 扩充为 v2.0 集（新增 30 例口语化改写，刻意避开 keywords 书面术语）。原 20 例口径下 R@5=0.95；扩集后回落至 0.85 是**评测集变严**，不是检索退化（同集同码复跑）。红旗子集(23) R@5 0.848；CI 基线按检索器分档锁定不回归 |
 | 检索质量 · 备选口径（hybrid 加权 RRF，同 50 例） | R@5 0.870（+2.0pt）/ MRR 0.825（−4.2pt）/ **红旗子集 R@5 0.891（+4.4pt）** | **未启用**（`RETRIEVER` 可切换，默认 bm25）。权重在同集标定存在自标定过拟合风险，**2026-09-24 已完成留出集验证**：`tests/fixtures/retrieval_holdout.json` 20 例患者口语集（刻意避开 keywords，silver-draft 待复核）上 hybrid vs bm25 **ΔR@5 = 0.0、ΔMRR −1.3pt、红旗子集持平** → 标定增益未泛化，**维持 opt-in、默认口径不变** |
-| 检索质量 · 备选口径（semantic 语义近邻通道，同 50 例 + 20 例留出集） | 标定集 R@5 0.830~0.840 / MRR 0.494~0.863；留出集 **无任何组合严格优于 bm25**（0/54 组），9 组逐位等值、45 组劣化（ΔMRR 最差 −0.328） | **未启用**（`RETRIEVER=semantic` 可切，默认 bm25）。邻接表由本地 BAAI/bge-small-zh-v1.5 离线蒸馏（512 维余弦，权重 sha256 与语料指纹写入产物头），运行时零模型零网络。结论：条目↔条目语义相似**不能**替代查询编码——真正的语义召回需向量服务（同类项目均外挂 Milvus/Chroma/FAISS/TEI）。复现 `node work/sweep_semantic_weights.mjs`（工作区侧），防陈旧门禁 `npm run test:semantic` |
+| 检索质量 · 备选口径（semantic 语义近邻通道，同 50 例 + 20 例留出集） | 标定集 R@5 0.830~0.840 / MRR 0.494~0.863；留出集 **无任何组合严格优于 bm25**（0/54 组），9 组逐位等值、45 组劣化（ΔMRR 最差 −0.328） | **未启用**（`RETRIEVER=semantic` 可切，默认 bm25）。邻接表由本地 BAAI/bge-small-zh-v1.5 离线蒸馏（512 维余弦，权重 sha256 与语料指纹写入产物头），运行时零模型零网络。结论：条目↔条目语义相似**不能**替代查询编码——真正的语义召回需向量服务（同类项目均外挂 Milvus/Chroma/FAISS/TEI）。复现脚本 `work/sweep_semantic_weights.mjs` 在参赛工作区侧、**不随本仓库发布**（该结论的防陈旧门禁 `npm run test:semantic` 在本仓内，可独立复跑） |
 | 测试覆盖率（v1.12.0 起为常规度量，v1.13.0 更新至类型门禁后口径） | JS Functions 面：语句 **94.75%** / 分支 **75.24%** / 函数 **94.28%**（c8 12.0.0）；Py 镜像面：**92.78%**（v1.13.0 补追问 live 分支后；上一档 90.53%）（coverage.py 7.16.0，v1.12.0 起 `.coveragerc` 开启 `branch=True`，口径由「仅语句」改为「语句+分支弧」；同批测试旧语句口径为 87%） | 2026-09-25 实测。本轮补测涨幅：分支 67.04→74.02、engine.js 53.12→69.23、rules.js 78.12→88.88、fhir.js 66.21→76.92；Py llm.py 37→90、retriever.py 37→98、engine.py 61→74。两端**地板均按模块设**（防红线模块单独退化被全局均值掩盖）：JS 7 模块 + Py 9 模块，阈值单一源 = 同一份 fixture；`npm run coverage:js` / `coverage:py` 强制。本轮实测涨幅：JS 全局分支 74.18→**75.65**（observe.js 分支 69→100）；Py rules.py 75→**98**、`routers/api.py` 57→**100**、main.py 96→98 |
-| 延迟（线上诊断链路） | p50 4.1s / **p95 4.73s** / max 4.9s（n=31） | 2026-09-16 live 报告；约束 p95 ≤10s、单次模型硬超时 8s |
+| 延迟（线上诊断链路） | p50 **3.756s** / p95 **4.890s** / max 5.097s（n=31，mode=live 31/31，红旗 14/14） | 2026-09-26 本机经 `scripts/live_eval.mjs` 实测；**该脚本与硬门禁自 v1.22.0 起在仓内**，由 `.github/workflows/live-smoke.yml` 的 online-eval 作业每周重产（回执写进作业摘要），不再是一句指向仓外、第三方跑不动的历史记录。约束 p95 ≤10s、单次模型硬超时 8s |
 | 双端一致性（Functions JS ↔ FastAPI Py） | 引擎 31/31 逐字段；检索器 **3 档（bm25/hybrid/semantic）各 50/50** 逐字段；语义邻接表双端同值 + provenance 同值 | 契约测试 CI 常跑；取整规则两端统一为 half-up（`round_half_up`），不用放宽容差掩盖漂移 |
 | 知识库入库门禁 | 55 条逐条 schema + 引用完整性 + 孤儿条目 0（症状线索覆盖 100%）+ 双端数据全等 | `frontend/tests/kb_guard.mjs`，17 项断言入 CI |
 | 隐私与数据留存（v1.11.0 起成文 + 机器核对） | 声明 13 项断言全部与代码对账通过：持久化原语 0、第三方遥测 0、日志字段白名单（不含请求体）、双端脱敏模式与 6 用例输出逐字相同、文档锚点无死链 | `frontend/tests/privacy_guard.mjs` **59 项**（含 5 组反例实测：注入 localStorage／fs 写入／`@sentry` 包／把问诊文本写进日志／锚点失效）入 `npm test`。判据自证升级为**逐条**：25 条持久化/遥测形态各配一条真实写法样本，数量对位不符或某条样本不命中即判红。根因（v1.12.0 由 ESLint `no-control-regex` 抓出）：上一轮写入的三条遥测判据里 `\b` 被 Python 字符串转义成裸 `0x08` 退格符 ⇒ 正则是永不匹配的**死判据**，而聚合反例因同一条 poison 里 `@sentry/` 命中仍判绿。教训：聚合命中 ≠ 逐条接线，另补「元反例」证明自证块能识别死判据 |
@@ -61,14 +62,16 @@
 ## 5. 复现命令
 
 ```bash
-cd frontend && npm test                 # 十五件套：smoke 49（含双端同表红旗探针）+ 引擎 31 例 + 检索双档地板 + 检索器 3 档双端 50/50 + 语义表守卫 22（含 7 组反例）+ live 路径红线 43 + 双端契约 31:31 + FHIR 导出 45 项（含 6 组反例）+ KB 守卫 17 + 路由守卫 25 + 隐私声明对账 59 + 配置契约对账 6 + API 契约对账 + vitest 组件 + 版本真值五方对账
+cd frontend && npm test                 # 十九件套：smoke 57（含双端同表红旗探针 12 条逐字对账）+ 引擎 31 例 + 检索双档地板 + 检索器 3 档双端 50/50 + 语义表守卫 22（含 7 组反例）+ live 路径红线 43 + 双端契约 31:31 + FHIR 导出 45 项（含 6 组反例）+ KB 守卫 17 + 路由守卫 25 + 隐私声明对账 59 + 配置契约对账 6 + API 契约对账 + vitest 组件 + 版本真值五方对账
 node tests/coverage_floor_guard.mjs     # 覆盖率模块级地板（先跑 npm run coverage:js 生成 coverage/coverage-summary.json）
 cd frontend && npm run coverage:js      # JS 覆盖率 + 地板棘轮（实测：全局分支 74.02%，红线模块单独设地板）
 cd frontend && npm run coverage:py      # Py 覆盖率+模块地板（实测 90.53%，地板 88；阈值单一源见 fixtures/coverage_floor.json）
 cd frontend && npm run lint               # 静态检查：ESLint（frontend）+ ruff（backend），--max-warnings=0
 node tests/semantic_guard.mjs          # 语义邻接表：结构/白名单/无自环/降序整数千分比/弱对称 + 语料指纹防陈旧 + 双端同值 + 7 组反例
 node tests/retrieval_eval.mjs --retriever=semantic                              # 语义档检索读数（默认 bm25）
-node ../../work/sweep_semantic_weights.mjs   # 2026-09-25 起工作区侧：语义通道权重标定 + 留出集泛化判定（0 组严格优于 bm25）
+# 语义通道权重标定（0 组严格优于 bm25）：标定脚本在参赛工作区侧不入库；
+# 本仓内的可复现部分是防陈旧门禁与留出集：
+npm run test:semantic                      # 邻接表双端同值 + 语料指纹防陈旧 + 留出集判定
 python ../scripts/build_semantic_neighbors.py --engine-dir <bge_onnx_engine.py 所在目录>   # 知识库变更后重建邻接表（必做，否则 test:semantic 判红）
 node tests/fhir_guard.mjs               # FHIR-light 单独跑：Bundle 结构/术语白名单/悬挂引用/零时钟/红线文案 + 反例可拦性
 node tests/api_contract_guard.mjs       # openapi.json ↔ Functions 路由双向对账（6 端点）

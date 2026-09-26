@@ -1,6 +1,6 @@
 # ============================================================
 # 医学知识库（RAG 语料，带完整元数据）+ 同义词表 + 红旗词 + 症状映射
-# ⚠️ 本文件由 03-评测/export_kb.mjs 从 frontend/functions/lib/knowledge.js 自动生成，
+# ⚠️ 本文件由 scripts/export_kb.mjs 从 frontend/functions/lib/knowledge.js 自动生成，
 #    两端数据同源零漂移；请勿手改数据，改 knowledge.js 后重新生成。
 # ============================================================
 from typing import Any
