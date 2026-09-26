@@ -35,6 +35,8 @@ from typing import Any
 
 REPO = Path(__file__).resolve().parents[1]
 VERSION_PY = REPO / "backend" / "app" / "version.py"
+# 知识库权威是 data/knowledge.json（#92 起）；knowledge.js 是它的生成物，判据不再 regex 抓源码。
+KNOWLEDGE_JSON = REPO / "data" / "knowledge.json"
 KNOWLEDGE_JS = REPO / "frontend" / "functions" / "lib" / "knowledge.js"
 DEFAULT_BASE = "https://doctor-ai-dx.pages.dev"
 # 与 fixtures/request_limits.json 的 `max_content_chars` 同**语义**的触发值（不是抄阈值数字）：
@@ -69,11 +71,20 @@ def repo_version() -> str:
 
 
 def kb_ids() -> set[str]:
-    """引用白名单从知识库单一源现取，不抄第二份清单。"""
-    text = KNOWLEDGE_JS.read_text(encoding="utf-8")
-    ids = set(re.findall(r'"(kb-\d{3})"', text))
+    """引用白名单取自**权威文件** data/knowledge.json（与 scope_rules 同一口径，不抄第二份清单）。
+
+    第三十二轮 #92 起 knowledge.js 只是生成物，从这里 regex 抓源码等于让判据依赖格式；
+    现改为结构化读取，条目数下限仍保留（<50 ＝解析失效，不得当成"线上没问题"）。
+    """
+    try:
+        with KNOWLEDGE_JSON.open(encoding="utf-8") as fh:
+            rows = json.load(fh)["entries"]
+    except (OSError, KeyError, ValueError) as e:
+        print(f"[GATE:live-smoke-fail] 读不到知识库权威 {KNOWLEDGE_JSON}：{type(e).__name__} {e}", file=sys.stderr)
+        raise SystemExit(2) from e
+    ids = {str(r.get("id")) for r in rows if isinstance(r, dict) and r.get("id")}
     if len(ids) < 50:
-        print(f"[GATE:live-smoke-fail] 知识库白名单现取只得到 {len(ids)} 条（<50）＝解析失效", file=sys.stderr)
+        print(f"[GATE:live-smoke-fail] 知识库权威只给出 {len(ids)} 个 id（<50）＝数据或解析失效", file=sys.stderr)
         raise SystemExit(2)
     return ids
 
@@ -275,8 +286,25 @@ def run_selftest() -> int:
     """
     allowed = kb_ids()
     first = sorted(allowed)[0]
+
+    def authority_read_fails() -> bool:
+        """反向对照：把权威路径改到不存在处，判据必须 SystemExit(2)——静默放行等于白名单恒真。"""
+        global KNOWLEDGE_JSON
+        keep = KNOWLEDGE_JSON
+        try:
+            KNOWLEDGE_JSON = keep.parent / "no_such_knowledge.json"
+            kb_ids()
+            return False
+        except SystemExit as e:
+            return e.code == 2
+        finally:
+            KNOWLEDGE_JSON = keep
+
+    authority_guard = authority_read_fails()
     ok_case = check_health({"code": 0, "data": {"version": repo_version()}}, repo_version())
     cases: list[tuple[str, bool]] = [
+        ("知识库权威读不到时 exit 2（引用白名单不得静默放行）", authority_guard),
+
         ("health 版本一致判绿", all(r[1] for r in ok_case)),
         ("health 版本漂移判红", any(not r[1] for r in check_health({"data": {"version": "0.0.1"}}, repo_version()))),
         ("health 缺 version 字段判红", any(not r[1] for r in check_health({"data": {}}, repo_version()))),
@@ -330,7 +358,7 @@ def main() -> int:
     args = ap.parse_args()
     if args.selftest:
         return run_selftest()
-    for f in (VERSION_PY, KNOWLEDGE_JS):
+    for f in (VERSION_PY, KNOWLEDGE_JSON, KNOWLEDGE_JS):
         if not f.is_file():
             print(f"[GATE:live-smoke-fail] 单一源缺失：{f}", file=sys.stderr)
             return 2

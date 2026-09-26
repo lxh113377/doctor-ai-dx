@@ -44,6 +44,17 @@ check("Py 生成物 == 权威（双端同源同值）", JSON.stringify(pySide.ru
   && pySide.meta.negation_window_chars === authority.negation_window_chars,
   `Py ${pySide.rules.length} 条 / JS ${SCOPE_RULES.length} 条`)
 
+// 台账 #93：数据等值抓不到「同一份数据换种写法」（手改生成物格式化），逐字节这一层才抓得到。
+// 与 kb_guard / red_flag_table_guard 同一形态：子进程 rc 直读，不靠 stdout 猜结论。
+try {
+  execFileSync(process.execPath, [fileURLToPath(new URL("../../scripts/export_scope.mjs", import.meta.url)), "--check"],
+    { encoding: "utf8", stdio: "pipe" })
+  check("生成器复算：两份 scope 生成物与权威逐字节一致", true)
+} catch (e) {
+  const line = String((e.stdout || "") + (e.stderr || "")).trim().split("\n").filter(Boolean).slice(-1)[0]
+  check("生成器复算：两份 scope 生成物与权威逐字节一致", false, line || `rc=${e.status}`)
+}
+
 console.log("== ② 校验器的每条拒绝路径都要真的会拒（变异数据自证）==")
 const mutate = [
   ["空规则表", [], SCOPE_META],

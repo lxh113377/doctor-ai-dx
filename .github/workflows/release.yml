@@ -67,6 +67,12 @@ jobs:
           python scripts/dep_completeness.py
           python scripts/action_pin.py --verify
           python scripts/live_smoke.py --selftest
+          # 三张临床表的生成器自证（#92/#93）：中止面必须真会中止、生成字节可复现。
+          # npm test 里已有各自的守卫，这里补的是「出包链与预检链同闸」那半边（台账#47 的教训）。
+          node scripts/export_knowledge.mjs --selftest
+          node scripts/export_scope.mjs --check
+          node scripts/export_red_flags.mjs --check
+          node scripts/export_knowledge.mjs --check
           ruff check backend/app backend/tests scripts
           python scripts/type_gate.py --quiet
           python scripts/check_text_hygiene.py --quiet

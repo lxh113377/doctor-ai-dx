@@ -4,6 +4,7 @@
   "_ordering": "按依赖代价升序排列（纯函数断言在前，起 TestClient 的在后），任一失败即中止后续（fail-fast）。",
   "suites": [
     "tests/smoke_engine.py",
+    "tests/test_knowledge_authority.py",
     "tests/test_fhir.py",
     "tests/test_scope_rules.py",
     "tests/test_red_flag_rules.py",

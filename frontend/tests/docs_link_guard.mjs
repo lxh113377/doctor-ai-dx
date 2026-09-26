@@ -166,7 +166,7 @@ const toNum = (raw) => (/^\d+$/.test(raw) ? Number(raw)
 const docClaims = []
 let countTotal = 0
 // 第三个派生真值：知识库条目数。第二十七轮实测——扩库 5 条后 README/ARCHITECTURE/EVAL_CARD 各写各的条数，
-// 「55 条」这种手抄数一旦进文档，评审按它核对仓库就会对不上；条数只准由 KNOWLEDGE_BASE 现算。
+// 手抄条数一旦进文档，评审按它核对仓库就会对不上；条数只准由 KNOWLEDGE_BASE 现算。
 const KB_COUNT = KNOWLEDGE_BASE.length
 const KB_RE = [/知识库[^\d\n]{0,6}(\d{1,4})\s*条/g, /(\d{1,4})\s*条(?:知识|知识库|条目|逐条)/g, /(\d{1,4})\s*条\s*\/\s*\d+\s*病种域/g]
 let kbTotal = 0
@@ -193,7 +193,70 @@ for (const file of mdFiles) {
 check(`文档中的套件数/工作流份数/知识库条数全部为派生真值（套件=${suiteCount}、工作流=${wfCount}、条目=${KB_COUNT}）`,
   docClaims.length === 0, docClaims.slice(0, 8).join(" | "))
 check(`该判据确有输入（扫到 ${countTotal} 处计数声明，≥3 才算在射程内）`, countTotal >= 3,
+
   "一处都没扫到＝正则失效，判红而不是跳过")
+
+// #91（第三十二轮）：同一条派生真值的**另一半射程**——源码注释里也会写条数。
+// 第二十七轮只把 .md 纳进来，本轮实测 `frontend/functions/lib/data.js` 头部注释长期写着过期条数，
+// 且顺手写死了当时的生成器文件名（该文件本轮已退役）——注释会烂，判据看不见就等于没判。
+const GENERATED_FACES = new Set(["knowledge.js", "knowledge.py", "red_flag_rules.js", "red_flag_rules.py",
+  "scope_rules.js", "scope_rules.py", "semantic_neighbors.js", "semantic_neighbors.json"])
+const walkSrc = (rel) => {
+  const abs = resolve(ROOT, rel)
+  if (!existsSync(abs) || !statSync(abs).isDirectory()) return []
+  const out = []
+  for (const e of readdirSync(abs, { withFileTypes: true })) {
+    if (e.isDirectory()) {
+      if (SKIP_DIRS.has(e.name)) continue
+      out.push(...walkSrc(`${rel}/${e.name}`))
+    } else if (e.isFile() && /\.(js|mjs|jsx|py)$/.test(e.name) && !GENERATED_FACES.has(e.name)) {
+      out.push(`${rel}/${e.name}`)
+    }
+  }
+  return out
+}
+const srcFiles = [...walkSrc("frontend/functions"), ...walkSrc("frontend/src"), ...walkSrc("frontend/tests"),
+  ...walkSrc("scripts"), ...walkSrc("backend/app"), ...walkSrc("backend/tests")]
+check(`源码射程非空（扫 ${srcFiles.length} 个源文件，< 40 即射程塌陷＝判据看不见输入）`, srcFiles.length >= 40, srcFiles.slice(0, 6).join(","))
+const srcClaims = []
+let srcKbTotal = 0
+let srcHistory = 0
+// 历史叙述不做现状核（与 CHANGELOG 同一条理由）：本轮 3 处命中里「旧 30 条」「知识库曾有 16 条」是真历史，
+// 只有 accuracy_guard 那句「自建 NN 条知识库」是过期现状声明（本轮已改为不写条数）。排除项**逐处计数并打印**，
+// 免得这个判据变成"带关键字就能躲过"的静默放行——被排除的处数必须看得见。
+const HISTORY_WORDS = /曾|此前|当年|旧\s*\d+\s*条|原为|已废弃|第\s*\d+\s*轮/
+for (const rel of srcFiles) {
+  let text = ""
+  try {
+    text = readFileSync(resolve(ROOT, rel), "utf8")
+  } catch {
+    continue
+  }
+  for (const line of text.split("\n")) {
+    for (const re of KB_RE) {
+      re.lastIndex = 0
+      for (const m of line.matchAll(re)) {
+        if (HISTORY_WORDS.test(line)) {
+          srcHistory++
+          continue
+        }
+        srcKbTotal++
+        if (Number(m[1]) !== KB_COUNT) srcClaims.push(`${rel} → "${m[0]}" 应为 ${KB_COUNT} 条`)
+      }
+    }
+  }
+}
+check(`源码注释里的知识库条数声明亦为派生真值（现状声明 ${srcKbTotal} 处，另有 ${srcHistory} 处按历史叙述排除）`, srcClaims.length === 0, srcClaims.slice(0, 6).join(" | "))
+// 恒真防护：不依赖"恰好有人写错过"——直接喂对/错两个数给同一组正则，错的必须被识破。
+const probeOk = KB_RE.some((re) => { re.lastIndex = 0; return re.test(`知识库 ${KB_COUNT} 条`) })
+const probeBad = KB_RE.some((re) => { re.lastIndex = 0; return re.test(`知识库 ${KB_COUNT + 1} 条`) })
+const probeNamed = probeBad && ![...KB_RE].some((re) => {
+  re.lastIndex = 0
+  const m = `知识库 ${KB_COUNT + 1} 条`.match(re)
+  return m && Number(m[1]) === KB_COUNT
+})
+check("条数正则非恒真（对数与错数都能被解析，且错数会被判为不等）", probeOk && probeNamed,
+  `ok=${probeOk} named=${probeNamed}`)
 check(`知识库条数判据有输入（扫到 ${kbTotal} 处条数声明，≥3 才算在射程内）`, kbTotal >= 3,
   "扫到 0 处＝KB_RE 失效或文档已不写条数，两种都要点名而不是静默")
 

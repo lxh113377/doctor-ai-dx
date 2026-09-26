@@ -1,8 +1,9 @@
 // ============================================================
 // 数据层（脱敏演示病例）——Cloudflare Functions 版
-// 仅保留病例与问诊结束语：知识库单一源在 knowledge.js（55 条，export_kb.mjs 由此生成 knowledge.py），
-// 红旗关键词在 rules.js（DANGER_RULES/COMBO_RULES），旧 30 条知识库与 DX/WORKUP/REPORT mock 已废弃移除。
-// 对应 backend/app/mock.py 的病例部分，契约不变。
+// 仅保留病例与问诊结束语。本文件不写「权威有几条」这类手抄数（此处的旧数曾长期停在过期值而实际已扩容）：
+// 知识库权威 = data/knowledge.json，红旗表权威 = data/red_flag_rules.json，适用范围权威 = data/scope_rules.json，
+// 三张表都由 scripts/export_*.mjs 单向生成两端模块；条数只准由生成物现算（docs_link_guard 会点名写死条数的注释）。
+// 旧 30 条知识库与 DX/WORKUP/REPORT mock 已废弃移除；本文件对应 backend/app/mock.py 的病例部分，契约不变。
 // ============================================================
 
 export const CASES = [

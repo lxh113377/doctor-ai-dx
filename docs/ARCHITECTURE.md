@@ -34,7 +34,7 @@
 
 | 语义 | 权威（JS） | 镜像（Py） | 对账门禁 |
 |---|---|---|---|
-| 知识数据单一源 | `functions/lib/knowledge.js` | `app/knowledge.py`（导出） | `npm run test:kb`（17 项，含四组数据深度相等） |
+| 知识数据**本体**（语料/同义词/症状映射/检索加权词） | **`data/knowledge.json`（权威）** → 生成 `functions/lib/knowledge.js`（rag/engine/fhir/retriever 消费它） | 同一权威生成 `backend/app/knowledge.py` | **第三十二轮 #92 起表本体外置**（收台账 #55 的最后一块）：`npm run kb:export` 单向生成、`kb:check` 逐字节核漂移；`npm run test:kb`＝权威==JS==Py 三方全等 ＋ 生成器复算 ＋ 逐条 schema/孤儿/死线索/溯源棘轮 ＋ **死权重棘轮**（加权词若在语料正文一次都不出现则永远加不了分，基线只降不升）＋ **常驻变异自证**（改权威／手改生成物／加死词／塞未声明键四形各一条，逐条必须点名且跑完按字节复原） |
 | BM25 检索 | `functions/lib/rag.js` | `app/rag.py` | `npm run test:retrieval-parity`（50 例双档） |
 | 红旗规则 | `functions/lib/rules.js` | `app/rules.py` | `npm run test:contract`（31 例逐字段，容差 0.002）+ **双端逐字同表的 6 条探针**（数值血压/组合线索/脏读值域/去重/空输入；一端实现漂移即该端判红，实测两端各自可拦） |
 | 红旗规则表**本体**＋载入即校验 | **`data/red_flag_rules.json`（权威）** → 生成 `functions/lib/red_flag_rules.js`（`rules.js` 消费它） | 同一权威生成 `backend/app/red_flag_rules.py`，`app/rules.py` 只留判定逻辑 | **第三十一轮 #89 起表本体外置**：`npm run redflags:export` 单向生成、`-- --check` 逐字节核漂移；`npm run test:table` 37 项＝权威==JS==Py **三方**全等（两张规则表＋否定词表＋阳性例外词＋血压阈值与脏读值域，逐字段含顺序）＋ 同一份变异夹具 `fixtures/red_flag_mutations.json` 两端各施一遍、逐条必须拒且点名同一不变量 ＋ 12 类不变量覆盖面 ＋ advice 过裸子串红线（禁用词单一源 `fixtures/red_line_phrases.json`）＋ 文档内表条数须为派生真值 ＋ 镜像端由 `backend/tests/test_red_flag_rules.py` **原生** 32 项覆盖（含直接驱动导入期 raise） |
@@ -118,10 +118,10 @@
 
 ## 8. 扩展点与边界
 
-- 加一条知识：改 `functions/lib/knowledge.js`（唯一源）→ `test:kb` 会拦 schema/孤儿/溯源违规 → 重导出 `backend/app/knowledge.py`。
+- 加一条知识：只改 `data/knowledge.json`（权威）一处 → `npm run kb:export` 生成两端 → `test:kb` 会拦 schema/孤儿/溯源/死权重违规，`kb:check` 拦「改了 JSON 忘了导出」。改前不必动任何 `.js`/`.py`：`functions/lib/knowledge.js` 与 `app/knowledge.py` 现在都是生成物。
 - 补一条回链：先实测该 URL 可达（`npm run test:links` 或 curl 200）→ 把域名加进 `kb_guard.mjs` 的 `VERIFIED_HOSTS` → 再写进条目；**未核验域名会被离线白名单直接拦下**（2026-09-25 实测教训：16 条 url 指向 DNS 不存在的域，属假回链）。
 - 遇到"站点活着但拒绝自动化访问"（412/403/429 等）：**浏览器人工核实可达后**，往 `link_health.mjs` 的 `BLOCKED_REGISTRY` 加一行 `host: {status, since, note}`（note 写清实测依据与日期）。未登记的被拦源门禁判红；不要用"调高计数基线"来消警——那正是本轮拆掉旧判据的原因（一处噪声会永久掩盖后面的噪声）。
-- 加一条红旗：`rules.js` 的 `DANGER_RULES`（单词）或 `COMBO_RULES`（多线索组合，降低非特异词误报）→ 同步 `rules.py` → `test:contract` 兜底。
+- 加一条红旗：只改 `data/red_flag_rules.json`（权威）一处 → `npm run redflags:export` 生成两端 → 载入即校验会先拒掉重名/裸单字/越界 severity/过短 advice，再跑 `test:contract` 兜底。**不必也不准手改** `rules.js`/`rules.py` 里的表体。
 - 换模型/自建推理：只动 `llm.py` 的 Provider 与 `DEEPSEEK_BASE_URL`，链路与红线不受影响。
 - 重建语义邻接表（**知识库一改必做**）：`python scripts/build_semantic_neighbors.py --engine-dir <含 bge_onnx_engine.py 的目录>` → 产物头写回 `corpusSha256` → `npm run test:semantic` 会比对实算指纹，**忘记重跑即判红**（2026-09-25 变异实测：改一条正文 → `表内 5422… vs 实算 7385…` FAIL）。
 - 明确未提供：鉴权与多租户、数据持久化（无患者落库）、查询侧语义编码（需向量服务，serverless 形态下未引入；条目侧邻接已落地但实测无增益）、真实临床验证（评测为 silver 标注）。

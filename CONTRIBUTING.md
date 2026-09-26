@@ -15,7 +15,7 @@
 
 | 权威源（改这里） | 镜像（必须同步） | 同步方式 |
 |---|---|---|
-| `functions/lib/knowledge.js` | `backend/app/knowledge.py` | 跑 `npm --prefix frontend run kb:export`（即 `scripts/export_kb.mjs`）生成，**不要手改 .py 数据** |
+| `data/knowledge.json`（权威） | `functions/lib/knowledge.js` + `backend/app/knowledge.py`（两份生成物） | 跑 `npm --prefix frontend run kb:export`（即 `scripts/export_knowledge.mjs`）生成；`kb:check` 只核不写。**两端都禁手改数据**，改数值只改 JSON |
 | `data/red_flag_rules.json`（**红旗表权威**：13 条 DANGER + 4 条 COMBO + 否定词表 + 阳性例外词 + 血压阈值与脏读值域） | `functions/lib/red_flag_rules.js` + `backend/app/red_flag_rules.py`（两份都是生成物） | 跑 `npm --prefix frontend run redflags:export` 生成；`redflags:export -- --check` 逐字节核漂移；「权威 == JS == Py」三方全等由 `tests/red_flag_table_guard.mjs` 把守，形状合法性由**两端导入期校验**把守（表坏＝拒绝载入，无降级模式）。第三十一轮 #89 起改一条红旗只需动这个 JSON |
 | `functions/lib/engine.js` | `backend/app/services/engine.py` | 人工同步 + `contract_parity.mjs` 守门 |
 | `functions/lib/rag.js` / `rules.js` / `retriever.js` | `backend/app/rag.py` / `rules.py` / `retriever.py` | 人工同步 + 双端测试守门 |
@@ -66,7 +66,7 @@ CI 会跑同样的东西；`main` 分支保护要求 `build-and-test` 与 `backe
 
 ## 知识库条目 PR 规范
 
-新增/修改 `knowledge.js` 条目须满足 `frontend/tests/kb_guard.mjs` 的全部断言：
+新增/修改 `data/knowledge.json`（权威）条目须满足 `frontend/tests/kb_guard.mjs` 的全部断言；两端 `knowledge.js`/`knowledge.py` 是生成物，手改即被三方全等判红：
 
 - `id` 顺延为 `kb-0NN`，不得跳号或复用；`title/source/scope/section/condition/text` 非空。
 - `year` 为 4 位数字且在 1990–当前年；`keywords` ≥3 且组内不重复。

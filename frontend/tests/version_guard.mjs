@@ -1,5 +1,5 @@
 // 版本真值守卫：五处版本声明必须同值（round7 实测抓到 0.2.0/1.5.0/v1.5.0 三处漂移后固化）。
-// 口径：git 最新 SemVer tag 是发布事实源；未到 tag 的升版提交以 package.json 为准，其余四处必须与它一致。
+// 口径：git 最新 SemVer tag 是发布事实源；未到 tag 的升版提交以 package.json 为准，其余五处必须与它一致。
 import { execFileSync } from "node:child_process"
 import { readFileSync } from "node:fs"
 import { fileURLToPath } from "node:url"
@@ -18,11 +18,15 @@ const pkg = JSON.parse(read("../package.json")).version
 const fe = (read("../functions/lib/version.js").match(/APP_VERSION = "([^"]+)"/) || [])[1] || "<缺失>"
 const be = (read("../../backend/app/version.py").match(/APP_VERSION = "([^"]+)"/) || [])[1] || "<缺失>"
 const oa = JSON.parse(read("../../docs/openapi.json")).info.version
+// package-lock 根上的 version 是第五份副本，第三十二轮实测它停在 v1.23.2（差 6 个 tag 没人动过）：
+// npm install --package-lock-only 只改这两行，所以它必须进对账而不是靠人记得跑。
+const lock = JSON.parse(read("../package-lock.json")).version
 
-console.log("== 四处声明同值 ==")
+console.log("== 五处声明同值 ==")
 check(`package.json ${pkg} == functions/lib/version.js ${fe}`, pkg === fe)
 check(`package.json == backend/app/version.py ${be}`, pkg === be)
 check(`package.json == docs/openapi.json ${oa}（派生件须重新生成）`, pkg === oa)
+check(`package.json == package-lock.json 根 version ${lock}（npm install --package-lock-only 同步）`, pkg === lock)
 check("语义化版本形态 x.y.z", SEMVER.test(pkg), pkg)
 
 console.log("== 与最新 SemVer tag 对账 ==")

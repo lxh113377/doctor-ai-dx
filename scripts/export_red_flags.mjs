@@ -3,7 +3,7 @@
 // 为什么要有这个生成器（第三十一轮 #89，承接第 30 轮的载入即校验）：红旗表是三条红线里唯一"数据即代码"的一张，
 // 上一轮把**校验**补上了，但"改一条关键词要动两个源码文件"仍在——外置后改一处 JSON、跑一次导出，
 // 双端生成物同刻同源，`red_flag_table_guard` 核「权威 == JS == Py」三方全等。
-// 方向与 export_kb.mjs / export_scope.mjs 一致：单向生成、禁手改生成物。
+// 方向与 export_scope.mjs / export_knowledge.mjs 一致：JSON 权威 → 双端生成物，单向生成、禁手改生成物。
 // 铁律（lessons R48 内联→外置同族）：**读空/半空一律拒写盘**，绝不产出半成品或空表覆盖既有正确文件。
 import { readFileSync, writeFileSync } from "node:fs"
 import { fileURLToPath } from "node:url"

@@ -68,7 +68,7 @@ process.stdout.write(JSON.stringify(slim))
 
 
 def load_corpus() -> list[dict]:
-    """从权威源 knowledge.js 取语料（单向 js→产物，与 export_kb.mjs 同方向，禁反向手改）。"""
+    """从 knowledge.js 取语料。它是 data/knowledge.json 的生成物（#92 起），本脚本再单向生成 semantic_neighbors.js；两级都禁反向手改。"""
     if not JS_KB.exists():
         raise SystemExit(f"FAIL: 权威知识库不存在 {JS_KB}")
     spec = JS_KB.as_uri()

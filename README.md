@@ -15,7 +15,7 @@ backend/    FastAPI —— 同一链路的 Python 镜像（可选本地运行，
 ```
 
 - **线上 = Functions**：`https://doctor-ai-dx.pages.dev`，前端 dist + functions/ 单次部署。
-- **两端镜像**：`backend/app/{knowledge,rules,rag,retriever}.py` 与 `functions/lib/{knowledge,rules,rag,retriever}.js` 逻辑一致；`knowledge.py` 由 `scripts/export_kb.mjs` 从 `knowledge.js` 自动生成（`npm --prefix frontend run kb:export`），保证知识库数据零漂移。
+- **两端镜像**：`backend/app/{knowledge,rules,rag,retriever}.py` 与 `functions/lib/{knowledge,rules,rag,retriever}.js` 逻辑一致；`knowledge.py` 与 `knowledge.js` 同为 `data/knowledge.json` 的生成物（`scripts/export_knowledge.mjs`，`npm --prefix frontend run kb:export` 重生成、`kb:check` 只核不写），保证知识库数据零漂移。
 - `rules` 危险信号规则引擎（不依赖 LLM，可解释可测试，命中即强制转诊，**优先级高于模型不可覆盖**）
 - `rag` BM25 + 医学术语同义词扩展检索，输出带 `id/source/year/url/scope` 的证据
 - `retriever` 检索器适配边界；当前默认且唯一启用原 BM25，后续可增加混合检索，BM25 始终保留为安全回退

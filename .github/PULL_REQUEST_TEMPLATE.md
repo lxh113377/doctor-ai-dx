@@ -15,7 +15,7 @@ cd frontend && npm test    # 九件套（含双端契约 31/31、API 契约守�
 python backend/tests/smoke_engine.py
 ```
 
-- [ ] 涉知识库变更：已跑 `03-评测/export_kb.mjs` 重生成 `knowledge.py`（数据单源零漂移）
+- [ ] 涉知识库变更：只改权威 `data/knowledge.json`，再跑 `npm --prefix frontend run kb:export` 重生成两端（`kb:check` 只核不写；手改生成物由 `kb_guard` 判红）
 - [ ] 涉 Functions 变更：线上重部署后 `/api/health` 实测 + dx 冒烟通过
 - [ ] 涉 schema/输出结构：`contract_parity` 双端一致
 
