@@ -126,6 +126,10 @@ jobs:
           test "$n" -ge 80   # 本轮实测 87（git ls-files 六类后缀）；取下限而非现值，留删改余量
           codespell
           echo "[GATE:codespell-pass] 零拼写告警（误报须带原因登记进 .codespellrc）"
+      - name: 依赖声明完整性（import ⊆ 声明面 + 非 optional peer ↔ 锁解析）
+        # 零网络、纯 AST/JSON 静态对账，故与 actionlint 同作业；首跑即抓到 starlette 只作为 fastapi
+        # 传递依赖被直接 import（见 scripts/dep_completeness.py 头注）。
+        run: python scripts/dep_completeness.py
       - name: Actions 供应链钉版与最小权限对账（第二十三轮；上游真值在此核对）
         # 判据上真值：注释写的版本 tag 由 GitHub 解析成提交号，与工作流里钉的 40 位逐字比。
         # 本机 pre-commit 走 --offline（只查格式/权限），CI 不带该旗标——权威判定必须在有 Token 的一侧。
