@@ -2,7 +2,7 @@
   "openapi": "3.0.3",
   "info": {
     "title": "医·基层AI辅助诊断系统 API",
-    "version": "1.25.0",
+    "version": "1.25.1",
     "description": "Cloudflare Pages Functions（线上权威实现 functions/api/[[route]].js）的机器可读契约；FastAPI 后端为镜像实现，双端一致性由 contract_parity 测试保障。所有响应统一壳 {code:0,data}（成功）或 {code:<http-status>,message}（失败），并携带 x-request-id 响应头用于故障归因。全程 AI 辅助参考 · 医生终审，输出不构成独立诊断。",
     "x-compliance": "演示仅脱敏合成病例；evidence_ids 仅限知识库白名单 kb-001~055；红旗规则层独立于 LLM 不可被模型覆盖"
   },

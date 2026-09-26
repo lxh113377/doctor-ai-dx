@@ -7,13 +7,14 @@
 
 ```
 病例(脱敏合成) ─┐
-                ├─① 临床状态抽取 extractState        engine.js:30 / engine.py
+                ├─① 临床状态抽取 extractState        engine.js:48 / engine.py
                 │     症状·体征·缺项·红旗线索
-② BM25 证据检索  rag.js / rag.py ──────────────────►  evidence[] (kb-001..055)
-③ LLM 结构化生成  llmDiagnosis  engine.js:212 / llm.py
-④ 确定性校验     validateDiagnosis  engine.js:133   ← 引用白名单 + 结构完整性
+② BM25 证据检索  rag.js / rag.py ──────────────────►  evidence[] (kb-001..060)
+③ LLM 结构化生成  llmDiagnosis  engine.js:252 / llm.py
+④ 确定性校验     validateDiagnosis  engine.js:173   ← 引用白名单 + 结构完整性
 ⑤ 红旗规则兜底   rules.js / rules.py（13 关键词 + 4 组合 + 血压阈值）
-⑥ 失败安全降级   ruleDiagnosis  engine.js:192        ← LLM 不可用时仍可出结论
+⑥ 失败安全降级   ruleDiagnosis  engine.js:232        ← LLM 不可用时仍可出结论
+⑦ 弃权/范围外判定 answerability  engine.js:154 / rag.py  ← 红旗命中一律不弃权；证据不足只出弃权卡
                 └─► dx → workup → report（红旗一律服务端重算，不信前端）
 ```
 

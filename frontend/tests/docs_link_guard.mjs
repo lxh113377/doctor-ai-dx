@@ -222,5 +222,59 @@ const covBad = []
 check("EVAL_CARD 病种覆盖清单与知识库逐条逐域全等（防手抄清单漂移）",
   covBad.length === 0, covBad.slice(0, 6).join(" | "))
 
+// 行号引用对账：文档写 `engine.js:173` 时，第 173 行必须真的还在讲它声称的那个标识符。
+// 为什么本轮加：改 engine.js 让 ARCHITECTURE 链路图里三处行号全部漂移到别的函数上，
+// 而既有判据只核"文件存在"、不核"行号指向的内容"——即"路径真、内容假"的凭据（本轮实测自纠）。
+const lineBad = []
+let lineTotal = 0
+// 实测形状：链路图里的引用是**裸文本** `engine.js:48`（在代码围栏内），不是反引号包裹，
+// 所以这里按"裸 file.ext:行号"匹配；改成只匹配反引号会扫到 0 处并假通过（本轮实测踩到，靠零输入守卫抓住）。
+const CITE_RE = /([\w./-]+\.(?:js|py|mjs|jsx|json|ts|tsx))[:：](\d{1,5})/g
+// 文档常只写文件名（engine.js），真身在 functions/lib/ 或 src/views/ 下 ⇒ 先按 basename 建索引，
+// 而不是猜固定路径（猜路径就是刚才扫到 0 处的根因）。
+const SRC_DIRS = ["frontend/functions", "frontend/src", "frontend/tests", "backend/app", "scripts", ".github"]
+const BY_BASENAME = new Map()
+const walk = (rel) => {
+  const abs = resolve(ROOT, rel)
+  if (!existsSync(abs)) return
+  for (const e of readdirSync(abs, { withFileTypes: true })) {
+    if (e.name === "node_modules" || e.name === "dist" || e.name.startsWith(".")) continue
+    const child = `${rel}/${e.name}`
+    if (e.isDirectory()) walk(child)
+    else if (!BY_BASENAME.has(e.name)) BY_BASENAME.set(e.name, child)
+  }
+}
+for (const d of SRC_DIRS) walk(d)
+for (const file of mdFiles) {
+  if (HISTORY_FILES.has(file)) continue
+  const text = mdOf(file)
+  for (const m of text.matchAll(CITE_RE)) {
+    const rel = m[1].replace(/^\.?\//, "")
+    const lineNo = Number(m[2])
+    const abs = resolve(ROOT, existsSync(resolve(ROOT, rel)) ? rel
+      : (BY_BASENAME.get(rel.split("/").pop()) || "__no_such_file__"))
+    if (!existsSync(abs)) continue // 定位不到交给"假凭据"判据点名
+    lineTotal++
+    const lines = readFileSync(abs, "utf8").split(/\r?\n/)
+    if (lineNo < 1 || lineNo > lines.length) {
+      lineBad.push(`${file} → ${m[0]} 越界（${rel} 只有 ${lines.length} 行）`)
+      continue
+    }
+    // 声称的标识符：引用前后 60 字里出现的驼峰/下划线函数名
+    const ctx = text.slice(Math.max(0, m.index - 60), m.index + 60)
+    const named = [...ctx.matchAll(/\b([A-Za-z_$][\w$]{3,})\b/g)].map((x) => x[1])
+      .filter((n) => !["http", "https", "com", "www", "docs", "src", "lib", "test", "tests", "engine", "rag", "py", "js", "mjs"].includes(n))
+    if (!named.length) continue // 没声称具体符号 ⇒ 只核不越界
+    const window = lines.slice(Math.max(0, lineNo - 4), lineNo + 3).join("\n")
+    if (!named.some((n) => window.includes(n))) {
+      lineBad.push(`${file} → ${m[0]} 第 ${lineNo}±3 行不含所声称的 ${named.slice(0, 3).join("/")}（行号已漂移）`)
+    }
+  }
+}
+check("文档里的 `文件:行号` 引用其行确实指向所声称的符号（防行号漂移假凭据）",
+  lineBad.length === 0, lineBad.slice(0, 6).join(" | "))
+check(`行号引用判据有输入（扫到 ${lineTotal} 处 ` + "`文件:行号`" + "，≥3 才算在射程内）", lineTotal >= 3,
+  "扫到 0 处＝正则失效或文档不再引用行号，两种都要点名而不是静默")
+
 console.log(`\nRESULT: ${pass} pass / ${fail} fail`)
 process.exit(fail ? 1 : 0)
