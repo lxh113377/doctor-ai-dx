@@ -11,6 +11,12 @@ on:
   schedule:
     - cron: '30 3 * * 4'
 
+# 第二十三轮对标（2026-09-26 实测）：peer phlox 4/4 工作流顶层显式 permissions、openemr 61/79 有；
+# 我方此前 1/5。不写这一块的默认值是"仓库设置说了算"，同一份 YAML 在不同仓库设置下拿到的权限不同，
+# 最小权限就无从核对。判据在 scripts/action_pin.py（--verify），越权即判红。
+permissions:
+  contents: read
+
 jobs:
   analyze:
     runs-on: ubuntu-latest
@@ -24,12 +30,14 @@ jobs:
       matrix:
         language: [javascript-typescript, python]
     steps:
-      - uses: actions/checkout@v7
-      - uses: github/codeql-action/init@v3
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: github/codeql-action/init@1190a975f95ce23525efb6a3fc21ea29567c1b52  # v3.38.2
         with:
           languages: ${{ matrix.language }}
-      - uses: github/codeql-action/autobuild@v3
+      - uses: github/codeql-action/autobuild@1190a975f95ce23525efb6a3fc21ea29567c1b52  # v3.38.2
         if: matrix.language == 'javascript-typescript'
-      - uses: github/codeql-action/analyze@v3
+      - uses: github/codeql-action/analyze@1190a975f95ce23525efb6a3fc21ea29567c1b52  # v3.38.2
         with:
           category: '/language:${{ matrix.language }}'

@@ -11,6 +11,12 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+# 第二十三轮对标（2026-09-26 实测）：peer phlox 4/4 工作流顶层显式 permissions、openemr 61/79 有；
+# 我方此前 1/5。不写这一块的默认值是"仓库设置说了算"，同一份 YAML 在不同仓库设置下拿到的权限不同，
+# 最小权限就无从核对。判据在 scripts/action_pin.py（--verify），越权即判红。
+permissions:
+  contents: read
+
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
@@ -18,13 +24,15 @@ jobs:
       run:
         working-directory: frontend
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v7.0.0
         with:
           node-version: 22
           cache: npm
           cache-dependency-path: frontend/package-lock.json
-      - uses: actions/setup-python@v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
         with:
           python-version: "3.12"
           cache: pip
@@ -57,7 +65,7 @@ jobs:
             echo "::notice::AUTO_DEPLOY 未开启：deploy 作业将 skipped，线上更新需手工 wrangler 部署（配 secret 后置 true 接管）"
           fi
       - name: Upload dist
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         with:
           name: dist
           path: frontend/dist
@@ -68,8 +76,10 @@ jobs:
     # 写进 JS 正则即"永不匹配的死判据"（实测两次：v1.11.0 privacy_guard 3 条、v1.12.0 文档 2 处）。
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
         with:
           python-version: "3.12"
       - name: 全仓文本控制字符扫描（C0 与 DEL，\t\n\r 除外）
@@ -85,7 +95,9 @@ jobs:
   infra-lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
       - name: 扫描面非空证明（工作流数 ≥5 且 Dockerfile/compose 在场，防"扫 0 个文件也判绿"）
         run: |
           set -eu
@@ -114,6 +126,15 @@ jobs:
           test "$n" -ge 80   # 本轮实测 87（git ls-files 六类后缀）；取下限而非现值，留删改余量
           codespell
           echo "[GATE:codespell-pass] 零拼写告警（误报须带原因登记进 .codespellrc）"
+      - name: Actions 供应链钉版与最小权限对账（第二十三轮；上游真值在此核对）
+        # 判据上真值：注释写的版本 tag 由 GitHub 解析成提交号，与工作流里钉的 40 位逐字比。
+        # 本机 pre-commit 走 --offline（只查格式/权限），CI 不带该旗标——权威判定必须在有 Token 的一侧。
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -eu
+          python scripts/action_pin.py --verify
+          echo "[GATE:action-pin-ci-pass] 全部 action 引用可回溯到上游发布 tag（CI 侧权威判定）"
 
   e2e:
     # 第十七轮补（对标 OpenEMR `Acceptance test (docker)`）：三红线在**真实浏览器渲染**上的常驻判据。
@@ -126,8 +147,10 @@ jobs:
       run:
         working-directory: frontend
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v7.0.0
         with:
           node-version: 22
           cache: npm
@@ -147,8 +170,10 @@ jobs:
       run:
         working-directory: backend
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
         with:
           python-version: "3.12"
           cache: pip
@@ -219,8 +244,10 @@ jobs:
     if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && vars.AUTO_DEPLOY == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/download-artifact@v8
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
         with:
           name: dist
           path: dist

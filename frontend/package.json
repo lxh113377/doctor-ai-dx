@@ -34,6 +34,8 @@
     "test:live": "node tests/live_path_guard.mjs",
     "test:env": "node tests/env_guard.mjs",
     "lock": "cd .. && python scripts/lock_guard.py",
+    "actions": "cd .. && python scripts/action_pin.py --verify --offline",
+    "actions:selftest": "cd .. && python scripts/action_pin.py --selftest",
     "coverage:js": "c8 npm test && node tests/coverage_floor_guard.mjs",
     "coverage:py": "cd ../backend && rm -f .coverage && python selftest.py --coverage && python ../scripts/coverage_gate.py",
     "test:privacy": "node tests/privacy_guard.mjs",

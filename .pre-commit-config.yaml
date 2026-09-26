@@ -69,6 +69,13 @@ repos:
         pass_filenames: false
         files: ^(backend/(tests/|selftest)|backend/tests/suite\.json|docker-compose\.yml|\.github/workflows/ci\.yml|frontend/package\.json|scripts/suite_guard\.py)
 
+      - id: action-pin
+        name: Actions 钉版与最小权限（本机离线档；上游真值对账由 CI infra-lint 出）
+        entry: python scripts/action_pin.py --verify --offline --quiet
+        language: system
+        pass_filenames: false
+        files: ^\.github/workflows/.*\.ya?ml$
+
       - id: text-hygiene
         name: 全仓文本控制字符扫描（防"正则里的词边界被转义成裸退格符"类死判据）
         entry: python scripts/check_text_hygiene.py --quiet

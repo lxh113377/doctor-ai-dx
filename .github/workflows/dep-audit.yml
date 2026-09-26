@@ -10,6 +10,12 @@ on:
       - .github/workflows/dep-audit.yml
   workflow_dispatch: {}
 
+# 第二十三轮对标（2026-09-26 实测）：peer phlox 4/4 工作流顶层显式 permissions、openemr 61/79 有；
+# 我方此前 1/5。不写这一块的默认值是"仓库设置说了算"，同一份 YAML 在不同仓库设置下拿到的权限不同，
+# 最小权限就无从核对。判据在 scripts/action_pin.py（--verify），越权即判红。
+permissions:
+  contents: read
+
 jobs:
   image-scan:
     # 第二十一轮补（对标：ragflow 仓根带 `.trivyignore` ⇒ 同类把**镜像层**纳入 CVE 扫描；我方自 r20 起
@@ -35,13 +41,15 @@ jobs:
   audit:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v7.0.0
         with:
           node-version: 22
           cache: npm
           cache-dependency-path: frontend/package-lock.json
-      - uses: actions/setup-python@v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
         with:
           python-version: "3.12"
       - name: npm audit（high 即红；已知 dev-only 项按批处置）

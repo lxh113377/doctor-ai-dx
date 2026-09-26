@@ -13,14 +13,18 @@ const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = join(HERE, "..", "..")
 const ENV_EXAMPLE = join(REPO, "backend", ".env.example")
 
-// 扫描根：全部会读环境变量的生产/脚本面（新增目录要在这里登记，判据面 = 清单面）
-const SCAN_ROOTS = [
+// 扫描根分两面对账：`.env.example` 是**应用**从零启动的人读入口，把 CI 令牌写进去会误导使用者
+// （"跑演示要 GitHub token？"——不要）。故工具链侧的键改由 `.github/workflows/*` 自身担保声明，
+// 判据仍闭合：应用面必须入 .env.example，工具面必须入两者之一，且任何键一旦被应用面读取就回到
+// .env.example 口径（生产运行面因此不可能悄悄拿去读 CI 令牌）。
+const APP_ROOTS = [
   join(REPO, "backend", "app"),
   join(REPO, "backend", "tests"),
   join(REPO, "backend", "run.py"),
-  join(REPO, "scripts"),
   join(REPO, "frontend", "functions"),
 ]
+const TOOL_ROOTS = [join(REPO, "scripts")]
+const WF_DIR = join(REPO, ".github", "workflows")
 const SKIP_NAMES = new Set(["node_modules", "dist", ".wrangler", "__pycache__", "test-results"])
 // 键名前面可能有引号（Python 的 getenv("K") / environ["K"]），JS 侧是 env?.K / env.K（可选链必须吃到）
 // JS 权威面读的是 `env?.DEEPSEEK_API_KEY`（可选链）。实测：漏吃 `?.` 时 JS 侧命中直接归 0，
@@ -39,22 +43,45 @@ function walk(p, out) {
 }
 
 const files = []
-for (const root of SCAN_ROOTS) {
+const toolFiles = []
+for (const root of APP_ROOTS) {
   try { walk(root, files) } catch { /* 目录不存在＝扫描面收缩，由下面的非空证明拦住 */ }
+}
+for (const root of TOOL_ROOTS) {
+  try { walk(root, toolFiles) } catch { /* 同上 */ }
 }
 
 const reads = new Map() // key -> [file:line]
-for (const f of files) {
-  const lines = readFileSync(f, "utf8").split(/\r?\n/)
-  lines.forEach((line, i) => {
-    if (/^\s*(#|\/\/)/.test(line)) return // 注释里的键名不算读取点（防用文档字面量满足判据）
-    for (const m of line.matchAll(KEY_RE)) {
-      const k = m[1]
-      if (!reads.has(k)) reads.set(k, [])
-      reads.get(k).push(`${relative(REPO, f).replace(/\\/g, "/")}:${i + 1}`)
-    }
-  })
+const keySides = new Map() // key -> Set<"app"|"tool">，用来判"这个键有没有被应用面读过"
+function collect(list, side) {
+  for (const f of list) {
+    const lines = readFileSync(f, "utf8").split(/\r?\n/)
+    lines.forEach((line, i) => {
+      if (/^\s*(#|\/\/)/.test(line)) return // 注释里的键名不算读取点（防用文档字面量满足判据）
+      for (const m of line.matchAll(KEY_RE)) {
+        const k = m[1]
+        if (!reads.has(k)) reads.set(k, [])
+        reads.get(k).push(`${relative(REPO, f).replace(/\\/g, "/")}:${i + 1}`)
+        if (!keySides.has(k)) keySides.set(k, new Set())
+        keySides.get(k).add(side)
+      }
+    })
+  }
 }
+collect(files, "app")
+collect(toolFiles, "tool")
+
+// CI 侧声明面：工作流里出现过的 secrets/env 键名即"由 CI 提供"的证明（不另立手工白名单，防第二真值）。
+// 两条通道都要吃：`${{ secrets.X }}` 直引，和 `env:` 段里的键名映射（本仓用的是后者）。
+const ciDeclared = new Set()
+try {
+  for (const name of readdirSync(WF_DIR)) {
+    if (!/\.ya?ml$/.test(name)) continue
+    const text = readFileSync(join(WF_DIR, name), "utf8")
+    for (const m of text.matchAll(/secrets\.([A-Za-z_][A-Za-z0-9_]*)/g)) ciDeclared.add(m[1].toUpperCase())
+    for (const m of text.matchAll(/^\s{2,}([A-Z][A-Z0-9_]{2,}):.*\$\{\{/gm)) ciDeclared.add(m[1])
+  }
+} catch { /* 目录缺失由下面 check 拦住 */ }
 
 const documented = new Map()
 for (const line of readFileSync(ENV_EXAMPLE, "utf8").split(/\r?\n/)) {
@@ -88,10 +115,21 @@ for (const [, locs] of reads) {
 check(`双端扫描面各自非空（Py ${sides.py.size} 文件 / JS ${sides.js.size} 文件）`,
   sides.py.size > 0 && sides.js.size > 0, `py=${sides.py.size} js=${sides.js.size}`)
 
-// 2) 代码读的键必须全部有文档（缺一即"新人照 .env.example 配不出来"）
-const undocumented = [...reads.keys()].filter((k) => !documented.has(k))
-check("代码读取的环境变量全部登记在 .env.example", undocumented.length === 0,
-  `漏登记 ${undocumented.map((k) => `${k}@${reads.get(k)[0]}`).join(", ")}`)
+// 2) 代码读的键必须全部有文档。分两面判：应用面（会进 .env 的）与工具面（由 CI 提供的）。
+//    应用面一律要求 .env.example；工具面允许"由工作流显式提供"，但键名必须真出现在工作流里——
+//    这样"生产代码偷偷去读 CI 令牌"仍然判红（它落在应用面，只能走 .env.example）。
+const appUndoc = [...reads.keys()].filter((k) => keySides.get(k).has("app") && !documented.has(k))
+check("应用面读取的环境变量全部登记在 .env.example", appUndoc.length === 0,
+  `漏登记 ${appUndoc.map((k) => `${k}@${reads.get(k)[0]}`).join(", ")}`)
+const toolUndoc = [...reads.keys()].filter((k) => !keySides.get(k).has("app") && !documented.has(k) && !ciDeclared.has(k))
+check("工具链侧读取的键须入 .env.example 或由工作流提供", toolUndoc.length === 0,
+  `两面都没有 ${toolUndoc.map((k) => `${k}@${reads.get(k)[0]}`).join(", ")}`)
+// CI 声明面的下限按**结构**取，不拍数字：目录可读 + 至少解析出一个键。
+// （写死 ">=3" 会在别人删秘密时变假红；写死某个键名又会被"别处还引用着它"掩盖——真正的咬合力
+//   来自上面那条"工具面的键必须两面之一有声明"，本条只保证扫描面没有塌成空集。）
+check(`CI 声明面真解析（读到 ${[...ciDeclared].sort().join(", ") || "无"}）`,
+  ciDeclared.size >= 1 && toolFiles.length >= 5,
+  `ciDeclared=${ciDeclared.size} toolFiles=${toolFiles.length}`)
 
 // 3) 反向漂移：文档里声明了但代码从不读的键，是假配置（会误导使用者去填一个无效项）
 const orphan = [...documented.keys()].filter((k) => !reads.has(k))

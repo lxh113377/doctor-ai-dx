@@ -5,12 +5,20 @@ on:
     - cron: "0 2 * * 3"   # 每周三 10:00 UTC+8（与 dep-audit 错开）
   workflow_dispatch: {}
 
+# 第二十三轮对标（2026-09-26 实测）：peer phlox 4/4 工作流顶层显式 permissions、openemr 61/79 有；
+# 我方此前 1/5。不写这一块的默认值是"仓库设置说了算"，同一份 YAML 在不同仓库设置下拿到的权限不同，
+# 最小权限就无从核对。判据在 scripts/action_pin.py（--verify），越权即判红。
+permissions:
+  contents: read
+
 jobs:
   links:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v7.0.0
         with:
           node-version: 22
       - name: 知识库回链可达性核验（死链即红；反爬须逐条登记，未登记的被拦源即红）
