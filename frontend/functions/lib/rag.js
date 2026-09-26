@@ -95,6 +95,27 @@ export function reachableFlagTerms(query) {
   return queryView(query).hitFlags
 }
 
+// 加权项给每篇文档实际加了多少分（含查询侧重复度）。导出理由与 reachableFlagTerms 同源：
+// 判据要问"这条加性项值多少分"，就得要么把打分重写一遍（第二真值，第三十三轮按实测否决），
+// 要么由权威面把这一项交出来——这里选后者，且与 search 内部用的是**同一个**函数。
+export function flagContributions(query) {
+  if (!query || !String(query).trim()) return new Map()
+  const { hitFlags, flagWeights } = queryView(query)
+  return flagContrib(hitFlags, flagWeights)
+}
+
+function flagContrib(hitFlags, flagWeights) {
+  const out = new Map()
+  if (!hitFlags.length) return out
+  for (const d of index.docs) {
+    const text = `${d.raw.text || ""}`.toLowerCase()
+    let n = 0
+    for (const kw of hitFlags) if (text.includes(String(kw).toLowerCase())) n += flagWeights.get(kw) || 0
+    if (n) out.set(d.id, 2 * n)
+  }
+  return out
+}
+
 // 同一个查询视图：归一文本、扩展词形、够得着的加权词。
 // 匹配面 = 原查询 ∪ 同义词扩展出的词形：加权词表取指南侧词形（「出汗」「抽搐」），
 // 输入常是口语侧词形（「冒冷汗」「高热惊厥」），把两侧连起来的桥就是同义词表。
@@ -133,16 +154,9 @@ export function search(query, topK = 4) {
   }
   const allQ = [...qtoks, ...expandedToks]
 
-  // 红旗命中一次算好（取自共用视图，不在此重复计算）；计分次数取查询侧重复度，不再按「命中一次」封顶
-  const flagDocHits = new Map()
-  if (hitFlags.length) {
-    for (const d of index.docs) {
-      const text = `${d.raw.text || ""}`.toLowerCase()
-      let n = 0
-      for (const kw of hitFlags) if (text.includes(String(kw).toLowerCase())) n += flagWeights.get(kw) || 0
-      if (n) flagDocHits.set(d.id, n)
-    }
-  }
+  // 红旗命中一次算好（取自共用视图，不在此重复计算）；计分次数取查询侧重复度，不再按「命中一次」封顶。
+  // 实现与对外导出的 flagContributions 是同一个函数 ⇒ 判据消融出来的分量与真打分必然同源。
+  const flagDocHits = flagContrib(hitFlags, flagWeights)
 
   const scores = index.docs.map((d) => {
     let s = 0
@@ -152,9 +166,9 @@ export function search(query, topK = 4) {
       const idf = Math.log(1 + (index.N - (index.df[q] || 0) + 0.5) / ((index.df[q] || 0) + 0.5))
       s += idf * (f * (K1 + 1)) / (f + K1 * (1 - B + B * (d.len / index.avgdl)))
     }
-    // 红旗词共现加权
-    const n = flagDocHits.get(d.id)
-    if (n) s += 2 * n
+    // 红旗词共现加权（分量已由 flagContrib 算成 2·n）
+    const c = flagDocHits.get(d.id)
+    if (c) s += c
     return { doc: d, s }
   })
   scores.sort((a, b) => b.s - a.s)

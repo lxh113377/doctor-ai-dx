@@ -35,11 +35,15 @@
 
 ```bash
 cd frontend && npm ci          # 安装（锁文件是权威，不要 npm install 顺手升版）
-npm test                       # 二十四件套守卫（含诊断排序金标准与否定守卫全表探针）；零密钥、零网络、确定性
+npm test                       # 二十五件套守卫（含诊断排序金标准与否定守卫全表探针）；零密钥、零网络、确定性
 npm run probe:ood                # 域外可分性测量（**看守件、不进 npm test**：只报告不阻断）
-npm run probe:register          # 语域落差测量（**看守件、不进 npm test**）：同一份 gold、只换同义词组内的词形，量检索对"写法"的敏感度
-                                 # 与重复敏感性。基线：配对 37/50、bm25 语域 ΔMRR 0.018018、重复改变 recall **0 例**（第三十四轮 4 例 ⇒ 第三十六轮治本归零）——
-                                 # 只准降不准升；接线条件写在 tests/register_probe.mjs 件头。**别用"查询 token 去重"去修重复敏感性**：实测打破 6 条逐用例锁、MRR 跌破地板，见 PITFALLS H7（#102 已于第三十六轮按「扩展通道随触发词重复度缩放」治本，并由 `tests/repetition_guard.mjs` 阻断）
+npm run test:register           # 语域落差＋重复敏感性（**第三十七轮起进 npm test，第二十五件**）：同一份 gold、只换同义词组内的词形，量检索对"写法"的敏感度
+                                  # 与重复敏感性。基线：配对 37/50、bm25 语域 ΔMRR 0.018018、换语域掉 recall **0 例**、
+                                  # 重复改变 recall **0 例**（第三十四轮分别立 0/4 基线，#102 治本后重复腿归零、第三十七轮两条都升阻断）。
+                                  # **别用"查询 token 去重"去修重复敏感性**：实测打破 6 条逐用例锁、MRR 跌破地板，见 PITFALLS H7（#102 已于第三十六轮治本）
+npm run probe:ablation           # 红旗加性项可观测性（#110，**看守件、不进 npm test**）：把这条 +2·n 整条消融，量评测集看不看得见它。
+                                  # 一手读数：45 个非零分量对确实触发，但 recall@5／首个命中名次／危急子集**零变化** ⇒ 判 INVISIBLE；
+                                  # 因此在补出「gold 只能靠加权词才进 top-5」的用例之前，**禁止**给它换权重或调常数（#98 按此改判关闭）。
 npm run coverage:js            # c8 + 模块级地板（地板清单单一源 tests/fixtures/coverage_floor.json）
 npm run test:e2e               # Playwright 双视口（1440×900 / 390×844）+ 三条红线在场与负向断言
 npm run lint:js                # ESLint --max-warnings=0（警告也算红）

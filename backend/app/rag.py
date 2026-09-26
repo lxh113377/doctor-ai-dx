@@ -142,6 +142,30 @@ def _query_view(q: str) -> dict:
     }
 
 
+def _flag_contrib(hit_flags, flag_weights):
+    """加权项给每篇文档实际加了多少分（含查询侧重复度）。与 JS 侧 flagContrib 同实现。"""
+    out: dict[str, int] = {}
+    if not hit_flags:
+        return out
+    for d in _DOCS:
+        text = str(d["raw"].get("text") or "").lower()
+        n = 0
+        for kw in hit_flags:
+            if kw in text:
+                n += flag_weights.get(kw, 0)
+        if n:
+            out[d["id"]] = 2 * n
+    return out
+
+
+def flag_contributions(query) -> dict:
+    """对外判据口：与 JS 侧 flagContributions 同口径（消融实验用它，不重写打分＝不造第二真值）。"""
+    if query is None or not str(query).strip():
+        return {}
+    view = _query_view(_normalize(query)[:MAX_QUERY_LEN])
+    return _flag_contrib(view["hit_flags"], view["flag_weights"])
+
+
 def reachable_flag_terms(query) -> list:
     """对判据暴露：该查询实际会给哪几个加权词计分（与 JS 侧 reachableFlagTerms 同口径）。"""
     if query is None or not str(query).strip():
@@ -166,7 +190,7 @@ def search(query: str, top_k: int = 4) -> list[dict]:
         for _ in range(max(1, wt)):
             all_q.extend(toks)
     hit_flags = view["hit_flags"]
-    flag_weights = view["flag_weights"]
+    flag_map = _flag_contrib(hit_flags, view["flag_weights"])
 
     scored = []
     for idx, d in enumerate(_DOCS):
@@ -177,10 +201,9 @@ def search(query: str, top_k: int = 4) -> list[dict]:
                 continue
             idf = math.log(1 + (_N - _DF.get(tk, 0) + 0.5) / (_DF.get(tk, 0) + 0.5))
             s += idf * (f * (K1 + 1)) / (f + K1 * (1 - B + B * (d["len"] / _AVGDL)))
-        if hit_flags:
-            text_lower = str(d["raw"]["text"]).lower()
-            n = sum(flag_weights.get(kw, 0) for kw in hit_flags if kw in text_lower)
-            s += 2 * n
+        c = flag_map.get(d["id"])
+        if c:
+            s += c
         if s > 0:
             scored.append((s, idx, d["raw"]))
     scored.sort(key=lambda x: (-x[0], x[1]))  # 分数降序 + 原文档序（对齐 JS 稳定排序）

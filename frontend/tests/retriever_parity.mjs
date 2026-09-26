@@ -6,7 +6,7 @@ import { execFileSync } from "node:child_process"
 import { readFileSync } from "node:fs"
 import { fileURLToPath } from "node:url"
 import { getRetriever, DEFAULT_RETRIEVER, SEMANTIC_NAME } from "../functions/lib/retriever.js"
-import { reachableFlagTerms } from "../functions/lib/rag.js"
+import { reachableFlagTerms, flagContributions } from "../functions/lib/rag.js"
 
 const suite = JSON.parse(readFileSync(new URL("./fixtures/retrieval_cases.json", import.meta.url), "utf8"))
 const queries = suite.cases.map((c) => c.query)
@@ -130,9 +130,13 @@ console.log(`RETRIEVER PARITY ${totalFail ? "FAIL" : "ALL PASS"}（${NAMES.lengt
   const pyBridge = `
 import json, sys
 sys.path.insert(0, ${JSON.stringify(fileURLToPath(new URL("../../backend", import.meta.url)))})
-from app.rag import reachable_flag_terms
+from app.rag import reachable_flag_terms, flag_contributions
 qs = json.load(sys.stdin)
-print(json.dumps({q: reachable_flag_terms(q) for q in qs}, ensure_ascii=False))
+out = {}
+for q in qs:
+    out[q] = {"terms": reachable_flag_terms(q),
+              "contrib": {k: round(v, 6) for k, v in flag_contributions(q).items()}}
+print(json.dumps(out, ensure_ascii=False))
 `
   let pyMap = null
   try {
@@ -148,8 +152,13 @@ print(json.dumps({q: reachable_flag_terms(q) for q in qs}, ensure_ascii=False))
     const detail = []
     for (const q of COLLOQUIAL_QUERIES) {
       const js = reachableFlagTerms(q).slice().sort().join(",")
-      const py = (pyMap[q] || []).slice().sort().join(",")
+      const rec = pyMap[q] || {}
+      const py = (rec.terms || []).slice().sort().join(",")
       if (js !== py) { bad++; detail.push(`${q}: JS[${js || "-"}] vs Py[${py || "-"}]`) }
+      // 加权**分量**也必须双端同值：#110 的消融判据直接吃这个量，两端各算一套就是两个真值
+      const jsC = JSON.stringify(Object.fromEntries([...flagContributions(q).entries()].sort()))
+      const pyC = JSON.stringify(Object.fromEntries(Object.entries(rec.contrib || {}).sort()))
+      if (jsC !== pyC) { bad++; detail.push(`${q}: 分量不同源 JS=${jsC.slice(0, 70)} Py=${pyC.slice(0, 70)}`) }
     }
     // 覆盖面自证：口语样本里至少要有一条真的桥到词、且至少一条桥不到（两端全空＝判据恒真）
     const fired = COLLOQUIAL_QUERIES.filter((q) => reachableFlagTerms(q).length > 0).length

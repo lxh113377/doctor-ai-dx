@@ -163,10 +163,17 @@ if (rf.length) {
   console.log("  UNVERIFIED 红旗子集无配对样本（不记通过）")
 }
 
-// 棘轮：掉召回的配对例数只准变少。基线由本轮实测给（见下行输出），当前是看守档、不阻断 npm test。
+// 棘轮：掉召回的配对例数只准变少。第三十七轮起**升为阻断**（下面 REGISTER_LOSE_MAX 那条）。
 const REGISTER_LOSE_MAX = Number(process.env.REGISTER_LOSE_MAX ?? 0)
-console.log(`\nADVISORY 棘轮：换语域掉 recall 的配对 ≤ ${REGISTER_LOSE_MAX}（本轮实测 ${lost.length}，第三十四轮立基线）`)
-console.log("  接线判据（何时升级为阻断）：本件连续两轮读数稳定 且 掉召回的例逐条归因完 ⇒ 并入 npm test 并把基线写死")
+// 为什么这轮敢从"只报不拦"升成拦：接线条件不是我觉得稳，而是两条都取到了实测——
+// ① 读数连续四轮相同（ΔMRR 0.018018 自第三十四轮起未变，三十四/三十五/三十六/三十七轮同值）；
+// ② 掉召回的例数为 0 ⇒ "逐条归因完"这条前置是**空真**（没有待归因项），不是被跳过。
+// 基线仍可经环境变量调，但默认 0 会拦住回归，而不是只印一行。
+console.log(`\n${lost.length <= REGISTER_LOSE_MAX ? "PASS" : "FAIL"} 换语域掉 recall 的配对 ≤ ${REGISTER_LOSE_MAX}`
+  + `（第三十四轮立基线、第三十七轮升阻断） :: 本轮实测 ${lost.length}`)
+if (lost.length > REGISTER_LOSE_MAX) fail++
+console.log("  接线状态：已满足并于第三十七轮并入 npm test（`npm run test:register`）；"
+  + "原件头那条『何时升级为阻断』的判据到此兑现，不留过期叙述")
 if (lost.length > REGISTER_LOSE_MAX) console.log(`  待修清单：${lost.map((p) => `${p.id}(${p.from}→${p.to})`).join(" ")}`)
 
 const report = {
