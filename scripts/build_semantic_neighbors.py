@@ -32,7 +32,26 @@ OUT_JS = ROOT / "frontend" / "functions" / "lib" / "semantic_neighbors.js"
 OUT_PY = ROOT / "backend" / "app" / "semantic_neighbors.py"
 
 MODEL_ID = "BAAI/bge-small-zh-v1.5"
-MODEL_SHA256 = "69a0b846f4f116b5e6aabf9546ea6754d02264f3211a13a1bd69b31b8040749a"
+# 🔴 第二十六轮：这一行原本是**手抄的 64 位十六进制字面量**，而 semantic_guard 只校验 `/^[0-9a-f]{64}$/`
+# （形状而非来源）⇒ 换掉权重、甚至随手改这个串，产物头照样"溯源完整"。
+# 实测该常量的值本身是对的（回收站恢复的 model.onnx sha256 与之逐位相符），所以这不是假数据，
+# 是**真数据没有机器校验**——与"导出物写死数字却没人核"同族（同 #34/#51）。
+# 现在改为构建时从**引擎实际加载的那个文件**算出来；取不到文件一律退出，不许写半成品表。
+# 历史值留此仅作可追溯：69a0b846f4f116b5e6aabf9546ea6754d02264f3211a13a1bd69b31b8040749a（2026-09-25）
+MODEL_SHA256 = ""      # 由 compute_model_sha256() 在构建时填入，禁止在此手写
+MODEL_ONNX_REL = ("bge_onnx", "onnx", "model.onnx")
+
+
+def compute_model_sha256(engine_dir: str) -> tuple[str, int]:
+    """对**真正参与本次蒸馏的权重文件**取 sha256；找不到就中止——宁可不产出也不产出一张溯源不明的表。"""
+    onnx = Path(engine_dir).joinpath(*MODEL_ONNX_REL)
+    if not onnx.is_file():
+        raise SystemExit(f"FAIL: 找不到权重文件 {onnx}（权重被当缓存清理过？先恢复再重建）")
+    h = hashlib.sha256()
+    with onnx.open("rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest(), onnx.stat().st_size
 DIM = 512
 TOP_KEEP = 8          # 存富余集（运行时再切 SEM_TOP），改切档不必重建本表
 MIN_COS = 0.55        # 存表地板；实测全量 off-diagonal 均值 0.552 / p90 0.640（2026-09-25）
@@ -102,10 +121,16 @@ def build_table(rows: list[dict], sim) -> dict[str, list[list[str | int]]]:
     return table
 
 
-HEADER = (
-    f"MODEL_ID={MODEL_ID} DIM={DIM} MODEL_SHA256={MODEL_SHA256}\n"
-    f"TEXT_FIELD=title+condition+keywords+text | TOP_KEEP={TOP_KEEP} MIN_COS={MIN_COS} SCORE_SCALE={SCORE_SCALE}\n"
-)
+def header() -> str:
+    """🔴 必须是**函数**而不是模块级 f-string：模块级求值早于 main() 里对 MODEL_SHA256 的赋值，
+    实测第一次"手抄改实算"的改造就产出了 `MODEL_SHA256=`（空串）的表——真值改成了计算，
+    却把计算结果算成了空。下面这条断言是那次的收口：宁可中止，也不写一张没有指纹的表。"""
+    if len(MODEL_SHA256) != 64:
+        raise SystemExit(f"FAIL: MODEL_SHA256 未被实算填充（当前 {MODEL_SHA256!r}）——不产出无指纹的表")
+    return (
+        f"MODEL_ID={MODEL_ID} DIM={DIM} MODEL_SHA256={MODEL_SHA256}\n"
+        f"TEXT_FIELD=title+condition+keywords+text | TOP_KEEP={TOP_KEEP} MIN_COS={MIN_COS} SCORE_SCALE={SCORE_SCALE}\n"
+    )
 
 
 def main() -> int:
@@ -117,6 +142,8 @@ def main() -> int:
 
     rows = load_corpus()
     sha = corpus_sha(rows)
+    global MODEL_SHA256
+    MODEL_SHA256, model_bytes = compute_model_sha256(args.engine_dir)
     sim = encode(rows, args.engine_dir)
     table = build_table(rows, sim)
     total = sum(len(v) for v in table.values())
@@ -124,7 +151,7 @@ def main() -> int:
 
     js = ["// 语义邻接表（构建期产物，禁手改）——由 scripts/build_semantic_neighbors.py 生成。",
           "// 生成器/模型/参数/语料指纹见 SEMANTIC_META；运行时零模型零网络，纯查表，双端同源。",
-          f"// {HEADER.replace(chr(10), ' | ')}",
+          f"// {header().replace(chr(10), ' | ')}",
           "// 语料指纹（knowledge.js 变更须重跑本脚本，semantic_guard 会拦漂移）：",
           "export const SEMANTIC_META = {",
           f"  modelId: {json.dumps(MODEL_ID)}, modelSha256: {json.dumps(MODEL_SHA256)}, dim: {DIM},",
@@ -141,7 +168,7 @@ def main() -> int:
 
     py = ['"""语义邻接表（构建期产物，禁手改）——由 scripts/build_semantic_neighbors.py 生成。',
           "运行时零模型零网络，纯查表；与 frontend/functions/lib/semantic_neighbors.js 同源同值。",
-          f"{HEADER}\"\"\"",
+          f"{header()}\"\"\"",
           "SEMANTIC_META = {",
           f"    'modelId': {json.dumps(MODEL_ID)}, 'modelSha256': {json.dumps(MODEL_SHA256)}, 'dim': {DIM},",
           f"    'topKeep': {TOP_KEEP}, 'minCos': {MIN_COS}, 'scoreScale': {SCORE_SCALE},",

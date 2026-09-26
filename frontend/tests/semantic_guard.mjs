@@ -69,6 +69,17 @@ check("provenance 完整（模型/权重 SHA/维度/存表参数齐备）",
   && SEMANTIC_META.dim === 512 && SEMANTIC_META.scoreScale === 1000 && SEMANTIC_META.entries === KNOWLEDGE_BASE.length,
   JSON.stringify(SEMANTIC_META).slice(0, 160))
 
+// 生成器必须是"算"而不是"抄"（第二十六轮）。产物头的 modelSha256 若来自手抄字面量，
+// 那么换权重/改字符串都不会被任何判据发现——上面那条 provenance 检查只核 64 位十六进制**形状**。
+// 这里对生成器源码本身下手：出现 `MODEL_SHA256 = "<64hex>"` 即判红；且必须真的存在计算函数。
+const GEN = readFileSync(fileURLToPath(new URL("../../scripts/build_semantic_neighbors.py", import.meta.url)), "utf8")
+const handCopied = [...GEN.matchAll(/^MODEL_SHA256\s*=\s*["'][0-9a-f]{64}["']/gm)]
+check("生成器里没有手抄的权重指纹字面量（必须构建时实算）", handCopied.length === 0,
+  handCopied.map((m) => m[0].slice(0, 40)).join(" | "))
+check("生成器确实自行计算 sha256（函数在位且非恒假）",
+  /def compute_model_sha256\(/.test(GEN) && /hashlib\.sha256\(/.test(GEN)
+  && /找不到权重文件/.test(GEN), "缺 compute_model_sha256 或其 sha256/失败即中止逻辑")
+
 const PY_META = readFileSync(fileURLToPath(new URL("../../backend/app/semantic_neighbors.py", import.meta.url)), "utf8")
 for (const [k, v] of [["modelId", SEMANTIC_META.modelId], ["modelSha256", SEMANTIC_META.modelSha256], ["corpusSha256", SEMANTIC_META.corpusSha256]]) {
   check(`双端 provenance 同值：${k}`, PY_META.includes(String(v)))

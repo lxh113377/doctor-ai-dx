@@ -5,7 +5,7 @@
 export const SEMANTIC_META = {
   modelId: "BAAI/bge-small-zh-v1.5", modelSha256: "69a0b846f4f116b5e6aabf9546ea6754d02264f3211a13a1bd69b31b8040749a", dim: 512,
   topKeep: 8, minCos: 0.55, scoreScale: 1000,
-  corpusSha256: "542207992540fa8572ed93f9a9de7b3d8c552bbc009bb80202cc257abe575d19", entries: 55, generatedAt: "2026-09-25",
+  corpusSha256: "542207992540fa8572ed93f9a9de7b3d8c552bbc009bb80202cc257abe575d19", entries: 55, generatedAt: "2026-09-26",
 }
 
 export const SEMANTIC_NEIGHBORS = {
