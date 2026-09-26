@@ -80,10 +80,10 @@ say(firedPairs > 0 && firedCases > 0, "触发腿：加权项真的在计分（�
   `非零分量 (查询,文档) 对 ${firedPairs} 个 ｜ 命中的查询 ${firedCases}/${all.length} 条 ｜ 分量合计 ${round6(firedSum)}`)
 
 // ③ 可观测腿
-const abl = scoreSet(all, true)
+const ablated = scoreSet(all, true)
 let orderChg = 0, recChg = 0, rankChg = 0
 for (const [id, b] of curAll.per) {
-  const o = abl.per.get(id)
+  const o = ablated.per.get(id)
   if (!o) continue
   if (b.ids !== o.ids) orderChg += 1
   if (Math.abs(b.rec - o.rec) > 1e-9) recChg += 1
@@ -94,7 +94,7 @@ const rfCur = scoreSet(rfCases, false)
 const rfAbl = scoreSet(rfCases, true)
 const invisible = recChg === 0 && rankChg === 0
 console.log(`  ADVISORY 可观测腿：整条移除该加性项后 —— top-5 名次变 ${orderChg} 例 / recall@5 变 ${recChg} 例 / 首个命中名次变 ${rankChg} 例（共 ${all.length} 例）`)
-console.log(`           聚合读数 R@5 ${curAll.r5}→${abl.r5} ｜ MRR ${curAll.mrr}→${abl.mrr} ｜ nDCG@5 ${curAll.ndcg5}→${abl.ndcg5}`)
+console.log(`           聚合读数 R@5 ${curAll.r5}→${ablated.r5} ｜ MRR ${curAll.mrr}→${ablated.mrr} ｜ nDCG@5 ${curAll.ndcg5}→${ablated.ndcg5}`)
 console.log(`           危急子集 ${rfCases.length} 例 R@5 ${rfCur.r5}→${rfAbl.r5} ｜ MRR ${rfCur.mrr}→${rfAbl.mrr}`)
 console.log(`  [GATE:ablation-${invisible ? "invisible" : "visible"}] `
   + (invisible

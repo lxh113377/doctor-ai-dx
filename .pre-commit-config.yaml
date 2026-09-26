@@ -88,3 +88,24 @@ repos:
         entry: python scripts/check_text_hygiene.py --quiet
         language: system
         pass_filenames: false
+
+      # 拼写看守进提交链（第三十七轮，台账 #112）。为什么这条要占一个钩位：
+      # 同族事故第三次复发——v1.32.0（自造标识符 `normL`）、v1.33.0 前一次（`nd`）、本次 v1.34.0
+      # （`abl` 被认成 able 的错拼）三次都是**提交时全绿、CI 才判红**，前两次只改代码没补载体，
+      # 于是第三次照抄。判据本身早已在册（ci.yml infra-lint + release.yml），缺的是本地时机。
+      # 形态是实测选出来的，不是猜的（三条都真跑过）：
+      #   ① language: system + entry: codespell ⇒ 本机 `python -m codespell_lib` 报 No module named codespell_lib，
+      #      克隆后没装 dev 件的人每次提交都被 "Executable `codespell` not found" 拦死；
+      #   ② requirements: backend/requirements-dev.txt ⇒ pre-commit 4.6.2 对 repo: local 判该键非法
+      #      （实测 WARNING Unexpected key(s) + 环境是空的，仍然 Executable not found）；
+      #   ③ additional_dependencies: ["-r", "backend/..."] ⇒ pip 的工作目录不是仓根
+      #      （实测 Could not open requirements file [Errno 2]）。
+      # 故取「钩内逐字钉一条区间」，代价是钉版在 requirements-dev.txt 与本文件各有一份 ⇒
+      # 由 scripts/dep_completeness.py 逐字对账（改一处忘改另一处即判红）。规则集仍只有 .codespellrc 一份。
+      - id: codespell
+        name: 英文拼写看守（同 CI infra-lint 一条判据；规则钉 .codespellrc，版本钉由 dep_completeness 对账）
+        entry: codespell
+        language: python
+        additional_dependencies: ["codespell>=2.4.1,<2.5"]
+        pass_filenames: false
+        always_run: true

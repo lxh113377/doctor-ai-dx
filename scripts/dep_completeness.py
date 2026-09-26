@@ -12,6 +12,11 @@
 `@vitejs/plugin-react` 声明了非 optional 的 `peer vite ^8.0.0`，而 vite 还停在 6.x。npm 装在
 `--legacy-peer-deps` 下会**静默**违反 peer ⇒ 光靠"CI 能 npm ci"证明不了锁没被绕过，故在仓内复盘一次。
 
+同源第三问（第三十七轮 #112）：钉版的第二个副本。`codespell` 进提交链后，版本区间同时出现在
+`backend/requirements-dev.txt` 与 `.pre-commit-config.yaml` 的 `additional_dependencies` 里
+（pre-commit 4.6.2 在 `repo: local` 下不接受 `requirements:` 键，实测见该文件内注）。
+两处手抄必然漂移，同一族已记 #51/#106 ⇒ 本文件把「钩内依赖逐字来自 dev 清单」钉成判据。
+
 用法：
   python scripts/dep_completeness.py                # 全量判据
   python scripts/dep_completeness.py --selftest     # 反例自证（含正/负两侧样本与解析器不退化断言）
@@ -32,6 +37,7 @@ REQ = REPO / "backend" / "requirements.txt"
 REQ_DEV = REPO / "backend" / "requirements-dev.txt"
 REQ_BUILD = REPO / "backend" / "requirements-build.txt"
 LOCK = REPO / "backend" / "requirements.lock"
+HOOK_CFG = REPO / ".pre-commit-config.yaml"
 
 PY_ROOTS = (("backend/app", "runtime"), ("backend/tests", "dev"), ("scripts", "dev"))
 PY_EXTRA = [("backend/run.py", "runtime")]
@@ -246,6 +252,38 @@ def js_checks() -> tuple[list[Row], dict[str, list[str]], int]:
     return rows, pkgs, nfiles
 
 
+def parse_hook_deps(cfg_text: str) -> list[str]:
+    """取 `.pre-commit-config.yaml` 里所有 additional_dependencies 的引号内条目。
+
+    两个坑都是本机实测踩出来的，不是设想：
+      ① 必须按引号切而不是按逗号切——`codespell>=2.4.1,<2.5` 自身含逗号，按逗号切会把一条区间
+         拆成两条垃圾（第一条还恰好能与 dev 清单错碰），那就是判据自己造出的假绿；
+      ② 必须先剔整行注释——本文件的注里就抄着一条失败形态 `["-r", "backend/..."]`，
+         首跑时解析器把它当真声明，判据当场咬了我自己写的说明文。
+    """
+    body = "\n".join(ln for ln in cfg_text.splitlines() if not ln.lstrip().startswith("#"))
+    out: list[str] = []
+    for block in re.findall(r"additional_dependencies:\s*\[([^\]]*)\]", body):
+        out += [tok for pair in re.findall(r"'([^']*)'|\"([^\"]*)\"", block) for tok in pair if tok]
+    return out
+
+
+def hook_dep_rows(cfg_text: str, dev_text: str) -> list[Row]:
+    """钩内联依赖必须逐字命中 dev 清单的某一行（钉版唯一源 = requirements-dev.txt）。"""
+    deps = parse_hook_deps(cfg_text)
+    dev_set = {ln.split("#", 1)[0].strip() for ln in dev_text.splitlines()}
+    dev_set.discard("")
+    bad = [d for d in deps if d not in dev_set]
+    return [
+        ("pre-commit 钩内联依赖逐字来自 backend/requirements-dev.txt（钉版不许有第二份）", not bad,
+         "; ".join(f"{d} 不在 dev 清单" for d in bad)
+         if bad else f"钩内依赖 {len(deps)} 条逐字命中"),
+        # 覆盖面自证：读空＝正则失效或钩改成别的形态，两种都不许当成"没有不一致"。
+        ("钩依赖判据确有输入（扫到 additional_dependencies 条目 ≥1）", len(deps) >= 1,
+         f"deps={len(deps)}（0 条＝解析失效，不是通过）"),
+    ]
+
+
 def py_checks() -> tuple[list[Row], dict[str, list[str]], int]:
     rows: list[Row] = []
     mods, nfiles = python_imports()
@@ -300,6 +338,7 @@ def py_checks() -> tuple[list[Row], dict[str, list[str]], int]:
     stale_allow = [m for m, why in LOCAL_DYNAMIC_IMPORTS.items() if m in mods and norm(m) in lock_names]
     rows.append(("豁免表无陈旧项（被豁免的名字不得已在锁里）", not stale_allow,
                  f"这些已在锁里、应删除豁免：{stale_allow}" if stale_allow else f"豁免 {len(LOCAL_DYNAMIC_IMPORTS)} 条，理由均在码内"))
+    rows += hook_dep_rows(HOOK_CFG.read_text(encoding="utf-8"), REQ_DEV.read_text(encoding="utf-8"))
     return rows, mods, nfiles
 
 
@@ -326,8 +365,33 @@ def _floor_bites() -> bool:
     return failed == ["覆盖面：JS 扫描面与裸导入非空"]
 
 
+def _hook_leg_bites() -> tuple[bool, str]:
+    """钩依赖那一族五条腿**各自**证明：现值通过 / 钉版漂移只咬第一腿 / 解析面读空只咬第二腿 /
+    含逗号的单条区间不被拆成两条 / 注释里的示例不当声明。分开测是因为「整族判红」测不到具体哪一条在生效。"""
+    cfg = HOOK_CFG.read_text(encoding="utf-8")
+    dev = REQ_DEV.read_text(encoding="utf-8")
+    real = hook_dep_rows(cfg, dev)
+    diverged = hook_dep_rows(cfg.replace("codespell>=2.4.1,<2.5", "codespell>=9.9.9,<9.10"), dev)
+    stripped = hook_dep_rows(re.sub(r"additional_dependencies:\s*\[[^\]]*\]", "", cfg), dev)
+    one_tok = parse_hook_deps('        additional_dependencies: ["codespell>=2.4.1,<2.5"]')
+    commented = parse_hook_deps('        # 注里抄的失败形态 ["-r", "backend/requirements-dev.txt"]\n'
+                                + '        additional_dependencies: ["codespell>=2.4.1,<2.5"]')
+    f1 = "pre-commit 钩内联依赖逐字来自 backend/requirements-dev.txt（钉版不许有第二份）"
+    f2 = "钩依赖判据确有输入（扫到 additional_dependencies 条目 ≥1）"
+    steps = [
+        ("现值两腿全绿", all(ok for _, ok, _ in real)),
+        ("漂移只咬对账腿", [n for n, ok, _ in diverged if not ok] == [f1]),
+        ("读空只咬覆盖面腿", [n for n, ok, _ in stripped if not ok] == [f2]),
+        ("逗号区间不拆条", one_tok == ["codespell>=2.4.1,<2.5"]),
+        ("注释示例不当声明", commented == ["codespell>=2.4.1,<2.5"]),
+    ]
+    failed = [n for n, ok in steps if not ok]
+    return not failed, ("全部五条成立" if not failed else "未成立：" + "、".join(failed))
+
+
 def selftest() -> int:
     """反例自证：每条判据都要有能把红的样本，含"解析器不能退化到零命中"的反向断言。"""
+    hook_ok, hook_detail = _hook_leg_bites()
     cases: list[tuple[str, bool]] = [
         ("真实仓当前全绿", run_all()[1] == 0),
         ("peer 相容判据会咬：把 vite 范围改成不可能的值",
@@ -352,6 +416,7 @@ def selftest() -> int:
         # 反例要"单独证明它真的会失败"（M5④）：把下限抬过实测值，看覆盖面判据是否转红，
         # 同时确认其余判据不受影响（否则这条自证只是在测"全判红"，测不到"下限"这一件事）。
         ("覆盖面判据会咬：下限抬过实测值即转红，且不误伤别的判据", _floor_bites()),
+        ("钩依赖对账各腿各自独立生效（计数由详情字符串给）：" + hook_detail, hook_ok),
     ]
     bad = [n for n, ok in cases if not ok]
     for name, ok in cases:

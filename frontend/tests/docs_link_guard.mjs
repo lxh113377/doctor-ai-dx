@@ -222,6 +222,28 @@ check(`该判据确有输入（扫到 ${countTotal} 处计数声明，≥3 才�
 
   "一处都没扫到＝正则失效，判红而不是跳过")
 
+// 第七族派生真值（第三十七轮 #112）：pre-commit 钩数。
+// 触发实测：本轮往 .pre-commit-config.yaml 加第 13 只钩，动手前四份文档已是**三个值**——
+// AGENTS/CONTRIBUTING 写 12、PITFALLS 写「十二钩」、README 还停在「九钩子」（v1.21 前的数）。
+// 同一个事实抄四处必然漂移，与 #51 立的同一族同一条根因；钩数只准由配置文件现算。
+const HOOK_CFG = resolve(ROOT, ".pre-commit-config.yaml")
+const hookCount = existsSync(HOOK_CFG)
+  ? (readFileSync(HOOK_CFG, "utf8").match(/^\s*-\s+id:\s+/gm) || []).length : -1
+const hookClaims = []
+let hookTotal = 0
+for (const file of mdFiles) {
+  if (HISTORY_FILES.has(file)) continue
+  for (const m of mdOf(file).matchAll(/(\d+|[一二三四五六七八九十]{1,3})\s*个?\s*钩(?:子)?/g)) {
+    hookTotal++
+    const n = toNum(m[1])
+    if (n !== hookCount) hookClaims.push(`${file} → "${m[0]}" 应为 ${hookCount} 钩`)
+  }
+}
+check(`文档中的 pre-commit 钩数为派生真值（钩=${hookCount}，现算自 .pre-commit-config.yaml）`,
+  hookClaims.length === 0, hookClaims.slice(0, 8).join(" | "))
+check(`钩数判据确有输入（扫到 ${hookTotal} 处钩数声明，≥2 才算在射程内）`, hookTotal >= 2,
+  "扫到 0 处＝正则失效或文档已不写这个数，两种都要点名而不是静默")
+
 // #91（第三十二轮）：同一条派生真值的**另一半射程**——源码注释里也会写条数。
 // 第二十七轮只把 .md 纳进来，本轮实测 `frontend/functions/lib/data.js` 头部注释长期写着过期条数，
 // 且顺手写死了当时的生成器文件名（该文件本轮已退役）——注释会烂，判据看不见就等于没判。

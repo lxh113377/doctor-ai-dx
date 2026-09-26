@@ -357,7 +357,7 @@
 
 ```bash
 # 以下全部在**仓库根**执行（别一半在根一半在 frontend，`../` 写法最容易错）
-pre-commit run --all-files                          # 十二钩（清单唯一源 .pre-commit-config.yaml）：版本/KB/契约/openapi/ESLint/ruff/mypy/lock/suite/依赖/Actions 钉版/文本卫生
+pre-commit run --all-files                          # 十三钩（清单唯一源 .pre-commit-config.yaml，第三十七轮起钩数由 docs_link_guard 现算对账）
 (cd frontend && npm test)                           # 二十五件套（含 docs_link_guard、error_parity）
 (cd frontend && npm run test:e2e)                   # 双视口浏览器回归（Playwright）
 python backend/selftest.py                          # 六套件 exit 0

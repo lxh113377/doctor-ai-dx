@@ -55,7 +55,7 @@ npm --prefix frontend run actions                # Actions 钉版与最小权限
 python backend/selftest.py     # 镜像面自证（套件清单唯一真相源 backend/tests/suite.json）
 ```
 
-改完提交前跑 `pre-commit run --all-files`（12 个钩，与 CI 同源判据，不是另一套标准）。
+改完提交前跑 `pre-commit run --all-files`（13 个钩，与 CI 同源判据，不是另一套标准；钩名清单唯一源 = `.pre-commit-config.yaml`，文档里的钩数由 `docs_link_guard` 从该文件现算对账）。
 
 ## 4. 改 X 之前先知道 Y（本仓最容易踩的六条）
 

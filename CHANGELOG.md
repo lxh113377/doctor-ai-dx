@@ -46,6 +46,31 @@
   register 与分量同源腿；仓库 `AGENTS.md` §3 把 `probe:register` 改判为 `test:register`（已进阻断链）并加
   `probe:ablation` 条；6 份文档「二十四件套」→「二十五件套」（由 `docs_link_guard` 现算点名后改，不手抄）。
 
+### 补记：本次发版自己触发的同族第三次事故（台账 #112）
+
+<!-- codespell:ignore-begin 逐字抄录本判据当场拦下的自造标识符，这是事故凭据；改写或删词＝毁证据 -->
+- **事实**：`v1.34.0` 首推即在 `infra-lint / codespell` 判红（rc=65）——自造标识符 `abl` 被词典认成 `able`
+  的错拼。这是同族**第三次**复发（`v1.32.0` 的 `normL`、`v1.33.0` 前的 `nd`），前两次都只改代码**没补载体**，
+  于是第三次照抄。判据本身早就在册（`ci.yml` + `release.yml` 两处），缺的一直是**提交时机**这一环。
+<!-- codespell:ignore-end -->
+- **治法**：`.pre-commit-config.yaml` 增第 13 只钩 `codespell`。形态由三条本机实测选出（不是设想）：
+  `language: system` 要求 PATH 上有 codespell（本机 `python -m codespell_lib` 即 No module named，
+  克隆后没装 dev 件的人每次提交都被 `Executable not found` 拦死）；`requirements:` 键在 `repo: local`
+  下被 pre-commit 4.6.2 判非法（WARNING + 空环境）；`additional_dependencies: ["-r", …]` 的 pip 工作目录
+  不是仓根（`Could not open requirements file [Errno 2]`）。故取「钩内逐字钉一条区间」，克隆后只装 pre-commit 即可跑。
+- **钉版的第二份副本必须有人对账**：新增 `scripts/dep_completeness.py` 两腿——钩内 `additional_dependencies`
+  逐字来自 `backend/requirements-dev.txt`，以及该判据自身的覆盖面断言（读空记红）。解析器首跑就咬了我自己：
+  配置注里抄着一条失败形态 `["-r", "backend/..."]` 被当成真声明 ⇒ 现改为先剔整行注释、且按引号切条目
+  （`codespell>=2.4.1,<2.5` 自带逗号，按逗号切会拆成两条垃圾）。`--selftest` 5 条腿各自单独证明，13/13。
+<!-- codespell:ignore-begin 这里的错拼是**故意写出的样本**（它就是探针文件的内容），包住的是这两行而不是整节 -->
+- **双向实测**：仓根放一个含 `recieve` 的探针文件 ⇒ 钩 `Failed` 并点名 `.\_cs_negative_probe.md:1: recieve ==> receive`；
+  删除探针后 `Passed`。本机 codespell 也已装进受管 venv，`python -m codespell_lib` 从「只能在 CI 里撞」变成「推前可复现」。
+<!-- codespell:ignore-end -->
+- **同族顺手收口**：钩数此前抄在 5 份文档、实测**三个值**（AGENTS/CONTRIBUTING 写 12、PITFALLS 写「十二钩」、
+  README 写「九钩子」、ARCHITECTURE 写「9 钩子」）。`docs_link_guard` 增第七族派生真值（现算自配置的 `- id:` 数），
+  首跑点名 6 处过期；变异体实测：把 README 改成「9 个钩」即 FAIL、还原即 PASS。文档只留钩数与"清单唯一源"指针，
+  不再抄钩名列表。
+
 ## [1.33.0] - 2026-09-27
 
 第三十六轮开源对标收口：台账 **#102 治本关闭**（检索层量纲对齐），并新增一条阻断判据。
