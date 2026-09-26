@@ -76,5 +76,42 @@ if (changelog) {
   }
 }
 
+// CHANGELOG 小节集合单调性（第二十五轮 #59）：上一个已发布 tag 里的每个 `## [x.y.z]` 今天必须还在。
+// 为什么必须机器核：本仓已**第四次**发生"整节标题静默消失"——本轮我在把 1.23.1 插到
+// `## [Unreleased]\n\n## [1.23.0] - 2026-09-26` 之后时，替换文本里漏写回 1.23.0 标题行，
+// 结果 1.23.0 正文被并进 1.23.1 小节，`version_guard` 当时照样 9 pass / 0 fail（它只核当前版本有没有小节）。
+// append-only 是 CHANGELOG 的立命之本，而"只核新增"的判据恰好对"丢失"全盲。
+console.log("== CHANGELOG 小节单调性（append-only 机器核）==")
+const headsOf = (text) => new Set([...text.matchAll(/^## \[([^\]]+)\][^\n]*$/gm)].map((m) => m[1]))
+const cur = headsOf(changelog)
+let prevRef = ""
+try {
+  prevRef = execFileSync("git", ["describe", "--tags", "--abbrev=0", "--exclude", `v${pkg}`],
+    { encoding: "utf8", cwd: fileURLToPath(new URL("../..", import.meta.url)) }).trim()
+} catch { prevRef = "" }
+if (prevRef) {
+  let prevHeads = new Set()
+  try {
+    const prevText = execFileSync("git", ["show", `${prevRef}:CHANGELOG.md`],
+      { encoding: "utf8", maxBuffer: 32 * 1024 * 1024,
+        cwd: fileURLToPath(new URL("../..", import.meta.url)) })
+    prevHeads = headsOf(prevText)
+  } catch (e) {
+    check(`上一个 tag ${prevRef} 的 CHANGELOG 可读`, false, String(e).slice(0, 120))
+  }
+  if (prevHeads.size) {
+    const lost = [...prevHeads].filter((h) => h !== "Unreleased" && !cur.has(h))
+    check(`${prevRef} 的 ${prevHeads.size} 个小节今天全部仍在（丢失即判红）`,
+      lost.length === 0, `丢失=${lost.join(",")}`)
+    check("单调性判据自身有分母（上一版本小节 ≥ 5，读空＝判据失效不许记绿）",
+      prevHeads.size >= 5, `读到 ${prevHeads.size} 个`)
+  } else {
+    check("上一版本小节非空（取到 tag 却解析出 0 个＝正则失效）", false, `tag=${prevRef}`)
+  }
+} else {
+  check("能取到上一个已发布 tag（取不到就跳过＝本判据在无 tag 环境恒绿，如实点名）", false,
+    "git describe 未返回 tag")
+}
+
 console.log(`RESULT: ${pass} pass / ${fail} fail`)
 process.exit(fail ? 1 : 0)

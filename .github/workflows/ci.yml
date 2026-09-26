@@ -126,6 +126,8 @@ jobs:
           test "$n" -ge 80   # 本轮实测 87（git ls-files 六类后缀）；取下限而非现值，留删改余量
           codespell
           echo "[GATE:codespell-pass] 零拼写告警（误报须带原因登记进 .codespellrc）"
+      - name: CI 观察器自证（空集/延迟出现/未收尾/expect 不满 四条轮询路径，离线）
+        run: python scripts/ci_watch.py --selftest
       - name: 依赖声明完整性（import ⊆ 声明面 + 非 optional peer ↔ 锁解析）
         # 零网络、纯 AST/JSON 静态对账，故与 actionlint 同作业；首跑即抓到 starlette 只作为 fastapi
         # 传递依赖被直接 import（见 scripts/dep_completeness.py 头注）。

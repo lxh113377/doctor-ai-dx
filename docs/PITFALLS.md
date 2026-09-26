@@ -65,6 +65,21 @@
 - 坑中坑：解析镜像端的正则第一版用 `[\w./-]` 字符类，`\w` 是 ASCII-only，中文路径/中文诊断名一律不匹配 ⇒
   判据恒绿。变异实测（往文档注入一条中文仓外路径）才抓到。**新判据必须配"它会红"的实测，否则等于没写。**
 
+### B9 观察器把"还没有 run"当成"看完了"（第二十五轮 CI 抓到，脚本自己报的）
+- 症状：`python scripts/ci_watch.py --sha <刚推的提交>` 报 `UNKNOWN 未观察到任何 run`，
+  而 `gh run list` 同期显示该提交三条 run **全部 success**。
+- 根因：轮询退出条件写成 `if not pending or 超时: break`。当一行 run 都还没被 GitHub 建出来时
+  `rows == []` ⇒ `pending == []` ⇒ `not pending` 恒真 ⇒ 第一次查询就退出。
+  也就是说「没有可判的对象」被当成了「判定已完成」——**空集恒真**这一族，与本仓 B 节其它条目同源。
+- 处置：`rows and not pending` 才算完成；空集必须轮到 deadline 才罢手并如实返回空 ⇒ 上层判 UNKNOWN。
+  同时把轮询从 `main()` 里抽成 `poll_runs()`，让它可以被离线自证（`main` 内不留第二份实现，
+  否则"改了一份、另一份还带老 bug"就是本条的复发路径）。
+- 常驻判据：`python scripts/ci_watch.py --selftest`（注入假 fetch，离线不联网），
+  五条：空集按 deadline 轮询≥5 次／空集最终返回空／第 3 次才出现的 run 要等到／未收尾不提前返回／
+  `expect=3` 只见 2 条时等满。已挂进 CI 的 `infra-lint`。
+- 额外一条自省：本文件的 docstring 第 10 行**本来就写着**「run 创建有延迟……不在第一轮就下结论」，
+  实现却没做到——又是"承诺在文档、实现在另一条路"（与第二十二轮 ERRORS.md 4xx 日志那条同形）。
+
 ## C. 发布与 Git
 
 ### C1 跨环境源码包 sha 不同
