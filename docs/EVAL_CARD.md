@@ -54,7 +54,7 @@
 
 | 项 | 值 | 口径 |
 |---|---|---|
-| 权威数据 | 仓内 `data/scope_rules.json`（**本仓第一块外置临床决策数据**） | 逐条带 `rationale`（为什么不做）与 `doctor_note`（该找谁）；`frontend/functions/lib/scope_rules.js` 与 `backend/app/scope_rules.py` 是生成物，由 `npm run scope:export` 单向产出，禁手改 |
+| 权威数据 | `data/scope_rules.json`（第二十九轮，本仓第一块外置临床决策数据）＋ `data/red_flag_rules.json`（第三十一轮 #89：13 条 DANGER＋4 条 COMBO＋否定词表＋阳性例外词＋血压阈值与脏读值域，均为权威） | 逐条带 `rationale`（为什么不做）与 `doctor_note`（该找谁）；`frontend/functions/lib/scope_rules.js` 与 `backend/app/scope_rules.py` 是生成物，由 `npm run scope:export` 单向产出，禁手改 |
 | 三条规则 | 影像与检查报告解读 ／ 给药剂量与处方方案 ／ 非人类患者 | 命中 ⇒ `abstain=true` + `scope_status=out-of-scope` + `scope_rule=<id>`，只出弃权卡、不编鉴别诊断；**红旗与 evidence 照常在场** |
 | 立据实测 | 「拍了CT／片子上说有个结节」原本 **top=59.091 却不弃权**，首诊给出「急性上呼吸道感染」 | 本轮动机不是设想：系统没有阅片能力却自信作答，是幻觉风险最高的越界。剂量与兽医类输入原本**偶然**因分数低于阈值弃权（44.147／43.747），理由错但结果对，本轮改为因正确理由命中 |
 | 载入即校验 | `validateScopeRules()` 11 类拒绝路径，全部用变异数据自证会抛 | 形状抄 `kheireddinedev00/Medico`（数据 + 载入即拒 + 具名安全测试）；阈值不抄它 |
@@ -86,6 +86,7 @@
 
 ```bash
 cd frontend && npm test                 # 二十三件套：smoke 57（含双端同表红旗探针 12 条逐字对账）+ 引擎 31 例 + 检索双档地板 + 检索器 3 档双端 50/50 + 语义表守卫 22（含 7 组反例）+ live 路径红线 43 + 双端契约 31:31 + FHIR 导出 45 项（含 6 组反例）+ KB 守卫 17 + 路由守卫 25 + 隐私声明对账 59 + 配置契约对账 6 + API 契约对账 + vitest 组件 + 版本真值五方对账
+cd frontend && npm run redflags:export            # 改 data/red_flag_rules.json 后重新生成双端；改 `-- --check` 只核漂移不写盘
 node tests/coverage_floor_guard.mjs     # 覆盖率模块级地板（先跑 npm run coverage:js 生成 coverage/coverage-summary.json）
 cd frontend && npm run coverage:js      # JS 覆盖率 + 模块级地板棘轮（读数由命令本身打印，阈值单一源见 fixtures/coverage_floor.json）
 cd frontend && npm run coverage:py      # Py 覆盖率 + 模块地板（同上：地板只准收紧不准放宽，文档不复述数字）

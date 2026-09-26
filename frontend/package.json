@@ -1,7 +1,7 @@
 {
   "name": "doctor-ai-dx-frontend",
   "private": true,
-  "version": "1.27.0",
+  "version": "1.28.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -54,6 +54,7 @@
     "test:suite": "cd .. && python scripts/suite_guard.py",
     "kb:export": "node ../scripts/export_kb.mjs",
     "scope:export": "node ../scripts/export_scope.mjs",
+    "redflags:export": "node ../scripts/export_red_flags.mjs",
     "eval:live": "node ../scripts/live_eval.mjs",
     "perf:gate": "node ../scripts/perf_gate.mjs",
     "test:negation": "node tests/negation_probe.mjs",

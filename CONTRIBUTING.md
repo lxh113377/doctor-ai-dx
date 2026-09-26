@@ -16,9 +16,15 @@
 | 权威源（改这里） | 镜像（必须同步） | 同步方式 |
 |---|---|---|
 | `functions/lib/knowledge.js` | `backend/app/knowledge.py` | 跑 `npm --prefix frontend run kb:export`（即 `scripts/export_kb.mjs`）生成，**不要手改 .py 数据** |
+| `data/red_flag_rules.json`（**红旗表权威**：13 条 DANGER + 4 条 COMBO + 否定词表 + 阳性例外词 + 血压阈值与脏读值域） | `functions/lib/red_flag_rules.js` + `backend/app/red_flag_rules.py`（两份都是生成物） | 跑 `npm --prefix frontend run redflags:export` 生成；`redflags:export -- --check` 逐字节核漂移；「权威 == JS == Py」三方全等由 `tests/red_flag_table_guard.mjs` 把守，形状合法性由**两端导入期校验**把守（表坏＝拒绝载入，无降级模式）。第三十一轮 #89 起改一条红旗只需动这个 JSON |
 | `functions/lib/engine.js` | `backend/app/services/engine.py` | 人工同步 + `contract_parity.mjs` 守门 |
 | `functions/lib/rag.js` / `rules.js` / `retriever.js` | `backend/app/rag.py` / `rules.py` / `retriever.py` | 人工同步 + 双端测试守门 |
 | `functions/lib/observe.js` | `backend/app/observe.py` | 人工同步（取整/脱敏规则必须两端一致） |
+
+**改双端代码的镜像端测试要求（第三十一轮 #79）**：凡改动 `functions/lib/*.js` 且 `backend/app/*.py` 有对应镜像实现，
+**同轮必须补 `backend/tests/` 里的原生用例**。`*_guard.mjs` 里用 subprocess 调 Python 打印结果的那种**不算**——
+跨进程执行不计入 coverage.py，第二十九轮就因此让镜像端范围层在零原生测试下发布了两个版本，
+直到 CI 的 `app/rules.py 87.18% < 地板 95%` 才暴露（教训已落 `docs/PITFALLS.md` 与项目记忆 part41）。
 
 **取整规则**：两端数值输出统一用 half-up（JS `Math.round`，Python `app.rag.round_half_up`）。
 不要用「放宽比对容差」掩盖末位差——历史上这样掩盖过一次 `.020313 vs .020312` 的真实漂移。

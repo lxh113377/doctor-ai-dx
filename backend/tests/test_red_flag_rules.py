@@ -10,10 +10,12 @@ from __future__ import annotations
 
 import copy
 import json
+import subprocess
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "backend"))
 
 from app import rules  # noqa: E402
 
@@ -50,6 +52,34 @@ names = [r["name"] for r in rules.DANGER_RULES + rules.COMBO_RULES]
 check("全表 name 唯一（校验器主张的那件事，现表本身必须先满足）", len(names) == len(set(names)),
       f"重名 {sorted({n for n in names if names.count(n) > 1})}")
 check(f"变异夹具非空（cases={len(mut_spec['cases'])}）", len(mut_spec["cases"]) >= 8)
+
+print("== 1b. 权威 == 镜像生成物（第三十一轮 #89 外置后，镜像端自己也要能发现漂移）==")
+authority = json.loads((ROOT / "data" / "red_flag_rules.json").read_text(encoding="utf-8"))
+def canon(v: object) -> str:
+    return json.dumps(v, ensure_ascii=False, sort_keys=True)
+
+
+def canon_list(items: list) -> list[str]:
+    return [canon(x) for x in items]
+
+
+check(f"权威条数非空（danger={len(authority['danger'])} combo={len(authority['combo'])}）",
+      len(authority["danger"]) >= 13 and len(authority["combo"]) >= 4)
+check("danger 逐条逐字段全等",
+      all(a == b for a, b in zip(canon_list(authority["danger"]), canon_list(rules.DANGER_RULES), strict=True))
+      and len(authority["danger"]) == len(rules.DANGER_RULES),
+      f"权威 {len(authority['danger'])} vs 生成物 {len(rules.DANGER_RULES)}")
+check("combo 逐条逐字段全等",
+      all(a == b for a, b in zip(canon_list(authority["combo"]), canon_list(rules.COMBO_RULES), strict=True)))
+check("否定词表 / 阳性例外词 / 血压阈值同样取自权威",
+      canon(authority["negation"]["tokens"]) == canon(rules._NEGATION_TOKENS)
+      and canon(authority["positive_terms"]) == canon(rules._POSITIVE_TERMS)
+      and canon(authority["bp"]) == canon(rules.BP_THRESHOLDS),
+      "任一项漂了都会造成两端用不同数据判红旗")
+check("生成物未被手改（重跑生成器的 --check 逐字节一致）",
+      subprocess.run(["node", str(ROOT / "scripts" / "export_red_flags.mjs"), "--check"],
+                     capture_output=True, text=True, cwd=str(ROOT)).returncode == 0,
+      "漂移⇒改了 data/red_flag_rules.json 没跑 npm run redflags:export")
 
 print("== 2. 载入即校验：未变异必须零拒绝（防校验器恒假）==")
 clean = rules.validate_red_flag_rules()

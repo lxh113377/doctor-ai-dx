@@ -53,6 +53,11 @@ def main() -> int:
         "danger": rules.DANGER_RULES,
         "combo": rules.COMBO_RULES,
         "severities": rules.RED_FLAG_SEVERITIES,
+        # 第三十一轮 #89 起，守卫要核「权威 == JS == Py」三方，词表与阈值同样是权威里的数据，
+        # 只 dump 两张规则表会让"漂了的词表"继续判绿。
+        "negations": rules._NEGATION_TOKENS,
+        "positives": rules._POSITIVE_TERMS,
+        "bp": rules.BP_THRESHOLDS,
         "clean_errs": rules.validate_red_flag_rules(),
         "mutations": {},
     }

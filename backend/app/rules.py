@@ -6,87 +6,13 @@ import re
 import unicodedata
 from typing import Any
 
+from .red_flag_rules import BP_THRESHOLDS, COMBO_RULES, DANGER_RULES, NEGATION, POSITIVE_TERMS
 from .scope_rules import SCOPE_META, SCOPE_RULES
 
-# 两张规则表都是异构字面量表（keywords: list[str] 与 all: list[list[str]] 并存），
-# 第十五轮 mypy 实测：不标注 ⇒ 两个 for 循环复用同名变量被推断成 dict[str, Sequence[str]]，
-# 第二条表的赋值即判不兼容（[assignment]），这正是"红旗表加字段就静默漂移"的类型层暴露。
-# 与生成物 knowledge.py 同一口径：数据表标 Any，逻辑函数标具体类型。
-DANGER_RULES: list[dict[str, Any]] = [
-    {"name": "疑似急性冠脉综合征（ACS）红旗",
-     "keywords": ["压榨", "紧缩", "胸痛放射", "胸痛向左肩", "胸痛向后背", "向左肩臂放射", "心前区闷痛"],
-     "severity": "高",
-     "advice": "压榨/紧缩样胸痛伴放射痛属高危征象，按急性胸痛路径处理：即刻 12 导联心电图 + 肌钙蛋白，尽快联系胸痛中心转运。"},
-    {"name": "疑似主动脉夹层红旗",
-     "keywords": ["撕裂样", "前胸背痛", "双上肢血压差", "脉搏不对称", "刀割样痛"],
-     "severity": "高",
-     "advice": "剧烈撕裂样胸痛高度提示主动脉夹层，避免使用抗凝药物，尽快影像学确认并转诊。"},
-    {"name": "疑似肺栓塞红旗",
-     "keywords": ["突发呼吸困难", "突发气促", "D-二聚体", "单侧下肢肿", "下肢肿胀", "制动后气促"],
-     "severity": "高",
-     "advice": "突发呼吸困难伴下肢肿/D-二聚体线索应考虑肺栓塞，评估抗凝禁忌后进一步影像确认。"},
-    {"name": "意识障碍/循环不稳定红旗",
-     "keywords": ["晕厥", "晕倒", "意识不清", "意识障碍", "不省人事", "血压下降", "休克"],
-     "severity": "高",
-     "advice": "意识障碍或血流动力学不稳定属濒危等级，优先处置并尽快转运，不宜基层滞留。"},
-    {"name": "消化道出血红旗",
-     "keywords": ["呕血", "黑便", "柏油样便", "咖啡色呕吐物", "便血"],
-     "severity": "高",
-     "advice": "呕血/黑便提示消化道出血，评估循环状态，必要时急诊胃镜与补液输血。"},
-    {"name": "呼吸困难红旗",
-     "keywords": ["呼吸困难", "发绀", "憋喘", "静息气促", "喘不上气"],
-     "severity": "中",
-     "advice": "静息状态仍呼吸困难的危急重程度较高，需评估氧合（SpO2、血气）并决定转运。"},
-    {"name": "急腹症/腹膜炎红旗",
-     "keywords": ["腹膜刺激", "反跳痛", "压痛拒按", "腹部硬", "板状腹", "腹痛进行性加重", "腹痛加重", "一按更痛"],
-     "severity": "高",
-     "advice": "腹痛伴腹膜刺激征或进行性加重提示外科急症，应禁食补液、尽快转诊，不宜基层观察。"},
-    {"name": "高血压急症红旗",
-     "keywords": ["血压骤升", "血压很高", "视物模糊伴头痛", "高血压危象"],
-     "severity": "高",
-     "advice": "血压显著升高伴靶器官损害症状（剧烈头痛、视物模糊、胸痛）为高血压急症，需静脉降压并急诊处理，不宜口服药观察。"},
-    {"name": "霹雳样头痛/颅内急症红旗",
-     "keywords": ["霹雳样", "突发剧烈头痛", "一生中最痛", "颈项强直"],
-     "severity": "高",
-     "advice": "突发霹雳样剧烈头痛高度提示蛛网膜下腔出血，紧急影像学评估并转诊，勿按普通头痛处理。"},
-    {"name": "急性会厌炎/上气道梗阻红旗",
-     "keywords": ["流涎", "喉部紧缩", "端坐呼吸", "说话含糊"],
-     "severity": "高",
-     "advice": "剧烈咽痛伴流涎不能下咽、说话含糊或呼吸困难，警惕急性会厌炎致上气道梗阻窒息，禁止反复压舌检查，立即转诊并备气道。"},
-    {"name": "过敏性休克/血管性水肿红旗",
-     "keywords": ["口唇肿胀", "眼睑肿胀", "全身风团伴气促", "喉头水肿"],
-     "severity": "高",
-     "advice": "皮疹伴口唇/眼睑肿胀、喉部紧缩或呼吸困难提示血管性水肿/过敏性休克，立即肌注肾上腺素并急诊转运，勿口服药观察。"},
-    {"name": "马尾综合征红旗",
-     "keywords": ["鞍区麻木", "大小便失禁", "会阴麻木", "尿不出伴下肢无力"],
-     "severity": "高",
-     "advice": "腰痛伴鞍区麻木、大小便功能障碍或进行性下肢无力提示马尾综合征，属外科急症，24–48 小时内急诊手术减压，立即转诊。"},
-    {"name": "视力骤降/眼科急症红旗",
-     "keywords": ["视力骤降", "突然看不见", "视野幕帘遮挡", "眼痛伴虹圈"],
-     "severity": "高",
-     "advice": "突发视力显著下降或视野幕帘遮挡提示视网膜血管阻塞/视网膜脱离，救治以小时计，立即转诊眼科急诊，基层不得观察等待。"},
-]
-
-# 组合规则：多线索同时命中才触发（表达临床组合逻辑，降低单一非特异词误报）
-COMBO_RULES: list[dict[str, Any]] = [
-    {"name": "异位妊娠（宫外孕）破裂红旗",
-     "all": [["停经", "闭经", "月经没来"], ["阴道出血", "下腹剧痛", "腹痛", "腹部疼痛"], ["晕厥", "头晕", "面色苍白", "血压下降", "肩部放射痛"]],
-     "severity": "高",
-     "advice": "育龄女性停经后阴道出血伴下腹剧痛及晕厥/面色苍白，高度警惕异位妊娠破裂内出血：立即尿妊娠试验与超声，禁食开放静脉并紧急转诊，不可按痛经或胃肠炎处理。"},
-    {"name": "肠套叠红旗（婴幼儿）",
-     "all": [["哭闹", "阵发", "婴幼儿", "小儿", "孩子"], ["果酱样便", "血便", "呕吐", "面色苍白"]],
-     "severity": "高",
-     "advice": "婴幼儿阵发性哭闹伴呕吐、面色苍白或果酱样血便高度提示肠套叠，属儿科急症：禁食并立即转诊空气灌肠复位，超 48 小时或精神萎靡提示肠坏死。"},
-    {"name": "急性尿潴留红旗",
-     "all": [["尿不出", "不能排尿", "无尿"], ["下腹胀痛", "腹痛", "老年男性"]],
-     "severity": "中",
-     "advice": "完全不能排尿伴下腹胀痛为急性尿潴留，需导尿减压并转诊泌尿外科，警惕梗阻性肾损害。"},
-    {"name": "脓毒症红旗",
-     "all": [["发热", "高热", "寒战", "感染", "尿痛", "咳嗽", "伤口"],
-             ["意识改变", "意识不清", "意识模糊", "说胡话", "晕厥", "精神差", "嗜睡", "呼吸急促", "气促", "少尿", "尿量明显减少", "无尿", "血压下降", "血压偏低", "末梢湿冷"]],
-     "severity": "高",
-     "advice": "感染基础上出现意识改变、呼吸急促、少尿或血压下降提示脓毒症，死亡风险随延迟上升：留取培养、液体复苏、尽早抗菌并紧急转诊。"},
-]
+# 两张规则表（连同否定词表 / 阳性例外词 / 血压阈值与脏读值域）外置到 data/red_flag_rules.json，
+# 由 scripts/export_red_flags.mjs 生成 app/red_flag_rules.py（第三十一轮 #89）。
+# 本文件只留判定逻辑：改规则改权威 JSON，禁手改生成物，
+# 「权威 == JS == Py」三方全等由 frontend/tests/red_flag_table_guard.mjs 对账。
 
 _HYPERTENSION_ADVICE = next(r["advice"] for r in DANGER_RULES if "高血压急症" in r["name"])
 
@@ -174,20 +100,21 @@ def _bp_crisis(text: str) -> bool:
     if not m:
         return False
     sys_, dia = int(m.group(1)), int(m.group(2))
-    if sys_ > 350 or dia > 250 or sys_ < 50 or dia < 20:  # 脏读拒绝（与 rules.js 值域守卫对齐）
+    if (sys_ > BP_THRESHOLDS["plausible_max_systolic"] or dia > BP_THRESHOLDS["plausible_max_diastolic"]
+            or sys_ < BP_THRESHOLDS["plausible_min_systolic"] or dia < BP_THRESHOLDS["plausible_min_diastolic"]):  # 脏读拒绝（与 rules.js 值域守卫对齐）
         return False
-    return sys_ >= 180 or dia >= 120
+    return sys_ >= BP_THRESHOLDS["systolic_crisis"] or dia >= BP_THRESHOLDS["diastolic_crisis"]
 
 
 # 否定修饰：中文临床文本用「无/没有/未/否认…」直接修饰症状词表达阴性。
 # 既往按子串命中 ⇒ "无气促" 命中 "气促"，脓毒症红旗假阳性（第二十四轮由产品路径评测实测抓到）。
 # 只收「明确阴性表述」：不收 "排除/不支持/不" —— "不能排除心前区闷痛" 若被抑制就是漏报，
 # 而本层的失败代价不对称（漏报危险信号远重于多提示），故宁缺毋滥。与 rules.js 逐字同表。
-_NEGATION_TOKENS = ["没有", "未见", "未出现", "无明显", "无伴", "不伴", "否认", "阴性", "无", "未"]
+_NEGATION_TOKENS: list[str] = list(NEGATION["tokens"])
 _NEG_LOOKBEHIND = 4
 # 形似否定实为阳性体征的词，必须先于否定判定放行，否则把「尿闭」当阴性 ⇒ 制造漏报。
 # follow 是该词之后不得紧跟的字：否则 "无尿痛" 会先命中 "无尿" 这条阳性例外。
-_POSITIVE_TERMS = [{"term": "无尿", "follow": ["痛", "频", "急", "不尽"]}]
+_POSITIVE_TERMS: list[dict[str, Any]] = POSITIVE_TERMS
 
 
 def _has_positive_occurrence(text: str, kw: str) -> bool:

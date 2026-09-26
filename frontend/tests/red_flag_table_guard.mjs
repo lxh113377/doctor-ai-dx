@@ -22,6 +22,9 @@ const check = (name, ok, detail = "") => {
 const fixture = (p) => JSON.parse(readFileSync(new URL(`./fixtures/${p}`, import.meta.url), "utf8"))
 const mutSpec = fixture("red_flag_mutations.json")
 const redLine = fixture("red_line_phrases.json")
+// 第三十一轮 #89：表本体已外置到 data/red_flag_rules.json，本守卫随之升级为**三方**对账
+// （权威 JSON == JS 生成物 == Py 生成物），并另跑一次生成器的 --check 证「生成物不漂」。
+const authority = JSON.parse(readFileSync(fileURLToPath(new URL("../../data/red_flag_rules.json", import.meta.url)), "utf8"))
 
 // Python 侧只给事实（表本体 + 校验结论 + 变异结果），断言全部留在本件里。
 const dumpPath = fileURLToPath(new URL("../../backend/tests/red_flag_dump.py", import.meta.url))
@@ -53,6 +56,24 @@ check("否定词表与阳性例外词双端全等",
   && RULE_TABLES.NEGATIONS.length === 10, `实测 ${JSON.stringify(RULE_TABLES.NEGATIONS)}`)
 check(`severity 值域双端同值（${RED_FLAG_SEVERITIES.join("/")}）`, sameJSON(RED_FLAG_SEVERITIES, py.severities),
   `Py=${JSON.stringify(py.severities)}`)
+
+console.log("== 2b. 三方全等：权威 JSON == JS 生成物 == Py 生成物（#89 外置后的新面）==")
+check(`权威条数非空（danger=${authority.danger.length} combo=${authority.combo.length}）`,
+  authority.danger.length >= 13 && authority.combo.length >= 4, "读空即整条判据失去输入")
+check("权威 == JS（danger 逐字段）", sameJSON(authority.danger, RULE_TABLES.DANGER),
+  `权威[0]=${authority.danger[0]?.name} JS[0]=${RULE_TABLES.DANGER[0]?.name}`)
+check("权威 == JS（combo 逐字段）", sameJSON(authority.combo, RULE_TABLES.COMBO), "")
+check("权威 == Py（danger+combo 逐字段）", sameJSON(authority.danger, py.danger) && sameJSON(authority.combo, py.combo),
+  `Py danger=${py.danger.length} combo=${py.combo.length}`)
+check("权威否定词表 == 双端在用的词表", sameJSON(authority.negation.tokens, RULE_TABLES.NEGATIONS)
+  && sameJSON(authority.negation.tokens, py.negations), `权威 ${authority.negation.tokens.length} 项 / JS ${RULE_TABLES.NEGATIONS.length} 项`)
+check("权威阳性例外词 == 双端", sameJSON(authority.positive_terms, RULE_TABLES.POSITIVES)
+  && sameJSON(authority.positive_terms, py.positives), JSON.stringify(RULE_TABLES.POSITIVES))
+check("血压阈值与脏读值域取自权威（不再是源码字面量）", sameJSON(authority.bp, py.bp), `权威 bp=${JSON.stringify(authority.bp)}`)
+const chkOut = execFileSync(process.execPath, [resolve(ROOT, "scripts", "export_red_flags.mjs"), "--check"],
+  { encoding: "utf8", cwd: ROOT })
+check("生成物与权威逐字节一致（--check 不写盘只比对）", chkOut.includes("[GATE:redflags-export-check-pass]"),
+  chkOut.trim().slice(0, 160))
 
 console.log("== 3. 载入即校验：未变异必须零拒绝（防校验器恒假）==")
 const jsClean = validateRedFlagTables()
@@ -133,6 +154,34 @@ check(`禁用词清单无第二份手抄（扫 ${dupScanned} 个源文件，命�
   dupFiles.length === 0 && dupScanned >= 50,
   dupFiles.length ? `手抄处：${dupFiles.slice(0, 4).join(", ")}——请改为读 fixtures/red_line_phrases.json`
     : `只扫到 ${dupScanned} 个文件＝扫描面失效，不许静默通过`)
+
+// 判据：文档里凡出现「N 条 DANGER」「N 条 COMBO」这类**表条数**声明，必须等于权威条数。
+// 与 docs_link_guard 核「知识库条数 == KNOWLEDGE_BASE.length」同族（#51）——刚写进 CONTRIBUTING 的两个数字
+// 若没有判据，下一次增删红旗就会让它腐烂。
+const SKIP_DOC = new Set(["CHANGELOG.md"])
+const walkMd = (dir, base, out = []) => {
+  for (const e of readdirSync(dir, { withFileTypes: true })) {
+    if (DUP_SKIP.has(e.name) || e.name.startsWith(".")) continue
+    const abs = resolve(dir, e.name)
+    if (e.isDirectory()) walkMd(abs, base, out)
+    else if (e.name.endsWith(".md") && !SKIP_DOC.has(abs.slice(base.length + 1).replace(/\\/g, "/"))) out.push(abs)
+  }
+  return out
+}
+const docFiles = walkMd(ROOT, ROOT)
+let countClaims = 0
+const countDrift = []
+for (const f of docFiles) {
+  const text = readFileSync(f, "utf8")
+  for (const m of text.matchAll(/(\d+)\s*条\s*(DANGER|COMBO)/g)) {
+    countClaims++
+    const want = m[2] === "DANGER" ? authority.danger.length : authority.combo.length
+    if (Number(m[1]) !== want) countDrift.push(`${relative(ROOT, f).replace(/\\/g, "/")} → 「${m[0]}」应为 ${want}`)
+  }
+}
+check(`文档中的红旗表条数全部为派生真值（扫到 ${countClaims} 处声明；权威 DANGER=${authority.danger.length} COMBO=${authority.combo.length}）`,
+  countDrift.length === 0 && countClaims >= 2,
+  countDrift.length ? countDrift.slice(0, 4).join(" | ") : `只扫到 ${countClaims} 处＝扫描面失效，不许静默通过`)
 
 console.log(`\nRESULT: ${pass} pass / ${fail} fail`)
 process.exit(fail ? 1 : 0)
