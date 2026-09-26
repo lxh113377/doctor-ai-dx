@@ -67,8 +67,11 @@ check("report 含免责声明", "辅助" in r1["disclaimer"])
 check("report 含患者名", "张建国" in r1["soap"]["subjective"])
 
 # 红旗规则探针（第十四轮补）：与 frontend/tests/engine_smoke.mjs 的 RED_FLAG_PROBES 逐字同表。
-# 覆盖 rules.py 的数值血压判定 / 组合线索 / 脏读值域拒绝 / 同名去重 / 空输入五条分支
+# 覆盖 rules.py 的数值血压判定 / 组合线索 / 脏读值域拒绝 / 空输入四条分支
 # —— 此前这些分支在镜像端零执行（JS 端有测，Python 端没有，双端"同逻辑"无判据）。
+# 注：本表原自称还覆盖「同名去重」，实为不实陈述——现存规则表两名不重叠，且 `_bp_crisis` 那条
+# 有专门的在场即不追加守卫，任何输入都造不出重名，去重的 False 分支恒不走（覆盖率实测坐实）。
+# 该分支改由下面「同名去重」专项探针以临时改名表驱动，不再靠注释声称。
 RED_FLAG_PROBES = [
     ("血压 190/110 伴头痛", ["高血压急症红旗|高"]),
     ("血压 400/300", []),
@@ -113,6 +116,28 @@ check(f"镜像端派生用例数非空且达下限（实测 {_neg_hits}，<100 �
 for probe_text, want in RED_FLAG_PROBES:
     got = [f"{h['name']}|{h['severity']}" for h in rules.scan_flag_details(probe_text)]
     check(f"红旗探针 {probe_text!r}", got == want, f"实测 {got} 期望 {want}")
+
+# 规则表被改坏时的两条兜底分支（第六形态：判据自称覆盖、实际恒不走）。
+# 现存表造不出这两种输入，只能临时改名表驱动；改完必须原样还原，否则污染后续套件。
+_DUP_RULE = {"name": "疑似急性冠脉综合征（ACS）红旗", "severity": "高",
+             "keywords": ["冷汗"], "advice": "去重后只应出现一次的那条建议"}
+_EMPTY_KW_RULE = {"name": "空关键词假想红旗", "severity": "高",
+                  "keywords": [""], "advice": "空词若匹配一切＝每个病例都假阳性"}
+_orig_danger = rules.DANGER_RULES
+try:
+    rules.DANGER_RULES = _orig_danger + [_DUP_RULE]
+    dup = [h["name"] for h in rules.scan_flag_details("压榨样胸痛，出冷汗")]
+    check("同名规则被两条命中时只出一个红旗（去重分支真实可达）",
+          dup.count("疑似急性冠脉综合征（ACS）红旗") == 1, f"实测 {dup}")
+    check("去重不吞其它红旗", any("ACS" in n for n in dup), f"实测 {dup}")
+    rules.DANGER_RULES = [_EMPTY_KW_RULE]
+    empty_hit = rules.scan_flag_details("单纯鼻塞三天，无发热")
+    check("关键词为空串时不得命中一切（假阳性风暴）", empty_hit == [], f"实测 {empty_hit}")
+finally:
+    rules.DANGER_RULES = _orig_danger
+check("探针用过的临时改名表已还原（防污染后续套件）", rules.DANGER_RULES is _orig_danger)
+after_restore = [h["name"] for h in rules.scan_flag_details("压榨样胸痛，出冷汗")]
+check("还原后行为与探针前一致", after_restore == ["疑似急性冠脉综合征（ACS）红旗"], f"实测 {after_restore}")
 
 print(f"\nRESULT: {passed} pass / {failed} fail")
 sys.exit(1 if failed else 0)

@@ -155,6 +155,47 @@ def _occurs_unnegated(text: str, kw: str, window: int) -> bool:
         frm = at + len(k)
 
 
+def validate_scope_rules(list_: list | None = None, meta: dict | None = None) -> list[str]:
+    """载入即校验（与 JS 侧 validateScopeRules 同一份规则集）：数据不合法就逐条报出，不留半条规则可用。"""
+    rules_ = SCOPE_RULES if list_ is None else list_
+    meta_ = SCOPE_META if meta is None else meta
+    errs: list[str] = []
+    if not isinstance(rules_, list) or not rules_:
+        return ["规则表为空（零输入不得当作通过）"]
+    win = meta_.get("negation_window_chars")
+    if not isinstance(win, int) or win < 1:
+        errs.append(f"negation_window_chars 非法：{win!r}")
+    if not isinstance(meta_.get("negation_tokens_extra"), list):
+        errs.append("negation_tokens_extra 必须是数组")
+    seen: set = set()
+    for i, r in enumerate(rules_):
+        rid = r.get("id") if isinstance(r, dict) else None
+        at = f"#{i}({rid})" if isinstance(rid, str) and rid else f"#{i}"
+        if not isinstance(rid, str) or not re.fullmatch(r"[a-z][a-z0-9_]{2,}", rid):
+            errs.append(f"{at}: id 须为 snake_case 且非空")
+        if rid in seen:
+            errs.append(f"{at}: id 重复")
+        seen.add(rid)
+        kw = r.get("keywords")
+        if not isinstance(kw, list) or len(kw) < 2:
+            errs.append(f"{at}: keywords 须为 ≥2 项的数组")
+        else:
+            for k in kw:
+                if not isinstance(k, str) or len(k.strip()) < 2:
+                    errs.append(f"{at}: 关键词「{k}」空或为裸单字（会子串横扫全文）")
+        if not str(r.get("title") or "").strip():
+            errs.append(f"{at}: title 为空")
+        rat = r.get("rationale")
+        if not isinstance(rat, str) or len(rat) < 20:
+            errs.append(f"{at}: rationale 缺失或过短（临床取舍必须写清为什么不做）")
+        if r.get("action") != "out-of-scope":
+            errs.append(f"{at}: action 只能是 out-of-scope，实测 {r.get('action')!r}")
+        note = r.get("doctor_note")
+        if not isinstance(note, str) or not note.strip():
+            errs.append(f"{at}: doctor_note 为空（医生看不到该找谁）")
+    return errs
+
+
 def match_scope_rule(text: str):
     """命中即返回该规则（含 rationale/doctor_note），未命中返回 None。规则顺序即优先级。"""
     window = int(SCOPE_META["negation_window_chars"])

@@ -296,5 +296,29 @@ check(`文档里的「N 段链路」== ARCHITECTURE 图内实际步数（实测 
 check(`链路步数判据有输入（扫到 ${chainTotal} 处「N 段」声明，≥2 才算在射程内）`, chainTotal >= 2 && chainSteps >= 5,
   `扫到 ${chainTotal} 处、图内 ${chainSteps} 步——任一为 0 即判据失效，不许静默通过`)
 
+// 判据 18：复现命令行不得把覆盖率读数抄成第二真值
+// 为什么存在：EVAL_CARD 复现区把 `coverage:py` 写成「实测 90.53%，地板 88」，而 fixture 里的全局
+// 地板自 v1.19 起是 90、本轮实测 94.65% —— 该命令每次运行都会打印真值，文档抄一份只会随实现过期
+// （实测 v1.13→v1.26 期间这两个数字从未被同步过，也没有任何判据能看见它）。
+// 射程刻意只取**命令行**（`cd`/`node`/`npm`/`python` 起头）：带日期的度量叙述（EVAL_CARD 度量表、
+// ARCHITECTURE 门禁表）是「当时为真」的历史陈述，与本判据无冲突——首版按「含 coverage: 的整行」扫，
+// 一上来就把那两类也判红，属误伤，故收窄。
+const CMD_LINE_RE = /^\s*(?:cd\s+\S+\s+&&\s*)?(?:node|npm|npx|python|bash|docker)\b/
+const covLines = []
+let covTotal = 0
+for (const file of mdFiles) {
+  if (HISTORY_FILES.has(file)) continue
+  for (const line of mdOf(file).split(/\r?\n/)) {
+    if (!/coverage:(js|py)\b/.test(line) || !CMD_LINE_RE.test(line)) continue
+    covTotal++
+    const pct = line.match(/\d+(?:\.\d+)?\s*%/)
+    if (pct) covLines.push(`${file} → 命令注释里抄了读数「${pct[0].trim()}」（真值由该命令自己打印，地板源是 fixture）`)
+  }
+}
+check("复现命令行未把覆盖率读数抄成第二真值（数字唯一源 = 实跑输出 + coverage_floor.json）",
+  covLines.length === 0, covLines.slice(0, 5).join(" | "))
+check(`覆盖率命令行判据有输入（扫到 ${covTotal} 处，≥3 才算在射程内）`, covTotal >= 3,
+  "扫到 0 处＝命令行从文档里消失了或正则失效，判据同样失效，不许静默通过")
+
 console.log(`\nRESULT: ${pass} pass / ${fail} fail`)
 process.exit(fail ? 1 : 0)

@@ -87,8 +87,8 @@
 ```bash
 cd frontend && npm test                 # 二十二件套：smoke 57（含双端同表红旗探针 12 条逐字对账）+ 引擎 31 例 + 检索双档地板 + 检索器 3 档双端 50/50 + 语义表守卫 22（含 7 组反例）+ live 路径红线 43 + 双端契约 31:31 + FHIR 导出 45 项（含 6 组反例）+ KB 守卫 17 + 路由守卫 25 + 隐私声明对账 59 + 配置契约对账 6 + API 契约对账 + vitest 组件 + 版本真值五方对账
 node tests/coverage_floor_guard.mjs     # 覆盖率模块级地板（先跑 npm run coverage:js 生成 coverage/coverage-summary.json）
-cd frontend && npm run coverage:js      # JS 覆盖率 + 地板棘轮（实测：全局分支 74.02%，红线模块单独设地板）
-cd frontend && npm run coverage:py      # Py 覆盖率+模块地板（实测 90.53%，地板 88；阈值单一源见 fixtures/coverage_floor.json）
+cd frontend && npm run coverage:js      # JS 覆盖率 + 模块级地板棘轮（读数由命令本身打印，阈值单一源见 fixtures/coverage_floor.json）
+cd frontend && npm run coverage:py      # Py 覆盖率 + 模块地板（同上：地板只准收紧不准放宽，文档不复述数字）
 cd frontend && npm run lint               # 静态检查：ESLint（frontend）+ ruff（backend），--max-warnings=0
 node tests/semantic_guard.mjs          # 语义邻接表：结构/白名单/无自环/降序整数千分比/弱对称 + 语料指纹防陈旧 + 双端同值 + 7 组反例
 node tests/retrieval_eval.mjs --retriever=semantic                              # 语义档检索读数（默认 bm25）

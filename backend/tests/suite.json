@@ -5,6 +5,7 @@
   "suites": [
     "tests/smoke_engine.py",
     "tests/test_fhir.py",
+    "tests/test_scope_rules.py",
     "tests/test_retriever_channels.py",
     "tests/test_api_observe.py",
     "tests/test_live_path.py",
