@@ -259,11 +259,27 @@ def py_checks() -> tuple[list[Row], dict[str, list[str]], int]:
     # requirements.txt 里——这条不对称就是"生产代码不许靠 dev/构建件续命"的判据。
     tool_decl = runtime_decl | declared_set(REQ_DEV) | declared_set(REQ_BUILD)
     stdlib = set(sys.stdlib_module_names)
-    local = {"app", "scripts", "backend", "tests", "conftest", "run", "selftest"}
+    # 第一方判定改由磁盘现算。原先是一张手抄名单 {app, scripts, backend, tests, conftest, run, selftest}：
+    # 第三十轮新增 `from red_flag_dump import apply_case`（backend/tests 内的同级模块）不在名单里，
+    # 于是被当成"未声明依赖"，CI infra-lint 当场判红。名单必然随每次新增本地模块过期，
+    # 而"仓里有没有这个文件"是可机械回答的事实——正解在这里，而不是往名单里再补一个名字。
+    fp_roots = (REPO, REPO / "backend", REPO / "backend" / "tests", REPO / "scripts")
+
+    def first_party(mod: str) -> bool:
+        return any((r / f"{mod}.py").is_file() or (r / mod / "__init__.py").is_file() for r in fp_roots)
+
     undeclared: list[str] = []
+    fp_hits: list[str] = []
+    shadow: list[str] = []
     for mod in sorted(mods):
         top = MODULE_TO_DIST.get(mod, mod)
-        if mod in LOCAL_DYNAMIC_IMPORTS or mod in stdlib or mod in local or mod.startswith("!!parse:"):
+        if mod in LOCAL_DYNAMIC_IMPORTS or mod in stdlib or mod.startswith("!!parse:"):
+            continue
+        if first_party(mod):
+            fp_hits.append(mod)
+            # 本地模块名若与某个已声明依赖同名，导入到底命中谁取决于 sys.path 顺序——那是真隐患。
+            if norm(top) in tool_decl:
+                shadow.append(f"{mod}（本地文件与声明依赖 {top} 同名）@{mods[mod][0]}")
             continue
         scope = "runtime" if any("backend/app" in loc or "run.py" in loc for loc in mods[mod]) else "tool"
         need = runtime_decl if scope == "runtime" else tool_decl
@@ -271,6 +287,14 @@ def py_checks() -> tuple[list[Row], dict[str, list[str]], int]:
             undeclared.append(f"{mod}（{scope} 面需要 {top}）@{mods[mod][0]}")
     rows.append(("所有 import 都在声明面上（运行时面不得只在 dev 面声明）", not undeclared,
                  "; ".join(undeclared) or "无"))
+    # 反向对照而不是数量下限：`app` 是运行时面必然 import 的包，解析器认不出它就等于根路径错了、
+    # 整条第一方判定退化成"全都算未声明依赖"或"全都放行"。下限数字容易拍错（本条首版拍了 ≥3，
+    # 实测只有 2 个命中——真实命中数由扫描面决定，不由我预期决定）。
+    rows.append(("第一方解析器有反向对照（必须认出 app 与至少一个同级模块）",
+                 "app" in fp_hits and len(fp_hits) >= 2,
+                 f"命中 {sorted(set(fp_hits))}；未含 app＝根路径错误，整条判据失效"))
+
+    rows.append(("本地模块名不得与声明依赖撞名", not shadow, "; ".join(shadow) or "无"))
     # 豁免表与锁对账：写了豁免但锁里根本没有这个包 = 豁免已失效，必须清掉而不是留着继续放过。
     lock_names = {norm(n) for n in re.findall(r"^([A-Za-z0-9._-]+)==", LOCK.read_text(encoding="utf-8"), re.M)}
     stale_allow = [m for m, why in LOCAL_DYNAMIC_IMPORTS.items() if m in mods and norm(m) in lock_names]
