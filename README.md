@@ -50,7 +50,7 @@ docker compose run --rm selftest   # 镜像内全套离线断言（清单由 bac
 
 ```bash
 cd frontend
-npm test       # 十六件套：49 冒烟(含双端同表红旗探针) + 31 例引擎评测 + 检索分层回归 + 检索器 3 档双端一致 + 语义表守卫 22 + live 路径红线 43 项（含追问 live 分支与续问上限零外呼） + 双端契约 31:31 + FHIR 导出 45 项 + 隐私声明对账 59 项 + 配置契约对账 6 项 + 滥用护栏对账 33 项（契约需本机 Python）
+npm test       # 二十件套：49 冒烟(含双端同表红旗探针) + 31 例引擎评测 + 检索分层回归 + 检索器 3 档双端一致 + 语义表守卫 22 + live 路径红线 43 项（含追问 live 分支与续问上限零外呼） + 双端契约 31:31 + FHIR 导出 45 项 + 隐私声明对账 59 项 + 配置契约对账 6 项 + 滥用护栏对账 33 项（契约需本机 Python）
 npm run lint     # 静态检查：ESLint（frontend，--max-warnings=0）+ ruff（backend 与 scripts，规则集钉在仓根 ruff.toml）
 npm run typecheck  # Python 类型门禁：mypy 严格档（check_untyped_defs）+ 阈值单一源，实测 23 文件 0 error、抑制项 0（零豁免有机器判据）
 npm run sbom       # 生成前端 CycloneDX SBOM（钉版 @cyclonedx/cyclonedx-npm）；属发布期产物，不入库
@@ -71,7 +71,7 @@ python tests/smoke_engine.py
 - `frontend/tests/contract_parity.mjs` 用同一 31 组黄金输入分别跑 Functions(JS) 与 FastAPI 镜像(Python)，逐字段比对 dx/workup/report，拦截双端静默漂移。
 - **评测卡 / 安全卡**：[`docs/EVAL_CARD.md`](docs/EVAL_CARD.md) —— 能力边界、病种覆盖清单（55 条 · 19 域）、红旗与安全口径、指标日期一页可查。
 - **架构与不变式**：[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) —— 六段链路图、三条产品红线的代码插入点、JS/Py 双端镜像对账矩阵、检索层实测参数、环境变量与门禁清单（数字均为磁盘实测）。
-- **提交前快检**：[`.pre-commit-config.yaml`](.pre-commit-config.yaml) —— `pre-commit install` 后复用仓内既有守卫（版本真值 / 知识库零漂移 / 契约对账 / OpenAPI 漂移 / ESLint / ruff / 类型门禁 / 依赖锁定 / 文本控制字符 九钩子），秒级；全量十九件套仍由 CI 兜底。
+- **提交前快检**：[`.pre-commit-config.yaml`](.pre-commit-config.yaml) —— `pre-commit install` 后复用仓内既有守卫（版本真值 / 知识库零漂移 / 契约对账 / OpenAPI 漂移 / ESLint / ruff / 类型门禁 / 依赖锁定 / 文本控制字符 九钩子），秒级；全量二十件套仍由 CI 兜底。
 - **安全边界与未保障项**：[`SECURITY.md`](SECURITY.md) —— 已实现的控制、明确未提供的保障（无认证/无审计/日志不留存）、漏洞报告渠道。
 - **错误契约一览**：[`docs/ERRORS.md`](docs/ERRORS.md) —— 集成方只需这张表就能写对重试分支；由 `npm run test:api` 双向核对（表里的码集合 == openapi 声明、三处文案逐字等于 `limits` 常量），改码不改表或表领先实现都判红。
 - **排障手册**：[`docs/PITFALLS.md`](docs/PITFALLS.md) —— 本仓真实踩过的坑按「可 grep 的报错症状 → 根因 → 处置 → 常驻判据」编排；条目必须点名兜住它的判据文件，由 `npm run test:docs` 核对（引用失效即判红）。
@@ -123,6 +123,37 @@ curl http://127.0.0.1:8000/health
 > **HIS 集成**：`/api/dx` 响应含 `data.fhir`——FHIR R4 light Bundle（Patient/Encounter/Condition/Observation/DiagnosticReport），双端逐字节一致、零时钟字段；`icd` 未映射的条目只出 `text` 不编造标准编码；本导出为**只读派生视图**，不改变红旗判定与引用白名单。详见 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) §9。
 > 版本真值：`backend/app/version.py` == `functions/lib/version.js` == `package.json` == `docs/openapi.json` == 最新 tag，由 `npm run test:version` 五方对账强制（升版本三处同改 + `python scripts/gen_openapi.py` 同步契约版本）。
 > 契约基线于 2026-09-24 完成 E2E 复核，两端（Functions / FastAPI）同步实现；公开仓门禁见 `frontend/tests/`，完整线上评测脚本已收进本仓（见下一节的 eval:live），原始报告不入库。
+
+## 边界与已知局限（Limitations）
+
+> 写这一节是因为对标实测发现：同类里做得可信的项目都会把边界写在自己首页
+> （`urobot-tw` 明写「本專案目前沒有任何可對外宣稱的準確率」；`Medico` 明写「cases 与 rules 同作者
+> ⇒ 测的是内部一致性而非临床有效性」；`MediGenius` 列 5 条 Limitations 并自陈验证阈值是
+> unvalidated heuristics）。不写不等于不存在，只等于由别人来发现。
+
+1. **红旗规则层是关键词＋否定前缀的确定性匹配，不是临床 NLP。** 13 条单线索规则＋4 条组合规则
+   （`functions/lib/rules.js`），否定处理是启发式（命中点前 4 字查 `无/没有/未/否认…`），
+   且刻意**不含**裸 `不`/`排除`/`不支持`——`不能排除心前区闷痛` 若被当阴性就是漏报。
+   它既可能漏（同义表述未收进关键词表），也可能误（新关键词与既有否定式回答产生新组合）。
+   常驻判据：否定守卫全表探针 `npm run test:negation`（232 条用例由规则表自动派生，双向拦截）。
+2. **所有评测数字都是合成病例自洽度，不是真实世界准确率。** 病例、金标准标注、知识库三者同源自产，
+   未经任何真实患者、外部临床评审或随访。`docs/EVAL_CARD.md` 每一行都标了口径；
+   引用其中任何数字都必须带上这条限定。
+3. **知识库只有 55 条，且扩容需要一个本机外部产物。** 语义邻接表由
+   `scripts/build_semantic_neighbors.py` 用本地 `BAAI/bge-small-zh-v1.5` ONNX 权重蒸馏，
+   而 `semantic_guard` 会以「条目数必须等于知识库条目数＋语料指纹一致」拦住任何未重建的增删
+   （这是刻意设计：宁可拦住也不放行一张陈旧表）。**该权重与 `bge_onnx_engine.py` 不随本仓库发布**，
+   所以在没有它们的环境里，扩库当前是**做不了**而不是不好做——复现证据：
+   `python scripts/build_semantic_neighbors.py` → `FAIL: 未找到 bge_onnx_engine.py（不产出半成品表）` exit 1。
+   缺病种清单由 `tests/fixtures/dx_gold.json` 的 `kb_gap` 字段机器给出（现 5 条）。
+4. **无弃权/范围外第三态。** 域外输入仍会得到一份自信的诊断列表（实测：问宠物会返回 ACS 待排除）。
+   已测得候选阈值与安全性（`npm run probe:ood`：域外 top1 上限 38.604 vs 危急域内下限 57.374），
+   但落机制需同时改双端契约、OpenAPI、界面与 E2E 断言面，尚未做。
+5. **零持久化、零认证、单用户。** 这是**刻意的**（见 `docs/PRIVACY.md` §7：引入持久化须先改声明再改断言），
+   代价是做不到同类已有的复核工作流与审计留痕，因此「医生终审」目前是界面常驻文案而非可验证流程。
+6. **维护者 2 人**，bus factor≈1；无 CI 分钟额度之外的自建基础设施。
+7. **未取得任何医疗器械注册、HIPAA/GDPR 或等保合规认定**；本项目定位是教学/竞赛原型，
+   不得用于临床部署（授权条款见 `LICENSE`）。
 
 ## 安全定位（评审叙事）
 

@@ -1,7 +1,7 @@
 {
   "name": "doctor-ai-dx-frontend",
   "private": true,
-  "version": "1.22.0",
+  "version": "1.23.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -25,7 +25,7 @@
     "test:api": "node tests/api_contract_guard.mjs",
     "test:error-parity": "node tests/error_parity_guard.mjs",
     "test:bundle": "node tests/bundle_size_guard.mjs",
-    "test": "npm run test:smoke && npm run test:engine && npm run test:accuracy && npm run test:retrieval && npm run test:retrieval-parity && npm run test:semantic && npm run test:live && npm run test:contract && npm run test:fhir && npm run test:kb && npm run test:route && npm run test:privacy && npm run test:env && npm run test:limits && npm run test:docs && npm run test:api && npm run test:error-parity && npm run test:components && npm run test:version",
+    "test": "npm run test:smoke && npm run test:engine && npm run test:accuracy && npm run test:negation && npm run test:retrieval && npm run test:retrieval-parity && npm run test:semantic && npm run test:live && npm run test:contract && npm run test:fhir && npm run test:kb && npm run test:route && npm run test:privacy && npm run test:env && npm run test:limits && npm run test:docs && npm run test:api && npm run test:error-parity && npm run test:components && npm run test:version",
     "test:retrieval-parity": "node tests/retriever_parity.mjs",
     "test:components": "vitest run",
     "test:version": "node tests/version_guard.mjs",
@@ -51,7 +51,9 @@
     "test:suite": "cd .. && python scripts/suite_guard.py",
     "kb:export": "node ../scripts/export_kb.mjs",
     "eval:live": "node ../scripts/live_eval.mjs",
-    "perf:gate": "node ../scripts/perf_gate.mjs"
+    "perf:gate": "node ../scripts/perf_gate.mjs",
+    "test:negation": "node tests/negation_probe.mjs",
+    "probe:ood": "node tests/ood_probe.mjs"
   },
   "dependencies": {
     "react": "^19.3.0",

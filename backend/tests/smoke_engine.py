@@ -87,6 +87,29 @@ RED_FLAG_PROBES = [
     ("老年男性无尿痛伴下腹胀痛", []),
     ("阵发性哭闹，没有呕吐", []),
 ]
+# 否定守卫全表探针（第二十五轮 #50，镜像端派生版）：分母交给规则表本身，不是手挑对照集。
+# 与 frontend/tests/negation_probe.mjs 同一性质的判据（各自主张同一事实，跨端漂移由上面的逐字全等表拦）。
+_neg_hits = 0
+for _r in rules.DANGER_RULES:
+    for _k in _r["keywords"]:
+        _pos = any(h["name"] == _r["name"] for h in rules.scan_flag_details(_k))
+        check(f"DANGER {_r['name']} 关键词 {_k!r} 阳性即命中", _pos)
+        _neg = any(h["name"] == _r["name"] for h in rules.scan_flag_details("没有" + _k))
+        check(f"DANGER {_r['name']} 关键词 {_k!r} 加否定前缀即不命中", not _neg)
+        _neg_hits += 2
+for _r in rules.COMBO_RULES:
+    _groups = _r["all"]
+    for _gi, _g in enumerate(_groups):
+        _others = [_gg[0] for _i, _gg in enumerate(_groups) if _i != _gi]
+        for _k in _g:
+            _pos = any(h["name"] == _r["name"] for h in rules.scan_flag_details("，".join(_others + [_k])))
+            check(f"COMBO {_r['name']} 第{_gi + 1}组 {_k!r} 齐线索即命中", _pos)
+            _neg = any(h["name"] == _r["name"] for h in rules.scan_flag_details("，".join(_others + ["没有" + _k])))
+            check(f"COMBO {_r['name']} 第{_gi + 1}组 {_k!r} 被否即不命中", not _neg)
+            _neg_hits += 2
+check(f"镜像端派生用例数非空且达下限（实测 {_neg_hits}，<100 即规则表读空）", _neg_hits >= 100,
+      "读空＝判据失效，不许当通过")
+
 for probe_text, want in RED_FLAG_PROBES:
     got = [f"{h['name']}|{h['severity']}" for h in rules.scan_flag_details(probe_text)]
     check(f"红旗探针 {probe_text!r}", got == want, f"实测 {got} 期望 {want}")

@@ -35,7 +35,8 @@
 
 ```bash
 cd frontend && npm ci          # 安装（锁文件是权威，不要 npm install 顺手升版）
-npm test                       # 十九件套守卫（含诊断排序金标准）（零密钥、零网络、确定性）
+npm test                       # 二十件套守卫（含诊断排序金标准与否定守卫全表探针）；零密钥、零网络、确定性
+npm run probe:ood                # 域外可分性测量（**看守件、不进 npm test**：只报告不阻断）
 npm run coverage:js            # c8 + 模块级地板（地板清单单一源 tests/fixtures/coverage_floor.json）
 npm run test:e2e               # Playwright 双视口（1440×900 / 390×844）+ 三条红线在场与负向断言
 npm run lint:js                # ESLint --max-warnings=0（警告也算红）
@@ -54,6 +55,7 @@ python backend/selftest.py     # 镜像面自证（套件清单唯一真相源 b
 - **改任何一面的行为 ⇒ 另一面同改**。双端对账守卫会红：`contract_parity` / `retriever_parity` / `error_parity_guard` / `fhir_guard` / `kb_guard`。期望值写在 `frontend/tests/fixtures/*.json`，**不要**改 fixture 数字来让它绿——fixture 与生成器之间也有漂移判据。
 - **不要新增第二份真值**。版本号、套件清单、错误矩阵、发布正文阈值、limits 阈值都各有唯一来源（见 `docs/ARCHITECTURE.md` 的对账矩阵）。要加就改生成器。
 - **知识库方向：`frontend/functions/lib/knowledge.js` 是权威源，`backend/app/knowledge.py` 是生成物**（第二十四轮实测生成器后校正：本文件此前把方向写反，会引导贡献者去改生成物）。改 JS 后跑 `npm --prefix frontend run kb:export` 重生成，手改 .py 数据必被 `kb_guard` 的双端全等判据抓。
+  **但增删条目还要过语义邻接表这一关**（第二十五轮实测记）：`semantic_guard` 要求表的条目数与语料指纹跟 `knowledge.js` 全等，重建表得跑 `python scripts/build_semantic_neighbors.py --engine-dir <含 bge_onnx_engine.py 与 ONNX 权重的目录>`，而该引擎与权重**不在本仓库内**——没有它们，扩库会在守卫处判红且无法自行解除（这是刻意的：宁可拦住也不放行一张陈旧表）。动手扩库前先确认拿得到该产物，否则先把阻塞记进台账而不是硬改。
 - **工作流/Dockerfile/compose 也有判据**（`infra-lint`：actionlint + hadolint + compose config + codespell）。所有 `uses:` 必须钉 40 位提交号并带版本注释，顶层必须有 `permissions:`，checkout 必须 `persist-credentials: false`——由 `scripts/action_pin.py` 机器核（升级 action 时跑 `python scripts/action_pin.py --resolve --apply`）。
 - **控制字符会静默毁掉判据**：往 JS/Py 源码里写正则时，`\b`/`\1` 经多层转义可能落成裸 `0x08`/`0x01`，于是"永不匹配的死判据"仍显示通过。`scripts/check_text_hygiene.py` 兜这一类，别靠记忆。
 - **升版必须重算两份锁**（x86_64 与 arm64）且同刻：`python scripts/recompile_locks.py`。uv 有 in-source 缓存，同一句命令分两次跑会出不同结果。

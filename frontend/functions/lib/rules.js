@@ -110,6 +110,8 @@ function matchFlagRules(t) {
   return out
 }
 
+export const RULE_TABLES = { DANGER: DANGER_RULES, COMBO: COMBO_RULES, NEGATIONS: NEGATION_TOKENS, POSITIVES: POSITIVE_TERMS }
+
 // 结构化红旗明细（新增，供 dx.flag_details 使用；供界面按严重度分级展示）
 export function scanFlagDetails(text) {
   const t = String(text ?? "").toLowerCase().slice(0, 2000)

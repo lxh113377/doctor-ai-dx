@@ -5,6 +5,64 @@
 
 ## [Unreleased]
 
+## [1.23.0] - 2026-09-26
+
+第二十五轮。本轮的对标动作是**先复核自己上一轮引用的数字，再补安全层判据的盲区**——
+上一轮 peer 取证大量由子代理完成而我未亲验，本轮逐条 `gh api` 复算，抓到三处我公开写错的数（见 Fixed）。
+
+### Added
+- **否定守卫全表探针 `frontend/tests/negation_probe.mjs`（二十件套，关台账#50）**：上一轮修红旗层否定词
+  假阳性时，"阳性对照 8 条全命中／阴性 10 条全不命中"那份对照集是**我手挑的**——手挑的对照只能证明我挑的
+  那几条没坏。现在分母交给规则表本身：13 条 DANGER × 67 个关键词、4 条 COMBO × 49 个组合词，逐词生成
+  「阳性出现必须命中」与「加否定前缀必须不命中」两向用例，共 **232 条**，表里加一个关键词射程自动扩一格，
+  不需要有人记得补测试（同 r20 `suite_guard` 的反向枚举口径）。镜像端 `backend/tests/smoke_engine.py`
+  有一份同性质派生探针（该套件 30→**264** 项），两张规则表本身已由「逐字全等」判据钉住，故不必再加跨语言 spawn。
+  **两组变异实测**：① 整体旁路否定守卫 → `116 pass / 116 fail` rc=1；② 把阳性例外词 `无尿` 从例外表摘掉
+  （守卫过严＝制造漏报）→ `engine_smoke` 立刻点名 `FAIL 红旗探针 "老年男性无尿痛伴下腹胀痛"` rc=1。
+  两个方向都拦得住，且都按 sha256 逐字节回滚。
+- **域外可分性测量常驻化（#52 前置，关其"一次性判断"这一半）**：`tests/fixtures/ood_cases.json`（10 条与
+  基层常见病无关但句式刻意像问诊的中文多轮提问）＋ `tests/ood_probe.mjs`（`npm run probe:ood`，
+  **看守件、刻意不进 npm test**：新指标先量误报率再接线，不许它拦任务）。测量结果按类别分层：
+  `max(域外 top1)=38.604 < min(危急域内 top1)=57.374`，间隔 **18.770**（占危急类最低分 32.7%）；
+  取中点 T=47.989 则域外 **10/10** 判弃权、危急类 **0/14** 误伤，代价是连带弃权 6 条域内用例，
+  其中 3 条恰是 `kb_gap`（GERD／胸壁痛／消化不良）——"证据不足"与"库里没这条"指向同一批病例。
+  探针内置稳健性下限（间隔 <1.0 即判红，因为不足以抵抗增删条目带来的分数漂移）与零输入不记 PASS。
+- **README 新增「边界与已知局限」七条（关台账#54）**：红旗层是关键词＋启发式否定而非临床 NLP、
+  全部评测数字是合成病例自洽度不是真实世界准确率、知识库 55 条**且扩容被一个不随仓库发布的外部产物绑住**、
+  无弃权第三态、零持久化零认证的代价（医生终审目前是文案不是流程）、bus factor≈1、未取得任何合规认定。
+  立论＝同类可信项目都把边界写在首页（urobot「沒有任何可對外宣稱的準確率」／Medico「cases 与 rules 同作者」
+  ／MediGenius 5 条 Limitations），不写不等于不存在，只等于由别人来发现。
+- **文档计数派生化判据（关台账#51）**：`docs_link_guard` 新增一条——文档里的 `N 件套`／`N 份工作流`
+  必须等于 `package.json` 的 `scripts.test` 拆分数与 `.github/workflows/*.yml` 枚举数，含中文数字解析
+  与「扫到 ≥3 处否则判红」的接线自证。**上岗首跑即抓到 12 处过期计数**，其中三处我上一轮根本不知道存在
+  （`十件套`、`十六件套`、CONTRIBUTING 里我上次漏改的第二处 `十五件套`）。这正面印证了该条为什么必须
+  是判据而不是自觉：同一个数字抄在多份文档里，改实现的人不会记得逐处同步，是**结构性**漂移。
+
+### Fixed
+- 🔴 **自纠：上一轮对标报告里我公开引用的三个 peer 数字是错的**（均为子代理取证、我未亲验即写入结论）：
+  `openemr` 贡献者 **362 → 281**（前者把匿名贡献者算进分页总数）、`phlox` 贡献者 **6 → 5**、
+  `ragflow` `deepdoc/parser/` 解析器 **~19 → 18** 个 `*_parser.py`。另核对 `openemr` **没有 CODEOWNERS**
+  （上一轮总览表把它写成"未取到"，本轮确认缺失，措辞按事实收敛）。其余六条关键引用
+  （HSW 题库与判分器实测 0 字节、`.gitignore:34 .eval/`、0 工作流；MediGenius README「not a statistical
+  benchmark」＋`safety_router.py`「No LLM ever decides these outcomes」＋`review.py` 的 model-vs-human
+  agreement；Medico `max(rule_floor, ai_adjustment)` 只升不降／外部 `triage_rules.json` 载入即校验／
+  主指标 critical sensitivity／漏检 CRITICAL 即 `return 1` 可闸门／自陈同作者只测内部一致性；
+  urobot 首页无准确率声明＋`b=0.75→0.3` 使 Top-1 6/10→8/10＋`eval.py` 无 key 走检索命中率＋
+  `benchmarks/retrieval.jsonl` 10 题带 acceptable 集＋CI 每 PR 跑 eval；`infinivore/ragflow` 404 而真仓是
+  `infiniflow/ragflow`、`SupportedLiteLLMProvider` **恰好 40** 项；`container_benchmarking/` 是真货）
+  **逐条复算通过**。教训按本仓口径固化：**子代理取证的每一条对外数字，写进交付物前须自己复跑一次**。
+- **`AGENTS.md` §4 补一条会把人卡住的硬前置**：`semantic_guard` 要求邻接表条目数与语料指纹跟 `knowledge.js`
+  全等，而重建表的 `bge_onnx_engine.py`＋ONNX 权重**不随仓库发布** ⇒ 没有它们，扩库是"做不了"而不是"不好做"。
+  复现证据：`python scripts/build_semantic_neighbors.py` → `FAIL: 未找到 bge_onnx_engine.py（不产出半成品表）`
+  exit 1（先按不带管道复验退出码，避免把管道里 `$?` 拿到 `head` 状态误读成"它退出 0"——那是本机已知坑）。
+
+### Changed
+- `rules.js` 导出 `RULE_TABLES`（DANGER/COMBO/NEGATIONS/POSITIVES）供全表探针枚举；行为零改动。
+- 版本 `1.22.0 → 1.23.0`（四处声明同刻抬齐＋CHANGELOG 小节，Release 正文由它机器产出）。
+
+**三条产品红线逻辑零改动**（红旗仍独立于 LLM 且不可被模型覆盖、终审文案与引用白名单未动）；
+默认检索档仍 bm25；评测仍是同一批 31 例；本轮**未动任何对外行为**——新增的全是判据与文档。
+
 ## [1.22.0] - 2026-09-26
 
 第二十四轮对标发布轮。本轮的对标对象从"成熟工程的 CI 面"切到**功能可比同类**（13 个 medical-RAG / CDSS 仓逐文件取证），

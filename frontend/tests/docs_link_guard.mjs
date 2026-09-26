@@ -145,5 +145,42 @@ const backtickSpans = mdFiles.filter((f) => !HISTORY_FILES.has(f))
 check(`仓外路径判据确有输入（非 CHANGELOG 文档里反引号片段 ${backtickSpans} 处，≥200 才算扫到东西）`,
   backtickSpans >= 200, "反引号片段过少＝文档没读进来，该判据会恒绿")
 
+// 文档里的「N 件套」「N 份工作流」必须是派生值（第二十五轮 #51）。
+// 为什么：本轮我自己就手改了 4 处过期的「十五件套」（实际早已是十八/十九），上一轮也改过一次——
+// 同一个数字抄在 N 份文档里，改实现的人不会记得逐处同步，这是**结构性的**漂移而不是笔误。
+// 现在把真值收拢到两处：`package.json` 的 scripts.test 拆分数、`.github/workflows/*.yml` 枚举数；
+// 文档里再出现别的数字即判红（并且反向断言扫描面非空，防"没扫到＝通过"）。
+const pkg = JSON.parse(readFileSync(resolve(ROOT, "frontend", "package.json"), "utf8"))
+const suiteCount = pkg.scripts.test.split("&&").length
+const wfDir = resolve(ROOT, ".github", "workflows")
+const wfCount = existsSync(wfDir) ? readdirSync(wfDir).filter((f) => f.endsWith(".yml")).length : -1
+const CN = { 一: 1, 二: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9, 十: 10 }
+const toNum = (raw) => (/^\d+$/.test(raw) ? Number(raw)
+  : (raw.length === 1 ? (CN[raw] ?? NaN)
+    : raw.startsWith("十") ? 10 + (CN[raw.slice(1)] ?? 0)
+      : raw.endsWith("十") ? (CN[raw.slice(0, -1)] ?? 0) * 10
+        : /^([一二三四五六七八九])十([一二三四五六七八九])?$/.test(raw)
+          ? Number(CN[raw.match(/^([一二三四五六七八九])/)[1]]) * 10 + (raw.endsWith("十") ? 0 : (CN[raw.slice(-1)] ?? 0))
+          : NaN))
+const docClaims = []
+let countTotal = 0
+for (const file of mdFiles) {
+  if (HISTORY_FILES.has(file)) continue
+  for (const m of mdOf(file).matchAll(/(\d+|[一二三四五六七八九十]{1,3})\s*件套/g)) {
+    countTotal++
+    const n = toNum(m[1])
+    if (n !== suiteCount) docClaims.push(`${file} → "${m[0]}" 应为 ${suiteCount} 件套`)
+  }
+  for (const m of mdOf(file).matchAll(/(\d+|[一二三四五六七八九十]{1,3})\s*份(?:工作流|workflow)/g)) {
+    countTotal++
+    const n = toNum(m[1])
+    if (n !== wfCount) docClaims.push(`${file} → "${m[0]}" 应为 ${wfCount} 份`)
+  }
+}
+check(`文档中的套件数与工作流份数全部为派生真值（套件=${suiteCount}、工作流=${wfCount}）`,
+  docClaims.length === 0, docClaims.slice(0, 8).join(" | "))
+check(`该判据确有输入（扫到 ${countTotal} 处计数声明，≥3 才算在射程内）`, countTotal >= 3,
+  "一处都没扫到＝正则失效，判红而不是跳过")
+
 console.log(`\nRESULT: ${pass} pass / ${fail} fail`)
 process.exit(fail ? 1 : 0)
