@@ -6,7 +6,7 @@
 // ============================================================
 import { CASES, INTAKE_DONE_REPLY } from "./data.js"
 import { scanFlags, scanFlagDetails } from "./rules.js"
-import { hasEvidence, evidenceForSymptoms } from "./rag.js"
+import { hasEvidence, evidenceForSymptoms, answerability } from "./rag.js"
 import { getRetriever } from "./retriever.js"
 import { KB_BY_ID, SYMPTOM_TO_KB, kbTitleOf, kbConditionOf } from "./knowledge.js"
 import { toFhirBundle } from "./fhir.js"
@@ -14,6 +14,10 @@ import { toFhirBundle } from "./fhir.js"
 // 404 文案里的"未提供"占位：双端必须同值（tests/error_parity_guard.mjs 逐字比对 message，
 // 之前 JS 打 `undefined`、Py 打空串，码相同但文案漂＝支持侧对不上话）
 const MISSING_CASE = "(未提供)"
+// 弃权卡的对外文案：双端同名同值（tests/abstain_guard.mjs 逐字对账），且必须自带"医生主导"口径——
+// 弃权不是"没算出来"，是把决策权明确交回执业医生（第三条红线）。
+export const ABSTAIN_PRIMARY = "信息不足，建议补充问诊"
+export const ABSTAIN_NOTE = "本次检索到的证据强度低于弃权阈值，未给出倾向性诊断；请医生主导鉴别，必要时补充病史/查体后重试。"
 const retriever = getRetriever()
 const kbTitle = (id) => kbTitleOf(id)
 const kbCondition = (id) => kbConditionOf(id)
@@ -146,6 +150,22 @@ export async function buildDiagnosis(caseId, history = [], env = {}) {
   out.fallback_reason = fallbackReason
   out.trace = { evidence_ids: evidenceIds, rounds: state.rounds, symptoms: state.symptoms }
   out.state = state
+  // 第三态（#52）：证据不足或域外 ⇒ 不编鉴别诊断，但**红旗与引用照常在场**（红线不动）。
+  const answer = answerability(evidence, state.red_flags)
+  out.abstain = answer.abstain
+  out.scope_status = answer.scope_status
+  out.top_evidence_score = answer.top_score
+  if (answer.abstain) {
+    out.primary = [{
+      name: ABSTAIN_PRIMARY, prob: "信息不足", strength: "low",
+      reasons: [`本次检索最高证据分 ${answer.top_score} 低于弃权阈值（域外最高分与危急用例最低分的中点）`],
+      evidence_ids: [], refs: [],
+    }]
+    out.differential = []
+    out.abstain_reason = answer.scope_status === "out-of-scope"
+      ? "未检索到任何适用知识库条目，超出本系统常见病多发病范围，请医生主导鉴别"
+      : "现有问诊信息不足以支撑鉴别，请补充问诊后重试；本系统仅作用药与鉴别参考，最终判断由执业医生作出"
+  }
   out.fhir = toFhirBundle(out)
   return out
 }

@@ -26,7 +26,7 @@
 ## 提交前必须全绿
 
 ```bash
-cd frontend && npm test                       # 二十件套，含双端契约、配置契约(env)、诊断排序金标准与知识库门禁
+cd frontend && npm test                       # 二十一件套，含双端契约、配置契约(env)、诊断排序金标准与知识库门禁
 cd frontend && npm run lint                   # 静态检查门禁（ESLint + ruff；警告也算红）
 cd frontend && npm run typecheck              # Python 类型门禁（mypy 严格档，阈值 fixtures/type_floor.json）
 cd frontend && npm run lock                   # 依赖锁定对账（requirements.lock 钉版+哈希 且 Dockerfile 真从锁装）
@@ -125,6 +125,6 @@ CI 会跑同样的东西；`main` 分支保护要求 `build-and-test` 与 `backe
 - **同文件多 PR 积压**：按"聚合批"处理——自开分支一次覆盖 N 包，PR 描述引用被覆盖编号，合入后关闭原 PR（留言可 `/rerun` 重建）。
 - **major**：先查 peer（`npm i` 干跑看 ERESOLVE），框架级升级（如 vite 大版本）单独立项，不混入依赖批；结论写入 PR 评论留痕。
 - 自动审计：`.github/workflows/dep-audit.yml` 每周一 npm audit（high 即红）+ pip-audit（观察期报告制，删 `continue-on-error` 一行即转硬门禁）；依赖文件变更的 PR 也会触发。注：本机镜像 registry 无 audit 端点，本地 `npm audit` 不可用属环境限制，以 CI 为准（2026-09-24 实测）。
-- 任何依赖变更后：`npm run lint` + `npm test` 二十件套 + `npm run lock` + `npm run build` + `npm run test:bundle`（体积地板线）+ `npm run sbom && npm run sbom:check` 全绿。
+- 任何依赖变更后：`npm run lint` + `npm test` 二十一件套 + `npm run lock` + `npm run build` + `npm run test:bundle`（体积地板线）+ `npm run sbom && npm run sbom:check` 全绿。
   SBOM 属发布期产物、**刻意不入库**（入库就会造出「陈旧副本 vs 当前 lock」的第二真值）；tag 工作流会重算并连同 SHA256 一起挂到 Release。
   改依赖后本地先跑一遍对账，别等发布期才发现清单漂移。方可合。

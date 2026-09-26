@@ -11,6 +11,12 @@ from . import fhir as fhir_svc
 from . import llm as llm_svc
 
 MISSING_CASE = "(未提供)"  # 与 functions/lib/engine.js 同值，由 error_parity_guard 逐字对账
+
+# 弃权卡对外文案：与 functions/lib/engine.js 的 ABSTAIN_PRIMARY / ABSTAIN_NOTE 同名同值，
+# 由 tests/abstain_guard.mjs 逐字对账（文案漂移＝支持侧对不上话，见 docs/ERRORS.md 同源约定）。
+ABSTAIN_PRIMARY = "信息不足，建议补充问诊"
+ABSTAIN_NOTE = ("本次检索到的证据强度低于弃权阈值，未给出倾向性诊断；请医生主导鉴别，"
+                "必要时补充病史/查体后重试。")
 _BY_ID = {k["id"]: k for k in KNOWLEDGE_BASE}
 _RETRIEVER = get_retriever()
 
@@ -134,6 +140,24 @@ def build_diagnosis(case_id: str, history: list[dict] | None = None) -> dict:
     out["fallback_reason"] = reason
     out["trace"] = {"evidence_ids": evidence_ids, "rounds": state["rounds"], "symptoms": state["symptoms"]}
     out["state"] = state
+    # 第三态（#52）：证据不足或域外 ⇒ 不编鉴别诊断，但红旗与引用照常在场（红线不动）。
+    # 判据与 JS 侧同一份实现语义：rag.answerability(evidence, flags)。
+    answer = rag.answerability(evidence, state["red_flags"])
+    out["abstain"] = answer["abstain"]
+    out["scope_status"] = answer["scope_status"]
+    out["top_evidence_score"] = answer["top_score"]
+    if answer["abstain"]:
+        out["primary"] = [{
+            "name": ABSTAIN_PRIMARY, "prob": "信息不足", "strength": "low",
+            "reasons": [f"本次检索最高证据分 {answer['top_score']} 低于弃权阈值"
+                        "（域外最高分与危急用例最低分的中点）"],
+            "evidence_ids": [], "refs": [],
+        }]
+        out["differential"] = []
+        out["abstain_reason"] = ("未检索到任何适用知识库条目，超出本系统常见病多发病范围，请医生主导鉴别"
+                                 if answer["scope_status"] == "out-of-scope"
+                                 else "现有问诊信息不足以支撑鉴别，请补充问诊后重试；"
+                                      "本系统仅作用药与鉴别参考，最终判断由执业医生作出")
     out["fhir"] = fhir_svc.to_fhir_bundle(out)
     return out
 

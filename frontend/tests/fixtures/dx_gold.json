@@ -12,7 +12,9 @@
       "min_cases": 31,
       "top1_min": 87,
       "top3_min": 93,
-      "critical_top3_min": 95
+      "critical_top3_min": 95,
+      "over_abstain_max": 1,
+      "_abstain_note": "over_abstain_max＝允许本可给出诊断却选择弃权的用例数上限，由第二十八轮实测 T=48.491 得到 1 例（ev-09 普通上感 top=43.525）；只准下调不准上调。危急用例被弃权一律判红（不看此预算）。"
     }
   },
   "cases": [
@@ -295,7 +297,8 @@
         "焦虑障碍",
         "待医生结合查体进一步鉴别"
       ],
-      "note": "只有主诉「劳累后胸闷、胸痛 2 小时」：按 ACS 待排除处理或直接要求补问诊都算对"
+      "note": "只有主诉「劳累后胸闷、胸痛 2 小时」：按 ACS 待排除处理或直接要求补问诊都算对（弃权即期望行为）",
+      "abstain_ok": true
     },
     {
       "id": "ev-25",
@@ -304,7 +307,8 @@
         "待医生结合查体进一步鉴别"
       ],
       "expect_other": [],
-      "note": "域外输入（问猫）：期望是兜底/不确定文案而非自信给出诊断。当前引擎仍返回 ACS，记为未收敛缺口"
+      "note": "域外输入（问猫）：第二十八轮起引擎走弃权第三态（scope_status=insufficient-information），不再自信给出诊断",
+      "abstain_ok": true
     },
     {
       "id": "ev-26",

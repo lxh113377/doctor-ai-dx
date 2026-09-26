@@ -29,7 +29,7 @@ async function post(path, body) {
   return { ms, ok: res.ok, data: json.data }
 }
 
-let structPass = 0, citePass = 0, modeLive = 0, modeFallback = 0, flagOk = 0, flagTotal = 0
+let structPass = 0, citePass = 0, modeLive = 0, modeFallback = 0, flagOk = 0, flagTotal = 0, abstainCount = 0
 const failures = []
 
 for (const c of suite.cases) {
@@ -41,8 +41,19 @@ for (const c of suite.cases) {
   const d = r.data
   if (!d) { errs.push("无响应"); failures.push({ id: c.id, errs }); continue }
   if (d.mode === "live") modeLive++; else if (d.mode === "rule-fallback") modeFallback++
-  if (!Array.isArray(d.primary) || d.primary.length < 2) errs.push("primary<2")
-  if (!Array.isArray(d.differential) || d.differential.length < 2) errs.push("differential<2")
+  if (d.abstain === true) {
+    // 线上第三态（#52）：弃权是另一种合法形状，但必须"只出弃权卡 + 红旗字段在场"，
+    // 且同样计入"红旗不得被弃权吞掉"的检查——否则线上把弃权当成功掩盖漏报。
+    if (d.scope_status !== "insufficient-information" && d.scope_status !== "out-of-scope") errs.push("abstain但scope非法")
+    if (d.primary?.length !== 1 || d.primary[0]?.name !== "信息不足，建议补充问诊") errs.push("弃权态未收敛为弃权卡")
+    if ((d.differential || []).length !== 0) errs.push("弃权态仍给鉴别诊断")
+    if (!Array.isArray(d.flags)) errs.push("弃权态flags缺失")
+    abstainCount++
+  } else {
+    if (!Array.isArray(d.primary) || d.primary.length < 2) errs.push("primary<2")
+    if (!Array.isArray(d.differential) || d.differential.length < 2) errs.push("differential<2")
+    if (d.scope_status !== "in-scope") errs.push(`未弃权但scope=${d.scope_status}`)
+  }
   if (!Array.isArray(d.evidence) || d.evidence.length < 2) errs.push("evidence<2")
   const ids = [...(d.evidence || []).map((e) => e.id), ...(d.trace?.evidence_ids || []), ...d.primary.flatMap((p) => p.evidence_ids || [])]
   const bad = ids.filter((i) => !VALID.has(i))
@@ -70,6 +81,7 @@ const report = {
   dx_latency_ms: { n: lat.length, p50: pct(lat, 0.5), p95: pct(lat, 0.95), max: Math.max(...lat) },
   workup_report_latency_ms: { n: wrLat.length, p50: pct(wrLat, 0.5), p95: pct(wrLat, 0.95), max: Math.max(...wrLat) },
   structure_pass: `${structPass}/${n}`,
+  abstain_cases: `${abstainCount}/${n}`,
   citation_valid: `${citePass}/${n}`,
   mode_distribution: { live: modeLive, rule_fallback: modeFallback },
   red_flag_recall_live: `${flagOk}/${flagTotal}`,

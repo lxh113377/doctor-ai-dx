@@ -42,13 +42,18 @@ for (const g of gold.cases) {
 }
 
 // 危急类病例（漏检代价最高）：gold 里含「急症/红旗/危重/需急诊/需转诊」者单独出主指标
-const CRITICAL_RE = /急症|红旗|危重|需急诊|需转诊|阻塞|夹层|栓塞|异位妊娠|脓毒症|会厌|出血/
-
+// 危急用例按**具体危急诊断名**判定，不用裸字匹配。
+// 上一版写 `/阻塞/` 本意是"视网膜中央动脉阻塞"，却把"慢性**阻塞**性肺疾病"也算成危急 ⇒ 主指标分母虚高
+// （第二十八轮实测：31 例里 23 例被判危急，其中 ev-09 只是普通上感）。同类错误第二次犯（#50 的抽样、#59 的小节），
+// 故这里改为显式词表，并在下面打印每个词命中了几例——分母怎么来的必须能看见。
+const CRITICAL_TERMS = ["急症", "红旗", "危重", "需急诊", "需转诊", "动脉阻塞", "夹层", "栓塞", "异位妊娠", "脓毒症", "会厌", "出血", "梗死", "休克", "套叠", "马尾"]
+const termHits = {}
 let top1 = 0
 let top3 = 0
 let scored = 0
 const gaps = []
 const misses = []
+const overAbstains = []
 
 for (const g of gold.cases) {
   const item = cases.find((c) => c.id === g.id)
@@ -64,8 +69,15 @@ for (const g of gold.cases) {
   if (hit3) top3++
   if (g.kb_gap) gaps.push(`${g.id}:${g.kb_gap}`)
   if (!hit3) misses.push(`${g.id}(${item.scene || ""}) 输出 ${names.slice(0, 3).join(",") || "空"}`)
-  const critical = [...accepted].some((n) => CRITICAL_RE.test(n)) || /急|红旗|重/.test(g.note || "")
-  rows.push({ id: g.id, top1: hit1, top3: hit3, critical, predicted: names.slice(0, 3), kb_gap: g.kb_gap || null })
+  const critical = [...accepted].some((n) => CRITICAL_TERMS.some((t) => n.includes(t)))
+  for (const n of accepted) for (const t of CRITICAL_TERMS) if (n.includes(t)) termHits[t] = (termHits[t] || 0) + 1
+  const abstained = dx.abstain === true
+  // 过度弃权＝"这条本来有期望诊断、系统却选择弃权"。它必须单独计量并设地板，
+  // 否则"什么都弃权"能把 top-1 做得很难看但指标看起来只是"准确率下降"，看不出是阈值错。
+  const overAbstain = abstained && (g.expect_top1 || []).length > 0 && !g.abstain_ok
+  if (overAbstain) overAbstains.push(`${g.id}(top=${dx.top_evidence_score})`)
+  if (abstained && critical) bad(`危急用例 ${g.id} 被弃权＝漏报，危急类绝不允许弃权（peer 同规：triage-0 三条决定性体征禁止弃权、Medico 弃权时红旗照出）`)
+  rows.push({ id: g.id, top1: hit1, top3: hit3, critical, abstained, predicted: names.slice(0, 3), kb_gap: g.kb_gap || null })
 }
 
 const pct = (n) => (scored ? (n / scored) * 100 : 0)
@@ -78,6 +90,8 @@ const summary = {
   kb_gap_cases: gaps.length,
   critical_cases: crit.length,
   critical_top3_recall: crit.length ? `${critTop3}/${crit.length}` : "0/0",
+  abstain_cases: rows.filter((r) => r.abstained).length,
+  over_abstain: overAbstains.length,
 }
 const floors = gold._meta.floors || {}
 
@@ -86,6 +100,8 @@ console.log(`用例: ${summary.scored}（评测集与金标准集同构校验 ${
 console.log(`top-1 命中: ${top1}/${scored} = ${pct(top1).toFixed(1)}%`)
 console.log(`top-3 命中: ${top3}/${scored} = ${pct(top3).toFixed(1)}%`)
 console.log(`危急类 top-3 召回（主指标）: ${summary.critical_top3_recall}`)
+console.log(`危急词表命中分布（分母怎么来的必须可见）: ${Object.entries(termHits).map(([k, v]) => `${k}=${v}`).join(" ")}`)
+console.log(`弃权用例: ${summary.abstain_cases}（其中过度弃权 ${summary.over_abstain}：${overAbstains.join(",") || "无"}）`)
 console.log(`知识库缺口病例（单列，不计入"错"）: ${gaps.length} → ${gaps.join(", ") || "无"}`)
 if (misses.length) console.log(`top-3 未命中: ${misses.join(" | ")}`)
 
@@ -107,6 +123,13 @@ if (pct(top3) < (floors.top3_min || 0)) bad(`top-3 命中 ${pct(top3).toFixed(1)
 // 第二十七轮就是这么踩到的（26→22 虚警），故把该口径钉成断言而不是靠人记得。
 const gapHits = rows.filter((r) => r.kb_gap && r.top1).map((r) => r.id)
 if (gapHits.length) bad(`kb_gap 用例被判为 top-1 命中（口径自相矛盾，须先摘掉 kb_gap 或清空 expect_other）：${gapHits.join(",")}`)
+// 过度弃权单独设地板（只准降不准升）：没有这条，把阈值调高到"什么都弃权"也能把错误藏起来。
+if (!Number.isFinite(floors.over_abstain_max)) {
+  bad(`floors 缺 over_abstain_max（弃权功能的唯一约束，缺它＝弃权无上限）：${JSON.stringify(Object.keys(floors))}`)
+} else if (overAbstains.length > floors.over_abstain_max) {
+  bad(`过度弃权 ${overAbstains.length} 例 > 地板 ${floors.over_abstain_max}：${overAbstains.join(",")}（阈值偏严或语料覆盖不足）`)
+}
+if (rows.length && rows.every((r) => r.abstained)) bad("全部用例都弃权＝阈值失效或链路断裂，不许记绿")
 
 console.log(`\nRESULT: ${fail} fail / ${scored} 例 | ${JSON.stringify(summary)}`)
 process.exit(fail ? 1 : 0)

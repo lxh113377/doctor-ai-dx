@@ -163,3 +163,19 @@ def kb_text(eid: str) -> str:
 def kb_icd(eid: str):
     """ICD-10 映射原值（组合条目分号并列；综合征/分诊类条目为 None，不得据此编造编码）。"""
     return _BY_ID.get(eid, {}).get("icd")
+
+
+# ---------- 证据充分性 / 弃权第三态（第二十八轮，台账 #52；与 functions/lib/rag.js 同名同值）----------
+ABSTAIN_T = 48.491
+
+
+def answerability(evidence: list, flags: list) -> dict:
+    """红旗在场一律不弃权（漏报危险信号的代价远高于多提示一次"信息不足"）。"""
+    top = float(evidence[0]["score"]) if evidence else 0.0
+    if isinstance(flags, (list, tuple)) and len(flags) > 0:  # 与 JS 侧 Array.isArray 同判据，非数组不得当作有红旗
+        return {"abstain": False, "scope_status": "in-scope", "top_score": top}
+    if not evidence:
+        return {"abstain": True, "scope_status": "out-of-scope", "top_score": top}
+    if top < ABSTAIN_T:
+        return {"abstain": True, "scope_status": "insufficient-information", "top_score": top}
+    return {"abstain": False, "scope_status": "in-scope", "top_score": top}

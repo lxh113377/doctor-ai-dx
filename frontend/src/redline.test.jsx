@@ -90,3 +90,37 @@ describe('渲染兜底', () => {
     expect(screen.queryByRole('alert')).toBeNull()
   })
 })
+
+// 第三态（#52 第二十八轮）：弃权不许吞掉红旗，也不许顺便编一个鉴别诊断。
+// 这条的形状抄自 peer 实测：`kheireddinedev00/Medico` 有具名测试
+// test_out_of_scope_still_honours_red_flags（弃权时红旗仍抬优先级），`dmustapha/triage-0` 用三条决定性体征禁止弃权。
+const dxAbstainWithFlags = {
+  mode: 'rule-fallback', fallback_reason: '未配置 LLM Key，使用规则引擎',
+  abstain: true, scope_status: 'insufficient-information', top_evidence_score: 31.109,
+  abstain_reason: '现有问诊信息不足以支撑鉴别，请补充问诊后重试；本系统仅作用药与鉴别参考，最终判断由执业医生作出',
+  flags: ['严重危险信号：ACS 高危胸痛，立即转诊'],
+  flag_details: [{ name: '急性冠脉综合征', severity: '高', advice: '10 分钟内完成心电图并转诊胸痛中心' }],
+  primary: [{ name: '信息不足，建议补充问诊', strength: 'low', prob: '信息不足', reasons: [], refs: [] }],
+  differential: [], faq: [], evidence: [{ id: 'kb-001', title: '急性胸痛分诊共识', source: '中国胸痛中心联盟', year: '2025' }],
+}
+const dxNoAbstain = { ...dxAbstainWithFlags, abstain: false, scope_status: 'in-scope', differential: [{ name: '主动脉夹层', note: '撕裂样痛' }] }
+
+describe('弃权第三态展示', () => {
+  it('弃权时弃权卡在场，且红旗横幅照常渲染（红线：弃权不得吞掉危险信号）', () => {
+    render(<Dx dx={dxAbstainWithFlags} patient={{ name: '张建国', chief: '胸痛' }} onRestart={() => {}} onNext={() => {}} />)
+    expect(screen.getByTestId('abstain-card')).toBeTruthy()
+    expect(screen.getByText(/危险信号 · 规则引擎独立检出（不可被模型覆盖）/)).toBeTruthy()
+    expect(screen.getByText(/请补充问诊后重试/)).toBeTruthy()
+  })
+  it('弃权卡只说"信息不足/适用范围"，不出现任何倾向性诊断名', () => {
+    render(<Dx dx={dxAbstainWithFlags} patient={{ name: '李', chief: '胸闷' }} onRestart={() => {}} onNext={() => {}} />)
+    expect(screen.getByText(/信息不足，建议补充问诊/)).toBeTruthy()
+    expect(screen.queryByText('主动脉夹层')).toBeNull()
+    expect(screen.getByText(/问诊信息不足，建议补充后再评估/)).toBeTruthy()
+  })
+  it('未弃权时不出弃权卡（反向对照，防"常驻渲染"假通过）', () => {
+    render(<Dx dx={dxNoAbstain} patient={{ name: '王', chief: '胸痛' }} onRestart={() => {}} onNext={() => {}} />)
+    expect(screen.queryByTestId('abstain-card')).toBeNull()
+    expect(screen.getByText('主动脉夹层')).toBeTruthy()
+  })
+})

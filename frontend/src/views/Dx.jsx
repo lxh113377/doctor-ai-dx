@@ -1,5 +1,11 @@
 import ModeBadge from './ModeBadge.jsx'
 const CLASS = { high: 'high', mid: 'mid', low: 'low' }
+// 弃权三态的医生可读措辞：只说适用范围，不猜诊断（红线：辅助参考 · 医生终审）
+const SCOPE_LABEL = {
+  'in-scope': '在适用范围内',
+  'insufficient-information': '问诊信息不足，建议补充后再评估',
+  'out-of-scope': '超出本系统常见病多发病适用范围',
+}
 const SvgRef = () => (
   <svg width={11} height={11} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.4}
     strokeLinecap="round" style={{ marginRight: 4, verticalAlign: '-1px' }}>
@@ -25,6 +31,16 @@ export default function Dx({ dx, patient, onRestart, onNext }) {
       </div>
 
       <ModeBadge mode={dx.mode} reason={dx.fallback_reason} />
+
+      {dx.abstain && (
+        <div className="banner warn" role="status" data-testid="abstain-card">
+          <div>
+            <h4>信息不足 · 请医生主导鉴别</h4>
+            <p>{dx.abstain_reason}</p>
+            <p>适用范围：{SCOPE_LABEL[dx.scope_status] || dx.scope_status}（本次最高证据分 {dx.top_evidence_score}，低于弃权阈值）</p>
+          </div>
+        </div>
+      )}
 
       {dx.flags.length > 0 && (
         <div className="banner danger">

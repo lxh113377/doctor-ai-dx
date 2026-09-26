@@ -4,22 +4,460 @@
     "bm25": {
       "fixture_name": "基层医疗检索 silver 评测集 v2.0",
       "case_count": 50,
+      "updated": "2026-09-26",
+      "enforced": true,
+      "measured": {
+        "recall_at_5": 0.86,
+        "mrr": 0.872333,
+        "ndcg_at_5": 0.802806,
+        "red_flag_recall_at_5": 0.869565
+      },
       "minimum": {
         "recall_at_5": 0.85,
         "mrr": 0.867333,
         "ndcg_at_5": 0.788893,
         "red_flag_recall_at_5": 0.847826
-      }
+      },
+      "headroom": {
+        "recall_at_5": 0.01,
+        "mrr": 0.005,
+        "ndcg_at_5": 0.013913,
+        "red_flag_recall_at_5": 0.021739
+      },
+      "headroom_basis": "余量＝measured − minimum，由本命令现算，禁手填；任一项为 0 即判红（零余量地板＝语料冻结，见 07 台账#70）",
+      "per_case": {
+        "ret-01": {
+          "recall_at_5": 1,
+          "mrr": 1
+        },
+        "ret-02": {
+          "recall_at_5": 1,
+          "mrr": 1
+        },
+        "ret-03": {
+          "recall_at_5": 1,
+          "mrr": 1
+        },
+        "ret-04": {
+          "recall_at_5": 1,
+          "mrr": 1
+        },
+        "ret-05": {
+          "recall_at_5": 1,
+          "mrr": 1
+        },
+        "ret-06": {
+          "recall_at_5": 1,
+          "mrr": 1
+        },
+        "ret-07": {
+          "recall_at_5": 1,
+          "mrr": 1
+        },
+        "ret-08": {
+          "recall_at_5": 1,
+          "mrr": 1
+        },
+        "ret-09": {
+          "recall_at_5": 1,
+          "mrr": 1
+        },
+        "ret-10": {
+          "recall_at_5": 1,
+          "mrr": 1
+        },
+        "ret-11": {
+          "recall_at_5": 1,
+          "mrr": 1
+        },
+        "ret-12": {
+          "recall_at_5": 1,
+          "mrr": 1
+        },
+        "ret-13": {
+          "recall_at_5": 1,
+          "mrr": 1
+        },
+        "ret-14": {
+          "recall_at_5": 0.5,
+          "mrr": 1
+        },
+        "ret-15": {
+          "recall_at_5": 1,
+          "mrr": 1
+        },
+        "ret-16": {
+          "recall_at_5": 1,
+          "mrr": 1
+        },
+        "ret-17": {
+          "recall_at_5": 1,
+          "mrr": 1
+        },
+        "ret-18": {
+          "recall_at_5": 1,
+          "mrr": 1
+        },
+        "ret-19": {
+          "recall_at_5": 1,
+          "mrr": 1
+        },
+        "ret-20": {
+          "recall_at_5": 1,
+          "mrr": 1
+        },
+        "ret-21": {
+          "recall_at_5": 0.5,
+          "mrr": 0.25
+        },
+        "ret-22": {
+          "recall_at_5": 1,
+          "mrr": 1
+        },
+        "ret-23": {
+          "recall_at_5": 1,
+          "mrr": 0.2
+        },
+        "ret-24": {
+          "recall_at_5": 1,
+          "mrr": 1
+        },
+        "ret-25": {
+          "recall_at_5": 1,
+          "mrr": 1
+        },
+        "ret-26": {
+          "recall_at_5": 1,
+          "mrr": 1
+        },
+        "ret-27": {
+          "recall_at_5": 0.5,
+          "mrr": 0.333333
+        },
+        "ret-28": {
+          "recall_at_5": 1,
+          "mrr": 0.5
+        },
+        "ret-29": {
+          "recall_at_5": 0.5,
+          "mrr": 0.5
+        },
+        "ret-30": {
+          "recall_at_5": 1,
+          "mrr": 1
+        },
+        "ret-31": {
+          "recall_at_5": 0.5,
+          "mrr": 0.5
+        },
+        "ret-32": {
+          "recall_at_5": 0.5,
+          "mrr": 0.5
+        },
+        "ret-33": {
+          "recall_at_5": 0.5,
+          "mrr": 1
+        },
+        "ret-34": {
+          "recall_at_5": 1,
+          "mrr": 1
+        },
+        "ret-35": {
+          "recall_at_5": 1,
+          "mrr": 0.5
+        },
+        "ret-36": {
+          "recall_at_5": 1,
+          "mrr": 1
+        },
+        "ret-37": {
+          "recall_at_5": 1,
+          "mrr": 1
+        },
+        "ret-38": {
+          "recall_at_5": 0.5,
+          "mrr": 1
+        },
+        "ret-39": {
+          "recall_at_5": 1,
+          "mrr": 1
+        },
+        "ret-40": {
+          "recall_at_5": 0.5,
+          "mrr": 0.5
+        },
+        "ret-41": {
+          "recall_at_5": 0.5,
+          "mrr": 1
+        },
+        "ret-42": {
+          "recall_at_5": 0.5,
+          "mrr": 1
+        },
+        "ret-43": {
+          "recall_at_5": 1,
+          "mrr": 1
+        },
+        "ret-44": {
+          "recall_at_5": 0.5,
+          "mrr": 1
+        },
+        "ret-45": {
+          "recall_at_5": 0.5,
+          "mrr": 0.333333
+        },
+        "ret-46": {
+          "recall_at_5": 0.5,
+          "mrr": 1
+        },
+        "ret-47": {
+          "recall_at_5": 1,
+          "mrr": 0.5
+        },
+        "ret-48": {
+          "recall_at_5": 1,
+          "mrr": 1
+        },
+        "ret-49": {
+          "recall_at_5": 1,
+          "mrr": 1
+        },
+        "ret-50": {
+          "recall_at_5": 1,
+          "mrr": 1
+        }
+      },
+      "per_case_rule": "逐用例锁：任何一例低于此记录即判红并点名；确需破锁要跑 --rebaseline-cases --why \"<理由>\"，理由会常驻打印（visible debt）",
+      "per_case_notes": []
     },
     "hybrid": {
       "fixture_name": "基层医疗检索 silver 评测集 v2.0",
       "case_count": 50,
+      "updated": "2026-09-26",
+      "enforced": false,
+      "measured": {
+        "recall_at_5": 0.87,
+        "mrr": 0.825333,
+        "ndcg_at_5": 0.784455,
+        "red_flag_recall_at_5": 0.891304
+      },
       "minimum": {
         "recall_at_5": 0.87,
         "mrr": 0.825333,
         "ndcg_at_5": 0.775527,
         "red_flag_recall_at_5": 0.891304
-      }
+      },
+      "headroom": {
+        "recall_at_5": 0,
+        "mrr": 0,
+        "ndcg_at_5": 0.008928,
+        "red_flag_recall_at_5": 0
+      },
+      "headroom_basis": "余量＝measured − minimum，由本命令现算，禁手填；任一项为 0 即判红（零余量地板＝语料冻结，见 07 台账#70）",
+      "per_case": {
+        "ret-01": {
+          "recall_at_5": 1,
+          "mrr": 1
+        },
+        "ret-02": {
+          "recall_at_5": 1,
+          "mrr": 1
+        },
+        "ret-03": {
+          "recall_at_5": 1,
+          "mrr": 1
+        },
+        "ret-04": {
+          "recall_at_5": 1,
+          "mrr": 1
+        },
+        "ret-05": {
+          "recall_at_5": 1,
+          "mrr": 1
+        },
+        "ret-06": {
+          "recall_at_5": 1,
+          "mrr": 1
+        },
+        "ret-07": {
+          "recall_at_5": 1,
+          "mrr": 1
+        },
+        "ret-08": {
+          "recall_at_5": 1,
+          "mrr": 1
+        },
+        "ret-09": {
+          "recall_at_5": 1,
+          "mrr": 1
+        },
+        "ret-10": {
+          "recall_at_5": 1,
+          "mrr": 1
+        },
+        "ret-11": {
+          "recall_at_5": 1,
+          "mrr": 1
+        },
+        "ret-12": {
+          "recall_at_5": 1,
+          "mrr": 1
+        },
+        "ret-13": {
+          "recall_at_5": 1,
+          "mrr": 1
+        },
+        "ret-14": {
+          "recall_at_5": 1,
+          "mrr": 1
+        },
+        "ret-15": {
+          "recall_at_5": 1,
+          "mrr": 1
+        },
+        "ret-16": {
+          "recall_at_5": 1,
+          "mrr": 1
+        },
+        "ret-17": {
+          "recall_at_5": 1,
+          "mrr": 1
+        },
+        "ret-18": {
+          "recall_at_5": 1,
+          "mrr": 1
+        },
+        "ret-19": {
+          "recall_at_5": 1,
+          "mrr": 1
+        },
+        "ret-20": {
+          "recall_at_5": 1,
+          "mrr": 1
+        },
+        "ret-21": {
+          "recall_at_5": 0.5,
+          "mrr": 0.25
+        },
+        "ret-22": {
+          "recall_at_5": 1,
+          "mrr": 1
+        },
+        "ret-23": {
+          "recall_at_5": 1,
+          "mrr": 0.2
+        },
+        "ret-24": {
+          "recall_at_5": 1,
+          "mrr": 1
+        },
+        "ret-25": {
+          "recall_at_5": 1,
+          "mrr": 1
+        },
+        "ret-26": {
+          "recall_at_5": 1,
+          "mrr": 1
+        },
+        "ret-27": {
+          "recall_at_5": 0.5,
+          "mrr": 0.5
+        },
+        "ret-28": {
+          "recall_at_5": 1,
+          "mrr": 0.5
+        },
+        "ret-29": {
+          "recall_at_5": 0.5,
+          "mrr": 0.5
+        },
+        "ret-30": {
+          "recall_at_5": 1,
+          "mrr": 1
+        },
+        "ret-31": {
+          "recall_at_5": 0.5,
+          "mrr": 0.5
+        },
+        "ret-32": {
+          "recall_at_5": 0.5,
+          "mrr": 0.5
+        },
+        "ret-33": {
+          "recall_at_5": 0.5,
+          "mrr": 1
+        },
+        "ret-34": {
+          "recall_at_5": 1,
+          "mrr": 1
+        },
+        "ret-35": {
+          "recall_at_5": 1,
+          "mrr": 0.5
+        },
+        "ret-36": {
+          "recall_at_5": 1,
+          "mrr": 1
+        },
+        "ret-37": {
+          "recall_at_5": 1,
+          "mrr": 1
+        },
+        "ret-38": {
+          "recall_at_5": 0.5,
+          "mrr": 1
+        },
+        "ret-39": {
+          "recall_at_5": 1,
+          "mrr": 1
+        },
+        "ret-40": {
+          "recall_at_5": 0.5,
+          "mrr": 0.2
+        },
+        "ret-41": {
+          "recall_at_5": 0.5,
+          "mrr": 1
+        },
+        "ret-42": {
+          "recall_at_5": 0.5,
+          "mrr": 1
+        },
+        "ret-43": {
+          "recall_at_5": 1,
+          "mrr": 1
+        },
+        "ret-44": {
+          "recall_at_5": 0.5,
+          "mrr": 0.25
+        },
+        "ret-45": {
+          "recall_at_5": 0.5,
+          "mrr": 0.333333
+        },
+        "ret-46": {
+          "recall_at_5": 0.5,
+          "mrr": 0.2
+        },
+        "ret-47": {
+          "recall_at_5": 1,
+          "mrr": 0.5
+        },
+        "ret-48": {
+          "recall_at_5": 1,
+          "mrr": 0.333333
+        },
+        "ret-49": {
+          "recall_at_5": 1,
+          "mrr": 1
+        },
+        "ret-50": {
+          "recall_at_5": 1,
+          "mrr": 1
+        }
+      },
+      "per_case_rule": "逐用例锁：任何一例低于此记录即判红并点名；确需破锁要跑 --rebaseline-cases --why \"<理由>\"，理由会常驻打印（visible debt）",
+      "per_case_notes": []
     }
   }
 }

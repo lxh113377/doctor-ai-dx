@@ -151,3 +151,22 @@ export function evidenceByIds(ids) {
 export function hasEvidence(id) {
   return typeof id === "string" && KB_ID_SET.has(id)
 }
+
+// ---------- 证据充分性 / 弃权第三态（第二十八轮，台账 #52）----------
+// ABSTAIN_T 不是手调出来的：由 tests/ood_probe.mjs 在**当前语料 + 当前分词**下现场量出——
+// max(域外 top1)=36.559 < min(危急域内 top1)=60.422，取其中点；probe 与本常量互为对账（改一处必判红另一处）。
+// 同类实测形状：`dmustapha/triage-0` 用 `OFF_DOMAIN_THRESHOLD=0.84` 坐在实测间隙里并配 sane-band 守卫测试；
+// `kheireddinedev00/Medico` 把 out_of_scope 的降级底写成数据（URGENT，"deliberate over-triage"）。
+export const ABSTAIN_T = 48.491
+
+/**
+ * 红旗在场一律不弃权——`triage-0` 有三条"决定性体征禁止弃权"、`Medico` 明写"红旗不依赖量表验证人群"，
+ * 两家的取舍都指向同一件事：漏报危险信号的代价远高于多说一句"信息不足"。
+ */
+export function answerability(evidence, flags) {
+  const top = evidence && evidence.length ? evidence[0].score : 0
+  if (Array.isArray(flags) && flags.length > 0) return { abstain: false, scope_status: "in-scope", top_score: top }
+  if (!evidence || evidence.length === 0) return { abstain: true, scope_status: "out-of-scope", top_score: top }
+  if (top < ABSTAIN_T) return { abstain: true, scope_status: "insufficient-information", top_score: top }
+  return { abstain: false, scope_status: "in-scope", top_score: top }
+}

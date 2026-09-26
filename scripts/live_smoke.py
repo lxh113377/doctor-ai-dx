@@ -41,6 +41,8 @@ DEFAULT_BASE = "https://doctor-ai-dx.pages.dev"
 # 上限取"必然超过任何合理问诊长度"，阈值将来收紧到 2000 以下也照样越界；写死阈值相关数会造出
 # "预检放行、出包判红"那种双源漂移。单条 content 越限即 413，不需要把 history 堆到几十 KB。
 OVERSIZE_CHARS = 3000
+ABSTAIN_PRIMARY = "信息不足，建议补充问诊"
+SCOPES = {"in-scope", "insufficient-information", "out-of-scope"}
 MODES = frozenset({"live", "rule", "rule-fallback", "mock"})
 MAX_CALL_SECONDS = 10.0
 # 胸痛 c1 的问诊转录（脱敏合成，与仓内评测集同一形状）；线上 live 与镜像内 rule 两条路径都用它。
@@ -107,6 +109,10 @@ def oversize_case() -> dict[str, Any]:
 def good_dx_payload(ids: list[str], flags: list[str] | None = None, mode: str = "live") -> dict[str, Any]:
     return {"code": 0, "data": {"flags": flags if flags is not None else ["ACS 红旗"],
                                 "mode": mode, "trace": {"evidence_ids": ids},
+                                "abstain": False, "scope_status": "in-scope",
+                                "primary": [{"name": "急性冠脉综合征（待排除）"}, {"name": "主动脉夹层"}],
+                                "differential": [{"name": "肺栓塞"}, {"name": "肋软骨炎/胸壁疼痛"}],
+                                "flag_details": [{"name": "ACS", "severity": "高", "advice": "立即转诊"}],
                                 "conclusion": "建议由医生终审后确定诊断"}}
 
 
@@ -166,12 +172,41 @@ def check_dx(body: dict[str, Any], allowed_ids: set[str], seconds: float) -> lis
         ("结论含「医生终审」且无「替代医生」表述", "医生终审" in payload and "替代医生" not in payload,
          "见响应全文"),
         (f"检索档位口径合法（mode∈{sorted(MODES)}）", mode in MODES, f"mode={mode!r}"),
+        ("第三态字段在场且口径合法（abstain/scope_status）",
+         isinstance(data.get("abstain"), bool) and str(data.get("scope_status", "")) in SCOPES,
+         f"abstain={data.get('abstain')!r} scope={data.get('scope_status')!r}"),
+        ("未弃权时 scope_status 必须是 in-scope（两态不许互相冒充）",
+         data.get("abstain") is True or data.get("scope_status") == "in-scope",
+         f"abstain={data.get('abstain')!r} scope={data.get('scope_status')!r}"),
     ]
     if "fhir" in data:
         entries = obj(data.get("fhir")).get("entry") or []
         rows.append(("对外集成面 FHIR Bundle 在场且非空", bool(entries), f"entry={len(entries)}"))
     rows.append((f"单次耗时 < {MAX_CALL_SECONDS}s（P95 口径上限）", seconds < MAX_CALL_SECONDS, f"实测 {seconds:.2f}s"))
     return rows
+
+
+def check_abstain(body: dict[str, Any], allowed_ids: set[str]) -> list[Row]:
+    """域外/信息不足输入的线上形状：只出弃权卡，但仍不得吞掉红旗字段与引用结构。
+
+    形状抄 peer 实测：`kheireddinedev00/Medico` 有具名测试断言"OUT_OF_SCOPE 时红旗仍抬优先级"，
+    `dmustapha/triage-0` 的弃权卡则把红旗留给"三条决定性体征禁止弃权"这条路。
+    """
+    data = obj(body.get("data")) or body
+    primary = data.get("primary") or []
+    flags = data.get("flags")
+    names = [str(o.get("name", "")) for o in primary if isinstance(o, dict)]
+    payload = json.dumps(body, ensure_ascii=False)
+    return [
+        ("域外输入触发弃权（abstain=true）", data.get("abstain") is True, f"abstain={data.get('abstain')!r}"),
+        (f"弃权口径合法（scope_status∈{sorted(SCOPES - {'in-scope'})}）",
+         str(data.get("scope_status", "")) in (SCOPES - {"in-scope"}), f"scope={data.get('scope_status')!r}"),
+        ("弃权只出弃权卡、不编鉴别诊断",
+         names == [ABSTAIN_PRIMARY] and (data.get("differential") or []) == [], f"primary={names}"),
+        ("弃权时 flags 仍是数组（红线：弃权不得吞掉危险信号）", isinstance(flags, list), f"flags={flags!r}"),
+        ("弃权理由体现医生主导且无「替代医生」表述",
+         ("医生" in payload) and ("替代医生" not in payload), "见响应全文"),
+    ]
 
 
 def run_live(base: str, quiet: bool) -> int:
@@ -193,6 +228,12 @@ def run_live(base: str, quiet: bool) -> int:
             print(f"[GATE:live-smoke-fail] 正常链路 /api/dx/c1 返回 {st}（红线断言无从执行）", file=sys.stderr)
             return 2
         rows += check_dx(body, allowed, secs)
+        # 域外输入：期望引擎明说"信息不足"，而不是自信给出一个鉴别诊断（台账 #52）
+        st_od, od_body, _ = call(base, "POST", "/api/dx/c1",
+                                 {"case_id": "c1", "history": [
+                                     {"role": "user", "content": "我家猫今天不吃东西有点蔫，需要打针吗"}]})
+        rows += check_abstain(od_body, allowed)
+        rows.append(("域外请求仍是 200（弃权不是错误，不该退化成交付失败）", st_od == 200, f"HTTP {st_od}"))
     except (urllib.error.URLError, TimeoutError, OSError) as exc:
         print(f"[GATE:live-smoke-fail] 线上不可达：{exc}", file=sys.stderr)
         return 2
@@ -233,6 +274,24 @@ def run_selftest() -> int:
         ("mode 不在合法集合判红", any(not r[1] for r in check_dx(good_dx_payload([first], mode="guess"), allowed, 1.0))),
         ("超时判红", any(not r[1] for r in check_dx(good_dx_payload([first]), allowed, MAX_CALL_SECONDS + 1))),
         ("好数据全绿（对照组）", all(r[1] for r in check_dx(good_dx_payload([first, sorted(allowed)[-1]]), allowed, 1.0))),
+        ("弃权好数据全绿（对照组）", all(r[1] for r in check_abstain(
+            {"code": 0, "data": {**good_dx_payload([first])["data"], "abstain": True,
+             "scope_status": "insufficient-information", "primary": [{"name": ABSTAIN_PRIMARY}],
+             "differential": [], "flags": []}}, allowed))),
+        ("弃权却仍给鉴别诊断判红（弃权不收敛＝第三态形同虚设）", any(not r[1] for r in check_abstain(
+            {"code": 0, "data": {**good_dx_payload([first])["data"], "abstain": True,
+             "scope_status": "insufficient-information", "flags": []}}, allowed))),
+        ("弃权时 flags 退化为 null 判红（红线：弃权不得吞掉危险信号）", any(not r[1] for r in check_abstain(
+            {"code": 0, "data": {**good_dx_payload([first])["data"], "abstain": True,
+             "scope_status": "out-of-scope", "primary": [{"name": ABSTAIN_PRIMARY}],
+             "differential": [], "flags": None}}, allowed))),
+        ("scope_status 写 in-scope 却声称弃权判红（两态互斥）", any(not r[1] for r in check_abstain(
+            {"code": 0, "data": {**good_dx_payload([first])["data"], "abstain": True,
+             "scope_status": "in-scope", "primary": [{"name": ABSTAIN_PRIMARY}],
+             "differential": [], "flags": []}}, allowed))),
+        ("未声明 abstain 字段判红（新字段被回退掉必须可见）", any(not r[1] for r in check_dx(
+            {"code": 0, "data": {k: v for k, v in good_dx_payload([first])["data"].items()
+                               if k != "abstain"}}, allowed, 1.0))),
     ]
     bad = [n for n, ok in cases if not ok]
     for name, ok in cases:

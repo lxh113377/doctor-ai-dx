@@ -109,3 +109,48 @@ test.describe("双视口无横向溢出（AC-OBS 口径）", () => {
 })
   }
 })
+
+// 第三态（#52）在真实浏览器里的两向验收：
+// 正向用**响应改写**注入 abstain=true（弃权不由演示病例触发，但不能因此永不验收——
+// 上一轮的教训就是"判据测的不是产品"），反向用真实降级链路确认弃权卡不会常驻。
+test("演示链路（真实降级）不出弃权卡，红旗横幅与红线文案照旧", async ({ page }) => {
+  const errs = await noConsoleErrors(page)
+  await page.goto("/")
+  await 走到辅助诊断(page)
+  await expect(page.getByTestId("abstain-card")).toHaveCount(0)
+  await expect(page.locator("h4", { hasText: "危险信号 · 规则引擎独立检出（不可被模型覆盖）" })).toBeVisible()
+  await expect(page.locator("body")).toContainText(RED_LINE)
+  expect(errs).toEqual([])
+})
+
+test("API 返回 abstain=true 时，浏览器同时渲染弃权卡与红旗横幅（弃权不吞危险信号）", async ({ page }) => {
+  // 直接合成整份响应：曾用 route.fetch() 取回真实响应再改字段，结果在本运行时里拿不到期望结构
+  // （断言表现为"元素不存在"）。合成后唯一变量就是 abstain 字段，测的确实是要测的那段渲染。
+  await page.route("**/api/dx/*", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ code: 0, message: "ok", data: {
+        mode: "rule-fallback", fallback_reason: "未配置 LLM Key，使用规则引擎",
+        abstain: true, scope_status: "insufficient-information", top_evidence_score: 31.109,
+        abstain_reason: "现有问诊信息不足以支撑鉴别，请补充问诊后重试；本系统仅作用药与鉴别参考，最终判断由执业医生作出",
+        flags: ["严重危险信号：ACS 高危胸痛，立即转诊"],
+        flag_details: [{ name: "急性冠脉综合征", severity: "高", advice: "10 分钟内完成心电图并转诊胸痛中心" }],
+        primary: [{ name: "信息不足，建议补充问诊", prob: "信息不足", strength: "low", reasons: ["最高证据分低于阈值"], evidence_ids: [], refs: [] }],
+        differential: [], evidence: [],
+        faq: [{ q: "为什么弃权？", a: "证据不足时不编诊断，请医生主导鉴别" }],
+        trace: { evidence_ids: [], rounds: 5, symptoms: [] },
+        fhir: { resourceType: "Bundle", entry: [] },
+      } }),
+    })
+  })
+  await page.goto("/")
+  await 走到辅助诊断(page)
+  const card = page.getByTestId("abstain-card")
+  await expect(card).toBeVisible()
+  await expect(card).toContainText("信息不足 · 请医生主导鉴别")
+  await expect(card).toContainText("问诊信息不足，建议补充后再评估")
+  // 红线：红旗横幅必须仍在场，且"替代医生"字样仍不得出现
+  await expect(page.locator("h4", { hasText: "危险信号 · 规则引擎独立检出（不可被模型覆盖）" })).toBeVisible()
+  await expect(page.locator("body")).not.toContainText("替代医生")
+})

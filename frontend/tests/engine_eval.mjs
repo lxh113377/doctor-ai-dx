@@ -4,7 +4,8 @@
 // （实测 ev-06：主诉"发热3天"＋答案"无气促"命中脓毒症红旗，而 27/27 照样判绿）。
 import { readFileSync } from "node:fs"
 import { buildDiagnosis, buildWorkup, buildReport } from "../functions/lib/engine.js"
-import { hasEvidence } from "../functions/lib/rag.js"
+import { hasEvidence, ABSTAIN_T } from "../functions/lib/rag.js"
+import { ABSTAIN_PRIMARY } from "../functions/lib/engine.js"
 
 const suite = JSON.parse(readFileSync(new URL("./fixtures/eval_cases.json", import.meta.url), "utf8"))
 const env = {}
@@ -14,6 +15,7 @@ let redHit = 0
 let structPass = 0
 let citePass = 0
 let modePass = 0
+let abstained = 0
 const primarySignatures = new Set()
 
 for (const item of suite.cases) {
@@ -33,8 +35,25 @@ for (const item of suite.cases) {
 
   if (diagnosis.mode === "rule-fallback") modePass++
   else record.errors.push(`mode非rule-fallback:${diagnosis.mode}`)
-  if (!Array.isArray(diagnosis.primary) || diagnosis.primary.length < 2) record.errors.push("疑似诊断<2")
-  if (!Array.isArray(diagnosis.differential) || diagnosis.differential.length < 2) record.errors.push("鉴别诊断<2")
+  // 结构契约分两态（#52 第二十八轮）：in-scope 仍要求"疑似≥2 且 鉴别≥2"；
+  // 弃权态是**另一种合法形状**（只出弃权卡、不编鉴别），但必须同时满足"红旗字段在场 + 卡片文案唯一"，
+  // 否则"什么都弃权"也能过结构检查。禁止用放宽第一条来迁就新功能。
+  if (diagnosis.abstain === true) {
+    if (diagnosis.scope_status !== "insufficient-information" && diagnosis.scope_status !== "out-of-scope") {
+      record.errors.push(`弃权但 scope_status 非法:${diagnosis.scope_status}`)
+    }
+    if (diagnosis.primary?.length !== 1 || diagnosis.primary[0]?.name !== ABSTAIN_PRIMARY) {
+      record.errors.push("弃权态未收敛为单一弃权卡")
+    }
+    if ((diagnosis.differential || []).length !== 0) record.errors.push("弃权态仍给鉴别诊断")
+    if (!Array.isArray(diagnosis.flags) || !Array.isArray(diagnosis.flag_details)) record.errors.push("弃权态红旗字段缺失")
+    if (!(diagnosis.abstain_reason || "").includes("医生")) record.errors.push("弃权态理由未体现医生主导")
+    abstained++
+  } else {
+    if (!Array.isArray(diagnosis.primary) || diagnosis.primary.length < 2) record.errors.push("疑似诊断<2")
+    if (!Array.isArray(diagnosis.differential) || diagnosis.differential.length < 2) record.errors.push("鉴别诊断<2")
+    if (diagnosis.scope_status !== "in-scope") record.errors.push(`未弃权但 scope_status=${diagnosis.scope_status}`)
+  }
   if (!Array.isArray(diagnosis.evidence) || diagnosis.evidence.length < 2) record.errors.push("引用来源<2")
   if (!Array.isArray(diagnosis.flags)) record.errors.push("flags非数组")
   if (!Array.isArray(diagnosis.flag_details)) record.errors.push("flag_details非数组")
@@ -74,6 +93,8 @@ const report = {
   structure_pass: structPass,
   citation_valid: citePass,
   mode_labeled: modePass,
+  abstained_cases: abstained,
+  abstain_threshold: ABSTAIN_T,
   red_flag_accuracy: `${redHit}/${redTotal}`,
   distinct_primary_outputs: primarySignatures.size,
   failures: results.filter((record) => !record.ok),

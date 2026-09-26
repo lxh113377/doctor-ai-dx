@@ -5,6 +5,8 @@
 // 纪律：本件是观察量，不是闸门（新指标先量误报率再接线；红线模块不许被它拦停）。
 // 唯一会判红的两件事：① 输入面为空（没数据不许记 PASS）② 上一行结论已不可复算（口径漂移）。
 import { readFileSync } from "node:fs"
+import { execFileSync } from "node:child_process"
+import { fileURLToPath } from "node:url"
 import { extractState } from "../functions/lib/engine.js"
 import { search } from "../functions/lib/rag.js"
 
@@ -80,6 +82,30 @@ if (gap < 1.0) {
   console.log("FAIL 间隔 <1.0 ⇒ 阈值不稳健，不许据此落机制")
   process.exit(1)
 }
+// —— 阈值↔实算互相对账（第二十八轮 #52 落机制后新增）——
+// 运行时用的 `rag.js#ABSTAIN_T` 是**手写在源码里的常量**，而它声称的来源是这条探测。
+// 没有对账，改了语料/分词后常量就会悄悄失准（与第二十六轮"modelSha256 是手抄的"同族缺陷）。
+// 双端各写一份更要对账：JS 与 Py 的 T 不同值 ⇒ 线上与镜像行为分叉。
+const { ABSTAIN_T } = await import("../functions/lib/rag.js")
+const pyT = execFileSync("python", ["-c",
+  "import sys;sys.path.insert(0,'backend');from app.rag import ABSTAIN_T;print(ABSTAIN_T)"],
+  { cwd: fileURLToPath(new URL("../..", import.meta.url)), encoding: "utf8" }).trim()
+console.log(`  运行时阈值对账：JS=${ABSTAIN_T} Py=${pyT} 本次实算中点=${T}`)
+let tBad = 0
+if (!(ABSTAIN_T > oodMax && ABSTAIN_T < critMin)) {
+  console.log(`FAIL ABSTAIN_T=${ABSTAIN_T} 不在安全区间 (${oodMax.toFixed(3)}, ${critMin.toFixed(3)}) 内——语料或分词变了，须重跑本件并按新中点更新（禁止就地改数凑绿）`)
+  tBad++
+}
+if (Math.abs(ABSTAIN_T - T) > 0.001) {
+  console.log(`FAIL ABSTAIN_T 与本次实算中点 ${T} 相差 ${Math.abs(ABSTAIN_T - T).toFixed(3)} > 0.001（常量陈旧）`)
+  tBad++
+}
+if (Math.abs(Number(pyT) - ABSTAIN_T) > 1e-9) {
+  console.log(`FAIL 双端阈值不同值：JS=${ABSTAIN_T} Py=${pyT}`)
+  tBad++
+}
+if (tBad) process.exit(1)
+console.log(`[GATE:ood-threshold-locked] ABSTAIN_T=${ABSTAIN_T} 落在安全区间且等于实算中点，双端同值`)
 console.log("VERDICT=SEPARABLE（阈值为**候选**，未经第二意见复验；是否接受过度弃权属产品决策）")
 console.log(`[GATE:ood-probe-pass] oodMax=${oodMax.toFixed(3)} critMin=${critMin.toFixed(3)} gap=${gap.toFixed(3)}`)
 process.exit(0)

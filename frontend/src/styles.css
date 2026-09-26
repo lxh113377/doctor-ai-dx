@@ -112,6 +112,8 @@ b{font-weight:600}
 .banner ul{font-size:13px;line-height:1.7;margin:8px 0 0 18px}
 .banner.danger{background:var(--danger-soft);border-color:var(--danger);color:#7F1D1D}
 .banner.info{background:var(--primary-soft);border-color:var(--primary);color:var(--text)}
+.banner.warn{background:var(--warning-soft);border-color:#B45309;color:#78350F}
+.banner-meta{opacity:.78;font-size:12px}
 .card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);padding:20px;margin-bottom:16px;box-shadow:var(--shadow-sm)}
 .card.loading{color:var(--text-sub);font-size:14px}
 .card-title{font-size:15px;font-weight:700;margin-bottom:14px}
