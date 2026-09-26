@@ -1,6 +1,7 @@
 // 危险信号规则引擎（红旗拦截层）——独立于 LLM：可解释、可单测，评审安全叙事核心
 // 设计原则：关键词须特异（避免"出冷汗"这类非特异词单独触发 ACS 造成误报）；
 //          支持数值解析（血压）；命中即强制转诊提示，优先级高于模型输出。
+import { SCOPE_META, SCOPE_RULES } from "./scope_rules.js"
 
 const DANGER_RULES = [
   { name: "疑似急性冠脉综合征（ACS）红旗", keywords: ["压榨", "紧缩", "胸痛放射", "胸痛向左肩", "胸痛向后背", "向左肩臂放射", "心前区闷痛"],
@@ -111,6 +112,67 @@ function matchFlagRules(t) {
 }
 
 export const RULE_TABLES = { DANGER: DANGER_RULES, COMBO: COMBO_RULES, NEGATIONS: NEGATION_TOKENS, POSITIVES: POSITIVE_TERMS }
+
+// ---------- 能力级适用范围（第二十九轮 #76）----------
+// 与红旗层共用同一份否定词表（NEGATION_TOKENS），但窗口宽度取自数据（scope_rules.json）：
+// 范围触发词常隔一个动词，如「没做过CT」里 CT 前是「没做过」，4 字窗口挡不住 ⇒ 会误判成"要求解读影像"。
+function occursUnnegated(t, kw, window) {
+  const k = String(kw).toLowerCase()
+  if (!k) return false
+  const extra = SCOPE_META.negation_tokens_extra.map((x) => String(x).toLowerCase())
+  let from = 0
+  for (;;) {
+    const at = t.indexOf(k, from)
+    if (at < 0) return false
+    const head = t.slice(Math.max(0, at - window), at)
+    // 基础词表沿用红旗层的紧邻判定（endsWith），只收"明确阴性表述"；
+    // 范围层追加线索用窗口内任意位置命中，因为中文动词会隔开否定词与关键词（「没做过CT」）。
+    const negated = NEGATION_TOKENS.some((n) => head.endsWith(String(n).toLowerCase()))
+      || extra.some((n) => head.includes(n))
+    if (!negated) return true
+    from = at + k.length
+  }
+}
+
+// 载入即校验（形状抄 kheireddinedev00/Medico：数据不合法就拒绝装载，不留"半条规则"可用状态）。
+// 由 tests/scope_guard.mjs 调用并对**变异后的数据**验证每条拒绝路径真的会抛（防"校验器自己恒真"）。
+export function validateScopeRules(list = SCOPE_RULES, meta = SCOPE_META) {
+  const errs = []
+  if (!Array.isArray(list) || !list.length) return ["规则表为空（零输入不得当作通过）"]
+  if (typeof meta.negation_window_chars !== "number" || meta.negation_window_chars < 1) {
+    errs.push(`negation_window_chars 非法：${JSON.stringify(meta.negation_window_chars)}`)
+  }
+  if (!Array.isArray(meta.negation_tokens_extra)) errs.push("negation_tokens_extra 必须是数组")
+  const seen = new Set()
+  list.forEach((r, i) => {
+    const at = `#${i}${typeof r.id === "string" && r.id ? `(${r.id})` : ""}`
+    if (typeof r.id !== "string" || !/^[a-z][a-z0-9_]{2,}$/.test(r.id)) errs.push(`${at}: id 须为 snake_case 且非空`)
+    if (seen.has(r.id)) errs.push(`${at}: id 重复`)
+    seen.add(r.id)
+    if (!Array.isArray(r.keywords) || r.keywords.length < 2) errs.push(`${at}: keywords 须为 ≥2 项的数组`)
+    else for (const k of r.keywords) {
+      if (typeof k !== "string" || k.trim().length < 2) errs.push(`${at}: 关键词「${String(k)}」空或为裸单字（会子串横扫全文）`)
+    }
+    if (typeof r.title !== "string" || !r.title.trim()) errs.push(`${at}: title 为空`)
+    if (typeof r.rationale !== "string" || r.rationale.length < 20) errs.push(`${at}: rationale 缺失或过短（临床取舍必须写清为什么不做）`)
+    if (r.action !== "out-of-scope") errs.push(`${at}: action 只能是 out-of-scope，实测 ${JSON.stringify(r.action)}`)
+    if (typeof r.doctor_note !== "string" || !r.doctor_note.trim()) errs.push(`${at}: doctor_note 为空（医生看不到该找谁）`)
+  })
+  return errs
+}
+
+/** 命中即返回该规则（含 rationale/doctor_note），未命中返回 null。规则顺序即优先级。 */
+export function matchScopeRule(text) {
+  const t = String(text || "").toLowerCase()
+  const window = Number(SCOPE_META.negation_window_chars) || 4
+  for (const r of SCOPE_RULES) {
+    const matched = r.keywords.filter((k) => occursUnnegated(t, k, window))
+    if (matched.length) {
+      return { id: r.id, title: r.title, matched: matched, rationale: r.rationale, doctor_note: r.doctor_note }
+    }
+  }
+  return null
+}
 
 // 结构化红旗明细（新增，供 dx.flag_details 使用；供界面按严重度分级展示）
 export function scanFlagDetails(text) {

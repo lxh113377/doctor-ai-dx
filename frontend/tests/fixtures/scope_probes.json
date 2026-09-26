@@ -1,0 +1,71 @@
+{
+  "_meta": {
+    "why": "每条范围规则都必须同时给出「应触发」与「不得触发」两类探针（双向可拦），否则判据只证明了自己存在。负探针专挑第 29 轮实测到的中文间隔否定与真实人医业务：被狗咬伤的暴露处置、没做过检查、否认症状。",
+    "authority": "data/scope_rules.json",
+    "added": "2026-09-26"
+  },
+  "positive": [
+    {
+      "rule": "imaging_or_report_reading",
+      "text": "拍了CT，片子上说有个结节，我不懂这个报告"
+    },
+    {
+      "rule": "imaging_or_report_reading",
+      "text": "我的化验单结果出来了您给看看"
+    },
+    {
+      "rule": "weight_based_dosing",
+      "text": "孩子发烧要吃多少美林，每公斤体重几毫升"
+    },
+    {
+      "rule": "weight_based_dosing",
+      "text": "这个药用量多少，开点药吧"
+    },
+    {
+      "rule": "non_human_patient",
+      "text": "我家猫不吃东西有点蔫，需要打针吗"
+    },
+    {
+      "rule": "non_human_patient",
+      "text": "家里的狗最近不吃东西"
+    },
+    {
+      "rule": "imaging_or_report_reading",
+      "text": "我没做过CT，可这个CT报告您帮我看看是什么问题"
+    },
+    {
+      "rule": "weight_based_dosing",
+      "text": "剂量我不清楚，这药每公斤体重到底几毫升合适"
+    }
+  ],
+  "negative": [
+    {
+      "rule": "imaging_or_report_reading",
+      "text": "我没做过CT，也没拍过片子"
+    },
+    {
+      "rule": "imaging_or_report_reading",
+      "text": "没有病理报告，只是咳嗽三天"
+    },
+    {
+      "rule": "weight_based_dosing",
+      "text": "血压140/90，头晕三天"
+    },
+    {
+      "rule": "non_human_patient",
+      "text": "被狗咬了出血了，要不要打狂犬疫苗"
+    },
+    {
+      "rule": "non_human_patient",
+      "text": "我否认发热，没有宠物接触史"
+    },
+    {
+      "rule": "imaging_or_report_reading",
+      "text": "我没做过CT，也没有拍过片子，只是胸闷"
+    },
+    {
+      "rule": "weight_based_dosing",
+      "text": "这个药我没有按体重算剂量，就按说明书吃的"
+    }
+  ]
+}

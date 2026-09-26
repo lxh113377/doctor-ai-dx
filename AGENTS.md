@@ -35,7 +35,7 @@
 
 ```bash
 cd frontend && npm ci          # 安装（锁文件是权威，不要 npm install 顺手升版）
-npm test                       # 二十一件套守卫（含诊断排序金标准与否定守卫全表探针）；零密钥、零网络、确定性
+npm test                       # 二十二件套守卫（含诊断排序金标准与否定守卫全表探针）；零密钥、零网络、确定性
 npm run probe:ood                # 域外可分性测量（**看守件、不进 npm test**：只报告不阻断）
 npm run coverage:js            # c8 + 模块级地板（地板清单单一源 tests/fixtures/coverage_floor.json）
 npm run test:e2e               # Playwright 双视口（1440×900 / 390×844）+ 三条红线在场与负向断言

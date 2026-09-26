@@ -5,6 +5,8 @@
 import re
 from typing import Any
 
+from .scope_rules import SCOPE_META, SCOPE_RULES
+
 # 两张规则表都是异构字面量表（keywords: list[str] 与 all: list[list[str]] 并存），
 # 第十五轮 mypy 实测：不标注 ⇒ 两个 for 循环复用同名变量被推断成 dict[str, Sequence[str]]，
 # 第二条表的赋值即判不兼容（[assignment]），这正是"红旗表加字段就静默漂移"的类型层暴露。
@@ -128,6 +130,41 @@ def _has_positive_occurrence(text: str, kw: str) -> bool:
         if not negated:
             return True
         start = at + len(k)
+
+
+def _occurs_unnegated(text: str, kw: str, window: int) -> bool:
+    """关键词是否存在「未被否定」的一次出现（范围层专用，语义与 JS 侧 occursUnnegated 逐字对齐）。
+
+    基础词表沿用红旗层的紧邻判定（endswith），范围层追加线索用窗口内任意位置命中：
+    中文动词会隔开否定词与关键词（「没做过CT」），只用紧邻挡不住。
+    """
+    k = str(kw).lower()
+    if not k:
+        return False
+    extra = [str(x).lower() for x in SCOPE_META["negation_tokens_extra"]]
+    t = text.lower()
+    frm = 0
+    while True:
+        at = t.find(k, frm)
+        if at < 0:
+            return False
+        head = t[max(0, at - window):at]
+        negated = any(head.endswith(str(n).lower()) for n in _NEGATION_TOKENS) or any(n in head for n in extra)
+        if not negated:
+            return True
+        frm = at + len(k)
+
+
+def match_scope_rule(text: str):
+    """命中即返回该规则（含 rationale/doctor_note），未命中返回 None。规则顺序即优先级。"""
+    window = int(SCOPE_META["negation_window_chars"])
+    t = str(text or "")
+    for r in SCOPE_RULES:
+        matched = [k for k in r["keywords"] if _occurs_unnegated(t, k, window)]
+        if matched:
+            return {"id": r["id"], "title": r["title"], "matched": matched,
+                    "rationale": r["rationale"], "doctor_note": r["doctor_note"]}
+    return None
 
 
 def _match_flag_rules(text: str) -> list[dict]:

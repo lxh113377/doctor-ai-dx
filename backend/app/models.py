@@ -98,6 +98,7 @@ class DxResult(BaseModel):
     scope_status: str = "in-scope"  # in-scope | insufficient-information | out-of-scope
     top_evidence_score: float = 0.0  # 与 rag.ABSTAIN_T 比较，双端同值由 abstain_guard 对账
     abstain_reason: str = ""  # 给医生看的理由文案，必须含「医生」主导口径
+    scope_rule: str | None = None  # 命中的能力级规则 id（data/scope_rules.json），未命中为 None
     fhir: dict = {}  # FHIR R4 light 导出（只读派生视图，不参与决策链）
 
 

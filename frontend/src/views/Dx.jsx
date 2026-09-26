@@ -1,5 +1,9 @@
 import ModeBadge from './ModeBadge.jsx'
+import { SCOPE_RULES } from '../../functions/lib/scope_rules.js'
 const CLASS = { high: 'high', mid: 'mid', low: 'low' }
+// 规则标题取自生成物（权威 = data/scope_rules.json），不在前端手抄第二份：
+// 抄一份就会与数据漂移，而这条链路的整个卖点是"临床取舍只有一处真值"。
+const SCOPE_RULE_TITLES = Object.fromEntries(SCOPE_RULES.map((r) => [r.id, r.title]))
 // 弃权三态的医生可读措辞：只说适用范围，不猜诊断（红线：辅助参考 · 医生终审）
 const SCOPE_LABEL = {
   'in-scope': '在适用范围内',
@@ -37,7 +41,13 @@ export default function Dx({ dx, patient, onRestart, onNext }) {
           <div>
             <h4>信息不足 · 请医生主导鉴别</h4>
             <p>{dx.abstain_reason}</p>
-            <p>适用范围：{SCOPE_LABEL[dx.scope_status] || dx.scope_status}（本次最高证据分 {dx.top_evidence_score}，低于弃权阈值）</p>
+            {dx.scope_rule && (
+              <p>触发的范围规则：{SCOPE_RULE_TITLES[dx.scope_rule] || dx.scope_rule}（权威定义见仓内 data/scope_rules.json，逐条附不做的理由）</p>
+            )}
+            <p>
+              {SCOPE_LABEL[dx.scope_status] || dx.scope_status}
+              {dx.scope_rule ? '' : `（本次最高证据分 ${dx.top_evidence_score}，低于弃权阈值）`}
+            </p>
           </div>
         </div>
       )}

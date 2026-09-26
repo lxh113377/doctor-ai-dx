@@ -1,7 +1,7 @@
 // 红线组件测试：这三条产品红线不能只靠人眼验收，改样式/重构时必须仍然成立。
 // ① 红旗独立于模型且明示「不可被模型覆盖」；② 全界面「辅助参考 · 医生终审」；③ 渲染异常只出可理解文案。
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, cleanup } from '@testing-library/react'
+import { render, screen, cleanup, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useState } from 'react'
 import Dx from './views/Dx.jsx'
@@ -122,5 +122,32 @@ describe('弃权第三态展示', () => {
     render(<Dx dx={dxNoAbstain} patient={{ name: '王', chief: '胸痛' }} onRestart={() => {}} onNext={() => {}} />)
     expect(screen.queryByTestId('abstain-card')).toBeNull()
     expect(screen.getByText('主动脉夹层')).toBeTruthy()
+  })
+})
+
+// 能力级适用范围（#76 第二十九轮）：弃权卡必须说清"是哪条规则、为什么不做"，
+// 且规则标题只能取自生成物（权威 data/scope_rules.json）——前端抄一份就会与数据漂移。
+const dxScopeAbstain = {
+  mode: 'rule-fallback', fallback_reason: '', abstain: true, scope_status: 'out-of-scope',
+  scope_rule: 'imaging_or_report_reading', top_evidence_score: 59.091,
+  abstain_reason: '请把影像或报告交由放射科与临床医生判读；本系统可在您转述症状后提供鉴别参考。',
+  flags: [], flag_details: [], evidence: [], faq: [],
+  primary: [{ name: '信息不足，建议补充问诊', prob: '信息不足', strength: 'low', reasons: ['超出本系统适用范围：影像与检查报告解读'], refs: [] }],
+  differential: [],
+}
+
+describe('能力级适用范围展示', () => {
+  it('范围外弃权卡显示规则标题（取自生成物，不是手抄）', () => {
+    render(<Dx dx={dxScopeAbstain} patient={{ name: '李', chief: '体检' }} onRestart={() => {}} onNext={() => {}} />)
+    const card = screen.getByTestId('abstain-card')
+    expect(card).toBeTruthy()
+    // 标题会同时出现在"触发的范围规则"行与弃权卡 reasons 里，故按卡片作用域取而非全站唯一
+    expect(within(card).getAllByText(/影像与检查报告解读/).length).toBeGreaterThanOrEqual(1)
+    expect(within(card).getByText(/请转述症状后提供鉴别参考|交由放射科/)).toBeTruthy()
+    expect(screen.getByText(/超出本系统常见病多发病适用范围/)).toBeTruthy()
+  })
+  it('范围命中时不再显示"证据分低于阈值"（那是另一种弃权的理由，不能混）', () => {
+    render(<Dx dx={dxScopeAbstain} patient={{ name: '王', chief: '体检' }} onRestart={() => {}} onNext={() => {}} />)
+    expect(screen.queryByText(/低于弃权阈值/)).toBeNull()
   })
 })

@@ -140,24 +140,29 @@ def build_diagnosis(case_id: str, history: list[dict] | None = None) -> dict:
     out["fallback_reason"] = reason
     out["trace"] = {"evidence_ids": evidence_ids, "rounds": state["rounds"], "symptoms": state["symptoms"]}
     out["state"] = state
-    # 第三态（#52）：证据不足或域外 ⇒ 不编鉴别诊断，但红旗与引用照常在场（红线不动）。
-    # 判据与 JS 侧同一份实现语义：rag.answerability(evidence, flags)。
-    answer = rag.answerability(evidence, state["red_flags"])
+    # 能力级适用范围（#76）：先判"该不该我做"，再判"证据够不够"；红旗已在上面算完且不被范围命中清空（红线）。
+    scope = rules.match_scope_rule(state["transcript"])
+    answer = ({"abstain": True, "scope_status": "out-of-scope",
+               "top_score": float(evidence[0]["score"]) if evidence else 0.0}
+              if scope else rag.answerability(evidence, state["red_flags"]))
     out["abstain"] = answer["abstain"]
     out["scope_status"] = answer["scope_status"]
     out["top_evidence_score"] = answer["top_score"]
+    out["scope_rule"] = scope["id"] if scope else None
     if answer["abstain"]:
         out["primary"] = [{
             "name": ABSTAIN_PRIMARY, "prob": "信息不足", "strength": "low",
-            "reasons": [f"本次检索最高证据分 {answer['top_score']} 低于弃权阈值"
-                        "（域外最高分与危急用例最低分的中点）"],
+            "reasons": [f"超出本系统适用范围：{scope['title']}" if scope
+                        else f"本次检索最高证据分 {answer['top_score']} 低于弃权阈值"
+                             "（域外最高分与危急用例最低分的中点）"],
             "evidence_ids": [], "refs": [],
         }]
         out["differential"] = []
-        out["abstain_reason"] = ("未检索到任何适用知识库条目，超出本系统常见病多发病范围，请医生主导鉴别"
-                                 if answer["scope_status"] == "out-of-scope"
-                                 else "现有问诊信息不足以支撑鉴别，请补充问诊后重试；"
-                                      "本系统仅作用药与鉴别参考，最终判断由执业医生作出")
+        out["abstain_reason"] = (scope["doctor_note"] if scope
+                                 else ("未检索到任何适用知识库条目，超出本系统常见病多发病范围，请医生主导鉴别"
+                                       if answer["scope_status"] == "out-of-scope"
+                                       else "现有问诊信息不足以支撑鉴别，请补充问诊后重试；"
+                                            "本系统仅作用药与鉴别参考，最终判断由执业医生作出"))
     out["fhir"] = fhir_svc.to_fhir_bundle(out)
     return out
 

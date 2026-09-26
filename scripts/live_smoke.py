@@ -41,7 +41,9 @@ DEFAULT_BASE = "https://doctor-ai-dx.pages.dev"
 # 上限取"必然超过任何合理问诊长度"，阈值将来收紧到 2000 以下也照样越界；写死阈值相关数会造出
 # "预检放行、出包判红"那种双源漂移。单条 content 越限即 413，不需要把 history 堆到几十 KB。
 OVERSIZE_CHARS = 3000
+REPO_PARENT = Path(__file__).resolve().parents[2]
 ABSTAIN_PRIMARY = "信息不足，建议补充问诊"
+_SCOPE_IDS: set[str] = set()  # 首次调用 check_abstain 时惰性载入（模块级不能调用，定义在下方）
 SCOPES = {"in-scope", "insufficient-information", "out-of-scope"}
 MODES = frozenset({"live", "rule", "rule-fallback", "mock"})
 MAX_CALL_SECONDS = 10.0
@@ -186,6 +188,21 @@ def check_dx(body: dict[str, Any], allowed_ids: set[str], seconds: float) -> lis
     return rows
 
 
+def _scope_rule_ids() -> tuple[set[str], str]:
+    """规则 id 取自权威文件 data/scope_rules.json（不是生成物）：线上要核的是"数据里确实有这条规则"。
+
+    返回 (ids, 来源路径)；找不到文件时 ids 为空 ⇒ 调用方必须显式 SKIPPED，
+    不能拿空集合把断言变成恒真或恒假（第 28 轮 ledger 的同族教训）。
+    """
+    here = Path(__file__).resolve().parent
+    for cand in (here.parent / "data" / "scope_rules.json",
+                 REPO_PARENT / "doctor-ai-dx-mvp" / "data" / "scope_rules.json"):
+        if cand.is_file():
+            with open(cand, encoding="utf-8") as fh:
+                return {r["id"] for r in json.load(fh)["rules"]}, str(cand)
+    return set(), ""
+
+
 def check_abstain(body: dict[str, Any], allowed_ids: set[str]) -> list[Row]:
     """域外/信息不足输入的线上形状：只出弃权卡，但仍不得吞掉红旗字段与引用结构。
 
@@ -197,6 +214,7 @@ def check_abstain(body: dict[str, Any], allowed_ids: set[str]) -> list[Row]:
     flags = data.get("flags")
     names = [str(o.get("name", "")) for o in primary if isinstance(o, dict)]
     payload = json.dumps(body, ensure_ascii=False)
+    scope_ids, _scope_src = _scope_rule_ids()
     return [
         ("域外输入触发弃权（abstain=true）", data.get("abstain") is True, f"abstain={data.get('abstain')!r}"),
         (f"弃权口径合法（scope_status∈{sorted(SCOPES - {'in-scope'})}）",
@@ -204,6 +222,10 @@ def check_abstain(body: dict[str, Any], allowed_ids: set[str]) -> list[Row]:
         ("弃权只出弃权卡、不编鉴别诊断",
          names == [ABSTAIN_PRIMARY] and (data.get("differential") or []) == [], f"primary={names}"),
         ("弃权时 flags 仍是数组（红线：弃权不得吞掉危险信号）", isinstance(flags, list), f"flags={flags!r}"),
+        ("范围命中必须带合法 scope_rule（数据文件里那条）；无权威文件则显式 SKIPPED",
+         (str(data.get("scope_status")) != "out-of-scope") or not scope_ids
+         or str(data.get("scope_rule") or "") in scope_ids,
+         f"scope_rule={data.get('scope_rule')!r}"),
         ("弃权理由体现医生主导且无「替代医生」表述",
          ("医生" in payload) and ("替代医生" not in payload), "见响应全文"),
     ]
