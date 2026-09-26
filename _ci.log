@@ -1,6 +1,0 @@
-== CI 观察 @ ce683cfa22（run=3）==
-  PASS Release artifacts (tag) :: completed/success
-  PASS CodeQL static analysis :: completed/success
-  PASS CI - build & deploy :: completed/success
-[GATE:ci-watch-pass] 判定=PASS
-watch-rc=0

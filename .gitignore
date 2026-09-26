@@ -49,3 +49,6 @@ blob-report/
 
 # 线上评测原始报告（每次跑都变；入库即造第二真值，见 scripts/perf_gate.mjs 的 UNKNOWN 口径）
 .eval/
+
+# ci_watch 的观察输出是临时产物（本轮实测把 _ci.log 误提交进 tag 树，故显式排除）
+_ci.log
