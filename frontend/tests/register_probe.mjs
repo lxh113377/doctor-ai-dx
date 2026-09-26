@@ -99,7 +99,10 @@ say(drift.length === 0, "恒等复算：同一查询两次取数逐位相同（�
 //    是被测对象的真缺陷：BM25 对查询词是按 token 累加的，重复即 tf 翻倍，而红旗加权是固定 +2/词，
 //    于是重复会把加权的相对分量稀释掉、排序随之变。⇒ 降级为**带基线的看守棘轮**（只准降不准升），
 //    不做成常红判据（常红的判据等于没有判据），缺陷本体登记为新台账并逐条归因。
-const REGISTER_DUP_MAX = Number(process.env.REGISTER_DUP_MAX ?? 4)
+// 第三十六轮收到 0：#102 的正解（扩展通道与红旗加权按触发词重复度缩放，双端同改）已接线，
+// 实测重复敏感性 4→0，且 70 例 gold 四项读数逐位不变（gold 查询的重复度恒为 1，实测 0/70）。
+// 同一条腿现已并入 npm test 的 tests/repetition_guard.mjs 做阻断；本件保留为读数面。
+const REGISTER_DUP_MAX = Number(process.env.REGISTER_DUP_MAX ?? 0)
 const dupBad = pairs.filter((p) => {
   const rel = GOLD.get(p.id)
   return recallAt(searchIds(p.query_a), rel) !== recallAt(searchIds(p.query_a + p.query_a), rel)
@@ -108,7 +111,7 @@ const dupBad = pairs.filter((p) => {
   return { id: p.id, red_flag: p.red_flag, a: round(recallAt(searchIds(p.query_a), rel)), b: round(recallAt(searchIds(p.query_a + p.query_a), rel)) }
 })
 const dupRf = dupBad.filter((d) => d.red_flag)
-console.log(`  ${dupBad.length <= REGISTER_DUP_MAX ? "PASS" : "FAIL"} 重复敏感性棘轮：重复一遍仍改变 recall 的配对 ≤ ${REGISTER_DUP_MAX}（基线为第三十四轮实测）`
+console.log(`  ${dupBad.length <= REGISTER_DUP_MAX ? "PASS" : "FAIL"} 重复敏感性棘轮：重复一遍仍改变 recall 的配对 ≤ ${REGISTER_DUP_MAX}（第三十四轮实测 4 ⇒ 第三十六轮治本后收到 0）`
   + ` :: 实测 ${dupBad.length}${dupRf.length ? `，其中危急 ${dupRf.length}` : ""}`)
 for (const d of dupBad.slice(0, 6)) console.log(`    DUP ${d.id}${d.red_flag ? "[危急]" : ""} recall@5 ${d.a}→${d.b}（仅重复，未改语义）`)
 if (dupBad.length > REGISTER_DUP_MAX) fail++
@@ -146,8 +149,9 @@ if (dupBad.length) {
   for (const l of lines.slice(0, 6)) console.log(`    ATTR ${l}`)
   report_attr = { dup_cases: dupBad.length, expanded_driven: expandedDriven, lines }
 }
-console.log("  ⚠ 这条不是夹具噪声：它是检索层对『同一句话被说两遍』的真实敏感面（转录/口述场景常见）。"
-  + "判红阈值刻意不等于 0——0 需要改打分函数（查询 token 去重或加权归一），属行为变更，另立台账。")
+console.log("  ℹ 这条不是夹具噪声：它是检索层对『同一句话被说两遍』的真实敏感面（转录/口述场景常见）。"
+  + "第三十四轮立基线 4 时判过『0 需要改打分函数』；第三十六轮按归因把扩展通道与加权改成随重复度缩放后实测归零"
+  + "⇒ 阈值收到 0，再变回非 0 即判红。")
 
 // ④ 红旗子集
 const rf = pairs.filter((p) => p.red_flag)

@@ -21,6 +21,14 @@ const COLLOQUIAL_QUERIES = [
   "腰痛连带不上厕所", "嘴巴肿了喉咙发紧", "今天天气不错适合出门",
 ]
 queries.push(...COLLOQUIAL_QUERIES)
+// 第三十六轮：台账 #102 把扩展通道与红旗加权改成「按触发词重复度」缩放，而 70 例 gold 的重复度恒为 1
+// （实测 0/70 用例含重复词形）⇒ 双端比对里一条查询都走不到这条新分支，任一端单边漏改都会"一致地错"
+// （与 #27 标点、#33 口语是同一课：新分支必须自带能触发它的样本）。重复度 >1 就是这条分支的开关面。
+const REPEAT_QUERIES = [
+  "冒冷汗伴胸痛，冒冷汗伴胸痛", "孩子高热惊厥孩子高热惊厥",
+  "停经后来好多血头晕停经后来好多血头晕", "血压 190/110 mmHg血压 190/110 mmHg",
+]
+queries.push(...REPEAT_QUERIES)
 const TOP_K = 5
 const NAMES = [DEFAULT_RETRIEVER, "hybrid", SEMANTIC_NAME]
 

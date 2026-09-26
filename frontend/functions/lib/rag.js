@@ -24,21 +24,39 @@ function tokenize(text) {
   return toks
 }
 
-// 同义词扩展：命中规范词则把整组同义词并入查询（去重去自身，避免重复加权）
+// 非重叠出现次数（不用 RegExp：加权词表里有含正则元字符的词形，构造一次就埋一个死判据）。
+function countOccurrences(hay, needle) {
+  const n = String(needle ?? "")
+  if (!n) return 0
+  let c = 0
+  let i = hay.indexOf(n)
+  while (i >= 0) {
+    c += 1
+    i = hay.indexOf(n, i + n.length)
+  }
+  return c
+}
+
+// 同义词扩展：命中规范词则把整组同义词并入查询（去重去自身，避免重复加权）。
+// 返回 词形 → 权重，权重 = 产生它的那些组里最大的「触发词重复度」（该词形在原查询里非重叠出现几次）。
+// 为什么带权重（台账 #102 的正解，第三十六轮）：原始 token 通道天然是个多重集，整句重复一遍就逐个翻倍；
+// 扩展通道若只追加一次，靠它得分的条目就被相对稀释、排序随重复而变。让两通道同尺度后，
+// 重复使整个查询向量等比放大 ⇒ 排序不变。未重复时权重恒为 1，与改动前逐位相同（70 例 gold 实测全为 1）。
 function expandQuery(query) {
   const q = normalize(query)
-  const extra = new Set()
+  const extra = new Map()
   for (const [canon, syns] of Object.entries(SYNONYMS)) {
-    const hitCanon = q.includes(canon.toLowerCase())
-    const hitSyn = syns.some((s) => q.includes(String(s).toLowerCase()))
-    if (hitCanon || hitSyn) {
-      for (const w of [canon, ...syns]) {
-        const lw = String(w).toLowerCase()
-        if (!q.includes(lw)) extra.add(w)
-      }
+    const forms = [canon, ...(Array.isArray(syns) ? syns : [])].map((w) => String(w).toLowerCase())
+    const hitSyn = forms.some((f) => q.includes(f))
+    if (!hitSyn) continue
+    const mult = Math.max(1, ...forms.map((f) => countOccurrences(q, f)))
+    for (const w of [canon, ...syns]) {
+      const lw = String(w).toLowerCase()
+      if (q.includes(lw)) continue
+      extra.set(w, Math.max(extra.get(w) || 0, mult))
     }
   }
-  return [...extra]
+  return extra
 }
 
 // 预建倒排索引（模块加载时一次；缺字段守卫防单条脏数据拖崩全索引）
@@ -83,31 +101,45 @@ export function reachableFlagTerms(query) {
 // 用 \u0001 连接而非直接拼接，防止跨条目边界伪造一次命中。
 function queryView(query) {
   const q = normalize(query).slice(0, MAX_QUERY_LEN)
-  const expanded = expandQuery(q)
+  const expWeights = expandQuery(q)
+  const expanded = [...expWeights.keys()]
   const flagHay = [q, ...expanded.map((w) => String(w).toLowerCase())].join("\u0001")
-  return { q, expanded, hitFlags: RED_FLAG_KEYWORDS.filter((kw) => flagHay.includes(String(kw).toLowerCase())) }
+  const hitFlags = RED_FLAG_KEYWORDS.filter((kw) => flagHay.includes(String(kw).toLowerCase()))
+  // 加权词的查询侧重复度：原查询里非重叠出现几次；只靠扩展桥够着的词取桥那侧词形的权重。
+  // 两侧都够着时取 max 而非 sum——未重复时恒为 1，与改动前「命中即计分一次」逐位相同。
+  const flagWeights = new Map(hitFlags.map((kw) => {
+    const low = String(kw).toLowerCase()
+    let m = countOccurrences(q, low)
+    for (const [w, wt] of expWeights) if (wt > m && String(w).toLowerCase().includes(low)) m = wt
+    return [kw, m]
+  }))
+  return { q, expanded, expWeights, hitFlags, flagWeights }
 }
 
 // BM25 主检索
 export function search(query, topK = 4) {
   if (!query || !String(query).trim()) return []
   const k = Math.max(1, Math.min(Number.isFinite(+topK) ? Math.floor(+topK) : 4, MAX_TOP_K))
-  const { q, expanded, hitFlags } = queryView(query)
+  const { q, expWeights, hitFlags, flagWeights } = queryView(query)
   const qtoks = tokenize(q)
-  // 同义词按词独立分词后并入（避免 join("") 产生跨词伪 bigram）
+  // 同义词按词独立分词后并入（避免 join("") 产生跨词伪 bigram）；按触发词重复度重复该词形的 token，
+  // 使扩展通道与原始通道同尺度（台账 #102）。
   const expandedToks = []
-  for (const w of expanded) {
-    for (const t of tokenize(w)) expandedToks.push(t)
+  for (const [w, wt] of expWeights) {
+    const toks = tokenize(w)
+    for (let m = 0; m < Math.max(1, wt); m++) {
+      for (const t of toks) expandedToks.push(t)
+    }
   }
   const allQ = [...qtoks, ...expandedToks]
 
-  // 红旗命中一次算好（取自共用视图，不在此重复计算）
+  // 红旗命中一次算好（取自共用视图，不在此重复计算）；计分次数取查询侧重复度，不再按「命中一次」封顶
   const flagDocHits = new Map()
   if (hitFlags.length) {
     for (const d of index.docs) {
       const text = `${d.raw.text || ""}`.toLowerCase()
       let n = 0
-      for (const kw of hitFlags) if (text.includes(String(kw).toLowerCase())) n++
+      for (const kw of hitFlags) if (text.includes(String(kw).toLowerCase())) n += flagWeights.get(kw) || 0
       if (n) flagDocHits.set(d.id, n)
     }
   }

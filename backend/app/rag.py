@@ -39,16 +39,37 @@ def _tokenize(text: str) -> list[str]:
     return toks
 
 
-def _expand_query(q: str) -> list[str]:
-    """q 为归一（小写）后查询；命中词组的全部成员去重去已含后原样保留大小写（对齐 JS）。"""
-    extra: list[str] = []
+def _count_occurrences(hay: str, needle: str) -> int:
+    """非重叠出现次数。不用 re：加权词表里有含正则元字符的词形，构造一次就埋一个死判据。"""
+    nd = str(needle or "")
+    if not nd:
+        return 0
+    c = 0
+    i = hay.find(nd)
+    while i >= 0:
+        c += 1
+        i = hay.find(nd, i + len(nd))
+    return c
+
+
+def _expand_query(q: str) -> dict:
+    """q 为归一（小写）后查询；命中词组的全部成员去重去已含后原样保留大小写（对齐 JS）。
+
+    返回 词形 → 权重，权重 = 产生它的那些组里最大的「触发词重复度」。原始 token 通道天然是多重集，
+    整句重复即逐个翻倍；扩展通道若只追加一次，靠它得分的条目就被相对稀释、排序随重复而变（台账 #102）。
+    未重复时权重恒为 1，与改动前逐位相同。
+    """
+    extra: dict[str, int] = {}
     for canon, syns in SYNONYMS.items():
-        hit = str(canon).lower() in q or any(str(s).lower() in q for s in syns)
-        if not hit:
+        forms = [str(canon), *(str(s) for s in syns)]
+        low_forms = [f.lower() for f in forms]
+        if not any(f in q for f in low_forms):
             continue
-        for w in [canon, *syns]:
-            if str(w).lower() not in q and w not in extra:
-                extra.append(w)
+        mult = max([1, *(_count_occurrences(q, f) for f in low_forms)])
+        for w in forms:
+            if w.lower() in q:
+                continue
+            extra[w] = max(extra.get(w, 0), mult)
     return extra
 
 
@@ -100,11 +121,24 @@ def _query_view(q: str) -> dict:
     输入常是口语侧词形（\u300c冒冷汗\u300d\u300c高热惊厥\u300d），把两侧连起来的桥就是同义词表。
     用 \\u0001 连接而非直接拼接，防止跨条目边界伪造一次命中（与 JS 侧同口径）。
     """
-    expanded = _expand_query(q)
+    exp_weights = _expand_query(q)
+    expanded = list(exp_weights)
     flag_hay = "\u0001".join([q, *(str(w).lower() for w in expanded)])
+    hit_flags = [str(kw).lower() for kw in RED_FLAG_KEYWORDS if str(kw).lower() in flag_hay]
+    # 加权词的查询侧重复度：原查询里非重叠出现几次；只靠扩展桥够着的词取桥那侧词形的权重。
+    # 两侧都够着时取 max 而非 sum——未重复时恒为 1，与改动前「命中即计分一次」逐位相同。
+    flag_weights = {}
+    for kw in hit_flags:
+        m = _count_occurrences(q, kw)
+        for w, wt in exp_weights.items():
+            if wt > m and kw in str(w).lower():
+                m = wt
+        flag_weights[kw] = m
     return {
         "expanded": expanded,
-        "hit_flags": [str(kw).lower() for kw in RED_FLAG_KEYWORDS if str(kw).lower() in flag_hay],
+        "exp_weights": exp_weights,
+        "hit_flags": hit_flags,
+        "flag_weights": flag_weights,
     }
 
 
@@ -126,9 +160,13 @@ def search(query: str, top_k: int = 4) -> list[dict]:
     q = _normalize(query)[:MAX_QUERY_LEN]
     view = _query_view(q)
     all_q = list(_tokenize(q))
-    for w in view["expanded"]:
-        all_q.extend(_tokenize(w))
+    # 按触发词重复度重复该词形的 token，使扩展通道与原始通道同尺度（台账 #102）
+    for w, wt in view["exp_weights"].items():
+        toks = _tokenize(w)
+        for _ in range(max(1, wt)):
+            all_q.extend(toks)
     hit_flags = view["hit_flags"]
+    flag_weights = view["flag_weights"]
 
     scored = []
     for idx, d in enumerate(_DOCS):
@@ -141,7 +179,7 @@ def search(query: str, top_k: int = 4) -> list[dict]:
             s += idf * (f * (K1 + 1)) / (f + K1 * (1 - B + B * (d["len"] / _AVGDL)))
         if hit_flags:
             text_lower = str(d["raw"]["text"]).lower()
-            n = sum(1 for kw in hit_flags if kw in text_lower)
+            n = sum(flag_weights.get(kw, 0) for kw in hit_flags if kw in text_lower)
             s += 2 * n
         if s > 0:
             scored.append((s, idx, d["raw"]))
