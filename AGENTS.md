@@ -37,6 +37,9 @@
 cd frontend && npm ci          # 安装（锁文件是权威，不要 npm install 顺手升版）
 npm test                       # 二十三件套守卫（含诊断排序金标准与否定守卫全表探针）；零密钥、零网络、确定性
 npm run probe:ood                # 域外可分性测量（**看守件、不进 npm test**：只报告不阻断）
+npm run probe:register          # 语域落差测量（**看守件、不进 npm test**）：同一份 gold、只换同义词组内的词形，量检索对"写法"的敏感度
+                                 # 与重复敏感性。基线：配对 37/50、bm25 语域 ΔMRR 0.018018、重复改变 recall 4 例（危急 2）——
+                                 # 只准降不准升；接线条件写在 tests/register_probe.mjs 件头。**别用"查询 token 去重"去修重复敏感性**：实测打破 6 条逐用例锁、MRR 跌破地板，见 PITFALLS H7
 npm run coverage:js            # c8 + 模块级地板（地板清单单一源 tests/fixtures/coverage_floor.json）
 npm run test:e2e               # Playwright 双视口（1440×900 / 390×844）+ 三条红线在场与负向断言
 npm run lint:js                # ESLint --max-warnings=0（警告也算红）

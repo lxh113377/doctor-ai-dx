@@ -1,7 +1,7 @@
 {
   "name": "doctor-ai-dx-frontend",
   "private": true,
-  "version": "1.30.0",
+  "version": "1.31.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -61,7 +61,8 @@
     "eval:live": "node ../scripts/live_eval.mjs",
     "perf:gate": "node ../scripts/perf_gate.mjs",
     "test:negation": "node tests/negation_probe.mjs",
-    "probe:ood": "node tests/ood_probe.mjs"
+    "probe:ood": "node tests/ood_probe.mjs",
+    "probe:register": "node tests/register_probe.mjs"
   },
   "dependencies": {
     "react": "^19.3.0",
