@@ -33,6 +33,13 @@
   ③ `live_smoke.py` 新 except 分支缺 `raise ... from e`（ruff B904）、重构后 3 个未用 import（ESLint）——都由门禁抓到而非肉眼。
 - **度量**：`npm test` rc=0（二十三件套）｜`coverage:js` rc=0（全局分支 81.75%，地板 74% 未动；`lib/knowledge.js` 分支余量 2.4pt）｜
   `coverage:py` rc=0（全局 95.04%，模块地板 10 项一位未放宽）｜ruff 0｜mypy 37 文件 0 error｜ESLint 0｜selftest 9/9。
+- **锚点说明（与 v1.27.0 同一流程）**：tag `v1.29.0` 首指提交 `9b71cbd`，随后本仓又落两笔非运行时代码改动
+  （`.pre-commit-config.yaml` 钩子显示名同步、以及本次对账注记）。按第三十轮立下的规矩先实测**零下游可见物**
+  再重锚：`gh release view v1.29.0` → `release not found`、ghcr `/containers/doctor-ai-dx/versions` → 404、
+  线上仍 `1.28.0 live`（deploy 由 tag 触发，尚未跑）。三面的实测结果留此，旧 tag 对象 sha 记 `9b71cbd`。
+- 🔴 **顺带抓到一条在册但零接线的判据**：`.pre-commit-config.yaml` 自 v1.6.1 就在仓里，但本机 `.git/hooks/pre-commit`
+  不存在、`core.hooksPath` 未设、CI 也没有任何 `pre-commit run` 步骤——即「配置在册、无人执行」。
+  本轮已 `pre-commit install` 接线（v1.29.0 之后的提交起真实拦，实测 12 个钩子跑通），并把「CI 侧是否也要一份」登记为台账 #95。
 
 ## [1.28.0] - 2026-09-26
 
