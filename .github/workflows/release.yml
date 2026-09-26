@@ -59,6 +59,10 @@ jobs:
         # 第二十三轮补三闸：`release.yml` 此前与 `ci.yml` **不同闸**——CI 的 infra-lint 判红也照样出包
         # （实证：v1.21.0 就是从一个 actionlint 红的提交产出了镜像与 Release）。补的这三条都不依赖
         # docker 镜像，能在这一步零成本跑；actionlint/hadolint 仍需镜像，边界如实留在 §"出包与预检同闸"台账。
+        # 第三十五轮再收一格：codespell 补进本闸。实证不是推理——本轮 v1.32.0 就是从一个
+        # infra-lint 判红的提交（自造标识符 normL 被 codespell 判拼错，rc=65）产出了 Release 四件资产，
+        # 台账 #47 剩下的那半「codespell 只在 CI 侧」当场兑现成事故。它零成本（dev 件已在此步安装）。
+        # 仍留在 CI 侧的只剩依赖镜像的三条：actionlint / hadolint / compose config。
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -76,6 +80,8 @@ jobs:
           ruff check backend/app backend/tests scripts
           python scripts/type_gate.py --quiet
           python scripts/check_text_hygiene.py --quiet
+          # 拼写看守与 ci.yml 的 infra-lint 同一条判据、同一份 .codespellrc（不引第二真值）。
+          codespell
           python scripts/suite_guard.py --quiet
           cd frontend
           npm run lint:js
