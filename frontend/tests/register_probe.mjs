@@ -17,7 +17,7 @@
 //   ④ 红旗子集单看：危急病例不得因写法不同而召回下降。
 import { readFileSync, writeFileSync } from "node:fs"
 import { getRetriever, DEFAULT_RETRIEVER } from "../functions/lib/retriever.js"
-import { SYNONYMS } from "../functions/lib/knowledge.js"
+import { KNOWLEDGE_BASE, SYNONYMS } from "../functions/lib/knowledge.js"
 
 const suite = JSON.parse(readFileSync(new URL("./fixtures/retrieval_cases.json", import.meta.url), "utf8"))
 const TOP_K = 5
@@ -67,6 +67,7 @@ for (const c of suite.cases) {
 }
 
 let fail = 0
+let report_attr = null
 const say = (ok, name, detail = "") => {
   console.log(`  ${ok ? "PASS" : "FAIL"} ${name}${detail ? ` :: ${detail}` : ""}`)
   if (!ok) fail++
@@ -111,6 +112,40 @@ console.log(`  ${dupBad.length <= REGISTER_DUP_MAX ? "PASS" : "FAIL"} 重复敏�
   + ` :: 实测 ${dupBad.length}${dupRf.length ? `，其中危急 ${dupRf.length}` : ""}`)
 for (const d of dupBad.slice(0, 6)) console.log(`    DUP ${d.id}${d.red_flag ? "[危急]" : ""} recall@5 ${d.a}→${d.b}（仅重复，未改语义）`)
 if (dupBad.length > REGISTER_DUP_MAX) fail++
+// 归因分解（第三十五轮补）：上一轮把这条记成"固定 +2 加权被翻倍 BM25 稀释"，本轮实测否证——
+// 把加权改成随查询 token 质量缩放后，这 4 例读数一位没变。真机制是整句重复时**原始 token 翻倍、
+// 同义词扩展 token 只追加一次**（扩展集由词汇总量决定，与重复无关）⇒ 靠扩展通道得分的条目相对权重被砍半。
+// 这里用公开导出的 SYNONYMS/KNOWLEDGE_BASE 现算归因，不往生产模块加诊断出口、不重写 BM25（那是第二真值）。
+if (dupBad.length) {
+  const normL = (x) => String(x ?? "").toLowerCase()
+  const members = [...new Set(Object.entries(SYNONYMS).flatMap(([c, sy]) => [String(c), ...(Array.isArray(sy) ? sy : []).map(String)]).map(normL))]
+  const isExpandedOnly = (textL, rawL) => members.some((m) => m.length >= 2 && textL.includes(m) && !rawL.includes(m))
+  const byId = new Map(suite.cases.map((c) => [c.id, c]))
+  let expandedDriven = 0
+  const lines = []
+  for (const d of dupBad) {
+    const c = byId.get(d.id)
+    const rawL = normL(c.query)
+    const before = searchIds(c.query).slice(0, TOP_K)
+    const after = searchIds(c.query + c.query).slice(0, TOP_K)
+    const gained = after.filter((id) => !before.includes(id))
+    const lost = before.filter((id) => !after.includes(id))
+    // 判定"扩展通道独享"：该条目正文里含某同义词组成员，而这个成员并不出现在原始查询里
+    // ⇒ 它的分数完全靠扩展通道挣来，重复原始 token 时它不跟着涨，相对权重被砍。
+    const tag = (id) => {
+      const e = KNOWLEDGE_BASE.find((k) => k.id === id)
+      return e && isExpandedOnly(normL(`${e.text} ${e.title} ${(e.keywords || []).join(" ")}`), rawL) ? "*" : ""
+    }
+    const isExp = [...gained, ...lost].some((id) => tag(id) === "*")
+    if (isExp) expandedDriven++
+    lines.push(`${d.id}${d.red_flag ? "[危急]" : ""} 入榜 ${gained.map((id) => id + tag(id)).join(",") || "-"}`
+      + ` / 掉出 ${lost.map((id) => id + tag(id)).join(",") || "-"}${isExp ? "  ← 带 * 者走同义词扩展通道" : ""}`)
+  }
+  console.log(`  归因分解：${dupBad.length} 例里 ${expandedDriven} 例的位次变化牵动「同义词扩展通道」（*=只靠扩展得分的条目）`
+    + `（${round(100 * expandedDriven / dupBad.length)}%）`)
+  for (const l of lines.slice(0, 6)) console.log(`    ATTR ${l}`)
+  report_attr = { dup_cases: dupBad.length, expanded_driven: expandedDriven, lines }
+}
 console.log("  ⚠ 这条不是夹具噪声：它是检索层对『同一句话被说两遍』的真实敏感面（转录/口述场景常见）。"
   + "判红阈值刻意不等于 0——0 需要改打分函数（查询 token 去重或加权归一），属行为变更，另立台账。")
 
@@ -136,6 +171,7 @@ const report = {
   gap_recall_at_5: gapR, gap_mrr: gapM,
   lost: lost.map((p) => p.id), won: won.map((p) => p.id), moved: moved.map((p) => p.id),
   red_flag_pairs: rf.length, red_flag_lost: rfLost.map((p) => p.id), dup_sensitive: dupBad, pairs,
+  attr: report_attr,
 }
 const out = process.env.REGISTER_REPORT_PATH
 if (out) writeFileSync(out, `${JSON.stringify(report, null, 2)}\n`)
