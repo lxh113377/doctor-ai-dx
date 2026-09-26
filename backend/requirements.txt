@@ -7,6 +7,10 @@ uvicorn[standard]>=0.53.0
 httpx>=0.28.1
 pydantic>=2.13.5
 python-dotenv>=1.2.3
+# 显式声明：backend/app/main.py 直接把 404 处理器注册到 Starlette 基类异常上（v1.17.0），
+# 此前只作为 fastapi 的传递依赖存在 ⇒ `scripts/dep_completeness.py` 首跑判红点名。
+# 区间下限取锁内实装版本（1.7.0），不放开到未测过的老版本——与本轮 pydantic 下限同一口径。
+starlette>=1.7.0
 # 显式声明：scripts/branch_guard.py 要解析 ci.yml（此前它只作为 uvicorn[standard] 的传递依赖存在）。
 # 把"靠传递依赖"写成声明依赖，是 lock_guard 的「声明⊆锁」对账能真正管住它的前提。
 # 注意：本文件每一行注释都必须自带 `#`——v1.17.0 实测踩过：一条续行漏了 `#`，

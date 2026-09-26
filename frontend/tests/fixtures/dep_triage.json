@@ -1,0 +1,11 @@
+{
+  "_meta": {
+    "purpose": "Dependabot 分诊闭环阈值单一权威源（scripts/dep_triage.py 读它；工作流只调脚本，不各自硬编码天数）。",
+    "borrowed_from": "OpenEMR 实测有 dependabot-auto-merge.yml（过门禁即自动合）；我方刻意不自动合并——三张产品红线 + 8s 单模型硬超时 + 交付包逐字节对账，major 升版必须人工过 Playwright 双视口与 bundle/fhir 判据（第二十三轮 #12/#20 的实测结论正是『单张不可构建、成对才解析』）。因此取『超龄即判红 + 每张必须有分诊痕迹』。",
+    "why_14_days": "dependabot.yml 两个生态按周排程 ⇒ 14 天＝跨两个周期仍未处置，排除『正好赶上下次扫描』的正常间隔；本轮实测三张 PR 挂 2 天即已无人看，说明没有判据时任意天数都会发霉。",
+    "marker": "评论正文（或标签名）必须含此串，才算这张 PR 被真处置过。写进评论而不是只点 label 的理由：评论能带实测数字（哪个门禁、什么结果），label 不能。",
+    "measured_at": "2026-09-26"
+  },
+  "max_age_days": 14,
+  "marker": "dep-triage:v1"
+}

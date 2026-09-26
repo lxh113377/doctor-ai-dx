@@ -69,6 +69,13 @@ repos:
         pass_filenames: false
         files: ^(backend/(tests/|selftest)|backend/tests/suite\.json|docker-compose\.yml|\.github/workflows/ci\.yml|frontend/package\.json|scripts/suite_guard\.py)
 
+      - id: dep-completeness
+        name: 依赖声明完整性（import ⊆ 三面声明面 + peer ↔ package-lock 相容）
+        entry: python scripts/dep_completeness.py
+        language: system
+        pass_filenames: false
+        files: ^(backend/requirements[^.]*\.txt|backend/requirements\.lock|frontend/package[^.]*\.json|frontend/src/|frontend/functions/|backend/app/|scripts/)
+
       - id: action-pin
         name: Actions 钉版与最小权限（本机离线档；上游真值对账由 CI infra-lint 出）
         entry: python scripts/action_pin.py --verify --offline --quiet

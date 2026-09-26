@@ -1,0 +1,7 @@
+# 构建期专用依赖（第三份声明面）：只在人工重生成派生产物时装，CI 与运行时镜像都不装。
+# 立论（第二十三轮）：scripts/build_semantic_neighbors.py 的 encode() 真的 import numpy（用本地 BGE
+# 权重蒸馏 440 对语义邻接表）。它既不是线上依赖（运行时零模型零网络，默认档 bm25），也不是
+# CI 依赖（CI 从不重跑蒸馏）——但它是**代码 import 的名字**，必须有一张声明面装着它，
+# 否则 `scripts/dep_completeness.py` 的「import ⊆ 声明」判据要么判红、要么被豁免掉（两者都是假绿）。
+# 装法：python -m pip install -r backend/requirements-build.txt
+numpy>=2.1.0

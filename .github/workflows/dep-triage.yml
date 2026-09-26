@@ -1,0 +1,32 @@
+name: Dependabot triage
+
+# 第二十三轮对标落地：`.github/dependabot.yml` 三个生态都开了，但产出侧无人消费——本轮开跑时仓里
+# 正挂着三张 9/24 起没人动过的 PR（#12/#19/#20）。OpenEMR 用 `dependabot-auto-merge.yml` 把
+# 过门禁的依赖 PR 自动合并；我方刻意不自动合并（三条产品红线 + 8s 单模型硬超时 + 交付包逐字节对账，
+# major 升版必须过 Playwright 双视口与 bundle/fhir 判据——#12/#20 的实测结论正是「单张不可构建、
+# 成对才解析」）。取「超龄即判红 + 每张必须有分诊痕迹」这条替代路径。
+# 与 r19「门禁挂在长期 skipped 的 deploy 作业 = 没有门禁」同族，只是方向相反：这次是产出没人接。
+on:
+  schedule:
+    - cron: "0 3 * * 2"   # 每周二 11:00 UTC+8，与 dep-audit（周一）/link-health（周三）错开
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  triage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - name: 反例自证（阈值与判定逻辑先自证，再拿它判远端）
+        run: python scripts/dep_triage.py --selftest
+      - name: 开放 Dependabot PR 分诊闭环（超龄或漏分诊即判红；取不到上游按环境错误处理）
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # 显式写出而非靠 runner 隐式注入：`scripts/dep_triage.py` 读这个键，而 env_guard 的口径是
+          # 「工具链侧读的键必须由工作流声明担保」——隐式注入在工作流文本里看不见，那条判据就无从核对。
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: python scripts/dep_triage.py
