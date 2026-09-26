@@ -6,6 +6,7 @@ import { execFileSync } from "node:child_process"
 import { readFileSync } from "node:fs"
 import { fileURLToPath } from "node:url"
 import { getRetriever, DEFAULT_RETRIEVER, SEMANTIC_NAME } from "../functions/lib/retriever.js"
+import { reachableFlagTerms } from "../functions/lib/rag.js"
 
 const suite = JSON.parse(readFileSync(new URL("./fixtures/retrieval_cases.json", import.meta.url), "utf8"))
 const queries = suite.cases.map((c) => c.query)
@@ -13,6 +14,13 @@ const queries = suite.cases.map((c) => c.query)
 // （此前双端比对用的是同一份 fixture 查询，全是干净文本，覆盖不到这条面）。
 const PUNCT_QUERIES = ["胸痛，伴发热、咳嗽。", "血压 190/110 mmHg（视物模糊）", "持续高热≥39℃，伴寒战！"]
 queries.push(...PUNCT_QUERIES)
+// 第三十三轮：加权词的匹配面扩到「原查询 ∪ 同义词扩展词形」，而 fixture 里 50 例全是指南侧写法，
+// 一条都走不到这条新分支——双端比对必须自带口语侧样本，否则「双端一致」只对旧路径成立（同 #27 标点那次的教训）。
+const COLLOQUIAL_QUERIES = [
+  "冒冷汗伴胸痛", "孩子高热惊厥", "停经后来好多血头晕", "婴幼儿拉果酱色大便",
+  "腰痛连带不上厕所", "嘴巴肿了喉咙发紧", "今天天气不错适合出门",
+]
+queries.push(...COLLOQUIAL_QUERIES)
 const TOP_K = 5
 const NAMES = [DEFAULT_RETRIEVER, "hybrid", SEMANTIC_NAME]
 
@@ -68,7 +76,8 @@ for (const name of NAMES) {
 }
 
 for (const line of lines) console.log(line)
-// 不在这里 exit：先让下面的标点判据也跑完，两条判据各自出结论（防止一条红把另一条的遮蔽掉）。
+// 不在这里 exit：先让下面的标点判据与桥判据也跑完，各条判据各自出结论（防止一条红把另一条遮蔽掉）。
+let parityBad = totalFail
 if (totalFail) console.error(`PARITY MISMATCH: ${totalFail} 例`)
 console.log(`RETRIEVER PARITY ${totalFail ? "FAIL" : "ALL PASS"}（${NAMES.length} 档 × ${queries.length} 例）`)
 
@@ -102,5 +111,47 @@ console.log(`RETRIEVER PARITY ${totalFail ? "FAIL" : "ALL PASS"}（${NAMES.lengt
   } else {
     console.log(`PUNCT FILTER PASS（${NAMES.length} 档：标点无关 + 真字敏感 + 非空召回 双向自证）`)
   }
-  if (totalFail || punctBad) process.exit(1)
+  if (punctBad) parityBad += punctBad
 }
+
+// 口语侧→指南侧的加权桥：双端必须算出同一份「够得着的加权词」。
+// 为什么单列一条：这条桥是第三十三轮新接的（加权词表已改成指南侧词形，口语输入靠同义词表桥过去），
+// 只比 id/score 的上方那几档在「两端都算错成同一种错」时照样绿——所以直接比桥的中间量本身。
+// 反例实测：把 JS 侧匹配面改回只扫原始 q，本条立刻红并点名差异（第三十三轮本地演练）。
+{
+  const pyBridge = `
+import json, sys
+sys.path.insert(0, ${JSON.stringify(fileURLToPath(new URL("../../backend", import.meta.url)))})
+from app.rag import reachable_flag_terms
+qs = json.load(sys.stdin)
+print(json.dumps({q: reachable_flag_terms(q) for q in qs}, ensure_ascii=False))
+`
+  let pyMap = null
+  try {
+    pyMap = JSON.parse(execFileSync(process.env.PYTHON_BIN || "python", ["-c", pyBridge], {
+      input: JSON.stringify(COLLOQUIAL_QUERIES), encoding: "utf8", maxBuffer: 8 * 1024 * 1024,
+    }))
+  } catch (e) {
+    console.error(`FAIL 桥判据：Python 侧不可用，无法比对（${String(e.message).slice(0, 120)}）`)
+    parityBad++
+  }
+  if (pyMap) {
+    let bad = 0
+    const detail = []
+    for (const q of COLLOQUIAL_QUERIES) {
+      const js = reachableFlagTerms(q).slice().sort().join(",")
+      const py = (pyMap[q] || []).slice().sort().join(",")
+      if (js !== py) { bad++; detail.push(`${q}: JS[${js || "-"}] vs Py[${py || "-"}]`) }
+    }
+    // 覆盖面自证：口语样本里至少要有一条真的桥到词、且至少一条桥不到（两端全空＝判据恒真）
+    const fired = COLLOQUIAL_QUERIES.filter((q) => reachableFlagTerms(q).length > 0).length
+    const silent = COLLOQUIAL_QUERIES.length - fired
+    const denomOk = fired > 0 && silent > 0
+    if (!denomOk) { bad++; detail.push(`分母失效：桥命中 ${fired} 条 / 零命中 ${silent} 条（必须两侧都有样本）`) }
+    parityBad += bad
+    console.log(`${bad === 0 ? "PASS" : "FAIL"} 加权桥双端一致 + 分母自证：${COLLOQUIAL_QUERIES.length} 条口语查询（桥上有词 ${fired}／无词 ${silent}）`)
+    for (const d of detail.slice(0, 4)) console.error(`  ${d}`)
+  }
+}
+
+if (parityBad) process.exit(1)

@@ -93,6 +93,27 @@ def _evidence_of(item: dict, score: float) -> dict:
         "score": round_half_up(score, 3),
     }
 
+def _query_view(q: str) -> dict:
+    """同一个查询视图：扩展词形与够得着的加权词。
+
+    匹配面 = 原查询 \u222a 同义词扩展出的词形：加权词表取指南侧词形（\u300c出汗\u300d\u300c抽搐\u300d），
+    输入常是口语侧词形（\u300c冒冷汗\u300d\u300c高热惊厥\u300d），把两侧连起来的桥就是同义词表。
+    用 \\u0001 连接而非直接拼接，防止跨条目边界伪造一次命中（与 JS 侧同口径）。
+    """
+    expanded = _expand_query(q)
+    flag_hay = "\u0001".join([q, *(str(w).lower() for w in expanded)])
+    return {
+        "expanded": expanded,
+        "hit_flags": [str(kw).lower() for kw in RED_FLAG_KEYWORDS if str(kw).lower() in flag_hay],
+    }
+
+
+def reachable_flag_terms(query) -> list:
+    """对判据暴露：该查询实际会给哪几个加权词计分（与 JS 侧 reachableFlagTerms 同口径）。"""
+    if query is None or not str(query).strip():
+        return []
+    return _query_view(_normalize(query)[:MAX_QUERY_LEN])["hit_flags"]
+
 
 def search(query: str, top_k: int = 4) -> list[dict]:
     if not query or not str(query).strip():
@@ -103,10 +124,12 @@ def search(query: str, top_k: int = 4) -> list[dict]:
         k = 4
     k = max(1, min(k, MAX_TOP_K))
     q = _normalize(query)[:MAX_QUERY_LEN]
+    view = _query_view(q)
     all_q = list(_tokenize(q))
-    for w in _expand_query(q):
+    for w in view["expanded"]:
         all_q.extend(_tokenize(w))
-    hit_flags = [str(kw).lower() for kw in RED_FLAG_KEYWORDS if str(kw).lower() in q]
+    hit_flags = view["hit_flags"]
+
     scored = []
     for idx, d in enumerate(_DOCS):
         s = 0.0

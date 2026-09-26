@@ -69,22 +69,39 @@ function evidenceOf(item, score) {
   }
 }
 
+// 该查询「够得着」的加权词：原查询 ∪ 同义词扩展词形，再与加权词表取交。
+// 单独导出是为了让判据能直接问「这条口语查询到底加到了哪几个权」——此前这条面只在 search 内部
+// 存在，守卫要验它就得把 BM25 打分重写一遍（等于造第二真值，第三十三轮按实测否决）。
+export function reachableFlagTerms(query) {
+  if (!query || !String(query).trim()) return []
+  return queryView(query).hitFlags
+}
+
+// 同一个查询视图：归一文本、扩展词形、够得着的加权词。
+// 匹配面 = 原查询 ∪ 同义词扩展出的词形：加权词表取指南侧词形（「出汗」「抽搐」），
+// 输入常是口语侧词形（「冒冷汗」「高热惊厥」），把两侧连起来的桥就是同义词表。
+// 用 \u0001 连接而非直接拼接，防止跨条目边界伪造一次命中。
+function queryView(query) {
+  const q = normalize(query).slice(0, MAX_QUERY_LEN)
+  const expanded = expandQuery(q)
+  const flagHay = [q, ...expanded.map((w) => String(w).toLowerCase())].join("\u0001")
+  return { q, expanded, hitFlags: RED_FLAG_KEYWORDS.filter((kw) => flagHay.includes(String(kw).toLowerCase())) }
+}
+
 // BM25 主检索
 export function search(query, topK = 4) {
   if (!query || !String(query).trim()) return []
   const k = Math.max(1, Math.min(Number.isFinite(+topK) ? Math.floor(+topK) : 4, MAX_TOP_K))
-  const q = normalize(query).slice(0, MAX_QUERY_LEN)
+  const { q, expanded, hitFlags } = queryView(query)
   const qtoks = tokenize(q)
   // 同义词按词独立分词后并入（避免 join("") 产生跨词伪 bigram）
   const expandedToks = []
-  for (const w of expandQuery(q)) {
+  for (const w of expanded) {
     for (const t of tokenize(w)) expandedToks.push(t)
   }
   const allQ = [...qtoks, ...expandedToks]
 
-  // 红旗命中一次算好（原逻辑每 doc 重算 32 次 includes）
-  const qLower = q.toLowerCase()
-  const hitFlags = RED_FLAG_KEYWORDS.filter((kw) => qLower.includes(String(kw).toLowerCase()))
+  // 红旗命中一次算好（取自共用视图，不在此重复计算）
   const flagDocHits = new Map()
   if (hitFlags.length) {
     for (const d of index.docs) {

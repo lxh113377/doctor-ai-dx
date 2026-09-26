@@ -34,7 +34,9 @@
 
 | 语义 | 权威（JS） | 镜像（Py） | 对账门禁 |
 |---|---|---|---|
-| 知识数据**本体**（语料/同义词/症状映射/检索加权词） | **`data/knowledge.json`（权威）** → 生成 `functions/lib/knowledge.js`（rag/engine/fhir/retriever 消费它） | 同一权威生成 `backend/app/knowledge.py` | **第三十二轮 #92 起表本体外置**（收台账 #55 的最后一块）：`npm run kb:export` 单向生成、`kb:check` 逐字节核漂移；`npm run test:kb`＝权威==JS==Py 三方全等 ＋ 生成器复算 ＋ 逐条 schema/孤儿/死线索/溯源棘轮 ＋ **死权重棘轮**（加权词若在语料正文一次都不出现则永远加不了分，基线只降不升）＋ **常驻变异自证**（改权威／手改生成物／加死词／塞未声明键四形各一条，逐条必须点名且跑完按字节复原） |
+| 知识数据**本体**（语料/同义词/症状映射/检索加权词） | **`data/knowledge.json`（权威）** → 生成 `functions/lib/knowledge.js`（rag/engine/fhir/retriever 消费它） | 同一权威生成 `backend/app/knowledge.py` | **第三十二轮 #92 起表本体外置**（收台账 #55 的最后一块）：`npm run kb:export` 单向生成、`kb:check` 逐字节核漂移；`npm run test:kb`＝权威==JS==Py 三方全等 ＋ 生成器复算 ＋ 逐条 schema/孤儿/死线索/溯源棘轮 ＋ **死权重零豁免**（加权词若在语料正文一次都不出现则永远加不了分；第三十二轮基线 8、第三十三轮逐个改到 **0** 并取消豁免）
+＋ **语料缺口名册**（同义词规范词在整库正文零命中的清单，基线 6 只降不升、逐条点名——"补条目"那半边债务的可见化）
+＋ **口语侧桥**（`reachableFlagTerms` 断言口语查询能桥到指南侧加权词，带零命中反向对照）＋ **常驻变异自证**（改权威／手改生成物／加死词／塞未声明键四形各一条，逐条必须点名且跑完按字节复原） |
 | BM25 检索 | `functions/lib/rag.js` | `app/rag.py` | `npm run test:retrieval-parity`（50 例双档） |
 | 红旗规则 | `functions/lib/rules.js` | `app/rules.py` | `npm run test:contract`（31 例逐字段，容差 0.002）+ **双端逐字同表的 6 条探针**（数值血压/组合线索/脏读值域/去重/空输入；一端实现漂移即该端判红，实测两端各自可拦） |
 | 红旗规则表**本体**＋载入即校验 | **`data/red_flag_rules.json`（权威）** → 生成 `functions/lib/red_flag_rules.js`（`rules.js` 消费它） | 同一权威生成 `backend/app/red_flag_rules.py`，`app/rules.py` 只留判定逻辑 | **第三十一轮 #89 起表本体外置**：`npm run redflags:export` 单向生成、`-- --check` 逐字节核漂移；`npm run test:table` 37 项＝权威==JS==Py **三方**全等（两张规则表＋否定词表＋阳性例外词＋血压阈值与脏读值域，逐字段含顺序）＋ 同一份变异夹具 `fixtures/red_flag_mutations.json` 两端各施一遍、逐条必须拒且点名同一不变量 ＋ 12 类不变量覆盖面 ＋ advice 过裸子串红线（禁用词单一源 `fixtures/red_line_phrases.json`）＋ 文档内表条数须为派生真值 ＋ 镜像端由 `backend/tests/test_red_flag_rules.py` **原生** 32 项覆盖（含直接驱动导入期 raise） |
@@ -50,7 +52,7 @@
 - 分词：中文逐字 + 相邻二元组归一；查询小写、截断 500 字。
 - **标点与符号不入索引**（v1.24.0）：`tokenize` 先剔除 Unicode `\p{P}\p{S}` 与空白再切 n-gram。原因实测在 `CHANGELOG` 1.24.0——「，」曾以 df=54 成为检索词、罕见单字（如「来源」的「来」，df=1）拿到最高 IDF，一次偶然匹配即可让无关条目跃居榜首；双端同口径（`functions/lib/rag.js` ↔ `app/rag.py`），由 `retriever_parity` 的带标点查询 + 标点无关性双向断言锁定。
 - BM25：`K1=1.5`、`B=0.75`；`top_k` 钳制 1..10；稳定排序（分数降序 + 原文档序）。
-- 同义词扩展：34 组；症状→证据映射 60 键；红旗加权词 32 个（命中每条 +2）。
+- 同义词扩展：34 组；症状→证据映射 73 键；红旗加权词 32 个（命中每条 +2；词形取**指南侧**写法，口语侧输入由同义词表桥接，见 `PITFALLS.md` H5）。
 - 知识库：60 条 / 20 病种域（按 `scope` 首段去重），ICD-10 映射 55 条（余 5 条显式 `null` 待临床复核）。条数与域名数由 `tests/docs_link_guard.mjs` 现算对账，禁手抄。
 - 检索器可切换（注册表三档）：默认 `bm25`；`hybrid`（BM25+概念通道加权 RRF）与 `semantic`（BM25+语义近邻通道）均为 **opt-in**。
 - `semantic` 档（v1.9.0 起）：条目↔条目余弦邻接表由 `scripts/build_semantic_neighbors.py` 在**构建期**用本地 BAAI/bge-small-zh-v1.5（512 维，权重 sha256 记录在产物头）蒸馏，运行时**零模型/零网络/零向量服务**，纯查表且双端同源（`semantic_neighbors.js` ↔ `semantic_neighbors.py`）。

@@ -97,5 +97,35 @@ check(f"top_k 越界被钳制到 {MAX_TOP_K}", len(top_k_probe) <= MAX_TOP_K, st
 check("top_k 非法值（字符串/负数）不崩", isinstance(get_retriever("hybrid").search(QUERY, "x"), list)
       and isinstance(get_retriever("semantic").search(QUERY, -3), list))
 
+
+# ==== 第三十三轮：加权词表零死权重 + 口语侧桥（镜像面自有断言）====
+# 为什么补在镜像面而不是只靠 JS 端：kb_guard 与 retriever_parity 都在前端侧，
+# 镜像面此前对这条桥处于「被比对、没被断言」状态——比对只保证两端一致，不保证两端都对
+# （与本文件开头记的同一根因）。台账 #79 的口径就是「镜像面原生测试」。
+blob_l = "\n".join(str(e.get("text") or "").lower() for e in KNOWLEDGE_BASE)
+dead = [t for t in rag.RED_FLAG_KEYWORDS if str(t).lower() not in blob_l]
+check("红旗加权词全部在语料正文命中（死权重 == 0，第三十三轮由 8 收到 0）", dead == [], str(dead))
+
+canon_dead = [c for c in rag.SYNONYMS if str(c).lower() not in blob_l]
+check("同义词规范词的语料缺口点名（基线 6，补条目即下降）",
+      len(canon_dead) <= 6, f"{len(canon_dead)}/{len(rag.SYNONYMS)}: {canon_dead}")
+
+bridge_on = rag.reachable_flag_terms("冒冷汗伴胸痛")
+bridge_two = rag.reachable_flag_terms("孩子高热惊厥")
+check("口语查询「冒冷汗伴胸痛」经同义词表桥到指南侧加权词「出汗」", "出汗" in bridge_on, str(bridge_on))
+check("口语查询「高热惊厥」桥到「抽搐」", "抽搐" in bridge_two, str(bridge_two))
+check("桥反向对照：无症状查询零命中（否则上面两条恒真）",
+      rag.reachable_flag_terms("今天天气不错适合出门") == [],
+      str(rag.reachable_flag_terms("今天天气不错适合出门")))
+check("桥边界：空串与 None 不虚构加权词",
+      rag.reachable_flag_terms("") == [] and rag.reachable_flag_terms(None) == [])
+
+# 两条判据要咬合：桥能返回的词必须是「非死词」，否则死权重棘轮与桥各守各的、洞还在中间。
+probe_queries = ["冒冷汗伴胸痛", "孩子高热惊厥", "突发口唇肿胀", "腰痛伴大小便失禁", "婴幼儿果酱样大便"]
+reachable = sorted({t for q in probe_queries for t in rag.reachable_flag_terms(q)})
+still_dead = [t for t in reachable if str(t).lower() not in blob_l]
+check("桥可达的加权词集合本身零死权重（两条判据咬合，洞不落在中间）",
+      len(reachable) > 0 and still_dead == [], f"可达={reachable} 其中零命中={still_dead}")
+
 print(f"\nRESULT: {passed} pass / {failed} fail")
 sys.exit(1 if failed else 0)

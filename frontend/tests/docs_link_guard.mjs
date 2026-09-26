@@ -6,7 +6,7 @@
 import { readFileSync, existsSync, readdirSync, statSync } from "node:fs"
 import { dirname, resolve, relative, sep } from "node:path"
 import { fileURLToPath } from "node:url"
-import { KNOWLEDGE_BASE } from "../functions/lib/knowledge.js"
+import { KNOWLEDGE_BASE, RED_FLAG_KEYWORDS, SYMPTOM_TO_KB, SYNONYMS } from "../functions/lib/knowledge.js"
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..")
 let pass = 0
@@ -190,6 +190,32 @@ for (const file of mdFiles) {
     }
   }
 }
+// 第四~六族派生真值（第三十三轮 #51 的第一块落点）：知识库的另外三个计数。
+// 触发实测：本轮把 `docs/ARCHITECTURE.md` 的「症状→证据映射 60 键」核出来是 73——
+// 上一轮的 #91 只把**条数**扩了射程，同一段里的键数/组数/加权词数仍无人对账，
+// 说明「手抄计数」这一族的缺口是按"名词"逐个漏的，不是补一次就完。
+const KB_TALLIES = [
+  [/症状\s*(?:→|至|到)\s*证据映射\s*(\d+)\s*键/g, Object.keys(SYMPTOM_TO_KB).length, "症状→证据映射键数"],
+  [/同义词扩展[：:]?\s*(\d+)\s*组/g, Object.keys(SYNONYMS).length, "同义词组数"],
+  [/红旗加权词\s*(\d+)\s*个/g, RED_FLAG_KEYWORDS.length, "红旗加权词数"],
+]
+const tallySeen = {}
+for (const file of mdFiles) {
+  if (HISTORY_FILES.has(file)) continue
+  const text = mdOf(file)
+  for (const [re, truth, label] of KB_TALLIES) {
+    for (const m of text.matchAll(re)) {
+      tallySeen[label] = (tallySeen[label] || 0) + 1
+      if (Number(m[1]) !== truth) docClaims.push(`${file} → "${m[0]}" 应为 ${truth}（${label}现算）`)
+    }
+  }
+}
+const tallyTruths = KB_TALLIES.map(([, t, label]) => `${label}=${t}`).join("、")
+check(`文档中的知识库三个计数亦为派生真值（${tallyTruths}）`, docClaims.length === 0, docClaims.slice(0, 8).join(" | "))
+check(`三个计数判据各自有输入（每族 ≥1 处，实测 ${KB_TALLIES.map(([, , label]) => `${label}:${tallySeen[label] || 0}`).join("、")}）`,
+  KB_TALLIES.every(([, , label]) => (tallySeen[label] || 0) >= 1),
+  "某族扫到 0 处＝该族正则失效或文档已不写这个数，两种都要点名而不是静默")
+
 check(`文档中的套件数/工作流份数/知识库条数全部为派生真值（套件=${suiteCount}、工作流=${wfCount}、条目=${KB_COUNT}）`,
   docClaims.length === 0, docClaims.slice(0, 8).join(" | "))
 check(`该判据确有输入（扫到 ${countTotal} 处计数声明，≥3 才算在射程内）`, countTotal >= 3,

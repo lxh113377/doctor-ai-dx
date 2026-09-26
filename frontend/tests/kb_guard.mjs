@@ -5,7 +5,7 @@ import { execFileSync } from "node:child_process"
 import { existsSync, readFileSync } from "node:fs"
 import { fileURLToPath } from "node:url"
 import { KNOWLEDGE_BASE, RED_FLAG_KEYWORDS, SYMPTOM_TO_KB, SYNONYMS } from "../functions/lib/knowledge.js"
-import { evidenceForSymptoms } from "../functions/lib/rag.js"
+import { evidenceForSymptoms, reachableFlagTerms } from "../functions/lib/rag.js"
 
 const REPO = fileURLToPath(new URL("../../", import.meta.url))
 const AUTHORITY = REPO + "data/knowledge.json"
@@ -199,14 +199,44 @@ check("红旗词均可被检索层加权消费（长度≥2）",
   RED_FLAG_KEYWORDS.every((k) => String(k).trim().length >= 2),
   RED_FLAG_KEYWORDS.filter((k) => String(k).trim().length < 2).join(","))
 
-// 死权重棘轮：rag 的加权分支是「词命中查询 && 词命中语料正文」才计分，所以在 60 条正文里
-// 一次都不出现的词永远加不了分。第三十二轮实测基线 8 个（出冷汗/胸痛放射/高热惊厥/妊娠合并/
-// 果酱样便/鞍区麻木/大小便失禁/口唇肿胀）——只准降不准升：新增加权词必须真能在语料里命中。
-// 本轮不动词表本体：改它＝改检索行为，须配 31 例与检索地板重跑（台账 #94）。
-const DEAD_FLAG_MAX = 8
+// 死权重：加权分支要「词命中查询 && 词命中语料正文」才计分，所以在 60 条正文里
+// 一次都不出现的词永远加不了分。第三十二轮实测基线 8 个并把棘轮定为「只降不升」；
+// 第三十三轮把这 8 个词逐个改成语料真写的那个（出冷汗→出汗、胸痛放射→放射痛、
+// 高热惊厥→抽搐、妊娠合并→妊娠、果酱样便→果酱样、鞍区麻木→鞍区、
+// 大小便失禁→大小便、口唇肿胀→口唇），并重跑 50 例银标集与 20 例留出集：
+// 逐例读数零变化、四项聚合读数与基线逐位相同。于是棘轮升级为**零豁免**。
+// 故意保留 <= 形式而不写成 === 0：基线写在这里，谁把它扬回 8 就留下一行可审的改动。
+const DEAD_FLAG_MAX = 0
 const deadFlags = deadFlagTerms(RED_FLAG_KEYWORDS, KNOWLEDGE_BASE)
-check(`红旗加权词全部能在语料正文命中（死权重 ≤ 基线 ${DEAD_FLAG_MAX}，基线为第三十二轮实测）`,
-  deadFlags.length <= DEAD_FLAG_MAX, `实测 ${deadFlags.length}: ${deadFlags.join(",")}`)
+check(`红旗加权词全部能在语料正文命中（死权重 ≤ ${DEAD_FLAG_MAX}，第三十三轮由 8 收到 0）`,
+  deadFlags.length <= DEAD_FLAG_MAX, `实测 ${deadFlags.length}: ${deadFlags.join(",") || "无"}`)
+
+// 语料缺口名册：同义词表的规范词是「指南侧」名，它在语料正文里一次都不出现，
+// 就意味着这个临床概念在我们的指南语料里**真的没有内容**（不是写错了词形）。
+// 第二十七轮 kb_gap 扩库的前置测量就是这个口径；本轮把它从一次性测量变成常驻台账：
+// 基线 6（冷汗/心悸/关节痛/牙痛/排尿困难/咽异物感）只降不升，且逐条点名。
+const CORPUS_GAP_MAX = 6
+const canonList = Object.keys(SYNONYMS)
+const corpusGaps = deadFlagTerms(canonList, KNOWLEDGE_BASE)
+check(`同义词规范词的语料缺口 ≤ 基线 ${CORPUS_GAP_MAX}（第三十三轮实测，补条目即下降）`,
+  corpusGaps.length <= CORPUS_GAP_MAX,
+  `实测 ${corpusGaps.length}/${canonList.length} 个规范词在整库正文零命中: ${corpusGaps.join(",")}`)
+
+// 口语侧→指南侧的桥：加权词表改成指南侧词形后，医生输入里写的是口语侧，
+// 必须由同义词表把它桥到加权词上，否则「词表修好了但永远不触发」。
+// 反例实测：把 rag 的匹配面改回只扫原始 q，下面两条立刻红（第三十三轮本地演练过）。
+const bridgeOne = reachableFlagTerms("冒冷汗伴胸痛")
+const bridgeTwo = reachableFlagTerms("孩子高热惊厥")
+check(`口语查询「冒冷汗伴胸痛」经同义词表桥到指南侧加权词`, bridgeOne.includes("出汗"),
+  `实测够得着的加权词: ${bridgeOne.join(",") || "无"}`)
+check(`口语查询「高热惊厥」桥到「抽搐」`, bridgeTwo.includes("抽搐"),
+  `实测够得着的加权词: ${bridgeTwo.join(",") || "无"}`)
+// 桥也得有反向对照：无临床符号的查询必须一个都加不上，否则上面两条恒真。
+const bridgeNeg = reachableFlagTerms("今天天气不错适合出门")
+check("桥反向对照：无症状查询加权词零命中（否则上面两条恒真）", bridgeNeg.length === 0,
+  `实测命中: ${bridgeNeg.join(",")}`)
+check("桥边界：空查询与 null 不得虚构加权词",
+  reachableFlagTerms("").length === 0 && reachableFlagTerms(null).length === 0, "")
 
 console.log("== 双端数据零漂移（knowledge.js 与 knowledge.py 均为 data/knowledge.json 的生成物）==")
 const pyMirror = fileURLToPath(new URL("../../backend/app/knowledge.py", import.meta.url))
@@ -280,14 +310,23 @@ if (auth) {
 
   const DEAD_PROBE = "整库不存在的加权词样例"
   const m3 = deadFlagTerms([...RED_FLAG_KEYWORDS, DEAD_PROBE], KNOWLEDGE_BASE)
-  check("M3 加一个语料正文里不存在的加权词 → 死权重棘轮点名（数据本身三方自洽，证明它不是三方全等的影子）",
+  check("M3 加一个语料正文里不存在的加权词 → 零豁免判据点名（数据本身三方自洽，证明它不是三方全等的影子）",
     m3.length === deadFlags.length + 1 && m3[m3.length - 1] === DEAD_PROBE, `实测 ${m3.length} vs 基线 ${deadFlags.length}`)
-  // 反向对照：把 8 个死词之一换成"语料正文里确实出现"的词，死权重数必须**恰好少一个**。
-  // 少了这条，棘轮就可能实际在量"词表非空"而看起来像在量"是否出现"。
-  const swapFrom = deadFlags[0]
-  const m3b = deadFlagTerms(RED_FLAG_KEYWORDS.map((t) => (t === swapFrom ? "胸痛" : t)), KNOWLEDGE_BASE)
-  check(`M3 反向对照：把「${swapFrom}」换成语料里出现的词，死权重数应恰好少一个`,
-    m3b.length === deadFlags.length - 1 && !m3b.includes(swapFrom), `实测 ${m3b.length} vs 基线 ${deadFlags.length}`)
+  // 反向对照（第三十三轮重写）：旧写法拿 deadFlags[0] 当换换对象，基线收到 0 后它变成
+  // undefined，于是"恰好少一个"永远不成立——零基线时它自己就是一条必红的判据（本轮实测撞到）。
+  // 现在先注入再换回：注入后 1 → 把注入的死词换成语料真出现的词 → 回到 0。
+  // 这样无论基线是多少，此判据都在量"是否在语料出现"而不是"词表是否非空"。
+  const m3b = deadFlagTerms(m3.map((t) => (t === DEAD_PROBE ? "胸痛" : t)), KNOWLEDGE_BASE)
+  check("M3 反向对照：把注入的死词换成语料里确实存在的词，死权重数必须回到基线",
+    m3b.length === deadFlags.length && !m3b.includes(DEAD_PROBE),
+    `注入后 ${m3.length} → 换词后 ${m3b.length}，基线 ${deadFlags.length}`)
+  // 语料缺口名册同样双向：注入一个不存在的规范词 → 缺口数 +1；换成真出现的词 → 回到基线。
+  const gapProbe = "整库不存在的临床概念样例"
+  const gapPlus = deadFlagTerms([...canonList, gapProbe], KNOWLEDGE_BASE)
+  const gapSwap = deadFlagTerms(gapPlus.map((t) => (t === gapProbe ? "胸痛" : t)), KNOWLEDGE_BASE)
+  check("M5 语料缺口名册可注入可注销（不是抄一个数字当判据）",
+    gapPlus.length === corpusGaps.length + 1 && gapSwap.length === corpusGaps.length,
+    `+1=${gapPlus.length} 换回=${gapSwap.length} 基线=${corpusGaps.length}`)
 
   const mutTop = clone(auth)
   mutTop.extra_table = [{ id: "kb-900" }]

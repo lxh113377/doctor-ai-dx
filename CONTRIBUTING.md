@@ -43,6 +43,13 @@ cd frontend && npm run eval:live && npm run perf:gate   # 线上 live 复现 + �
 
 CI 会跑同样的东西；`main` 分支保护要求 `build-and-test` 与 `backend-test` 通过。
 
+**克隆后必须跑一次 `pre-commit install`**（第三十三轮 #95 收口）。`.pre-commit-config.yaml` 自 v1.6.1 就在仓里，
+但那是**本机钩子配置**，不是 CI 步骤——实测 v1.29.0 之前本机 `.git/hooks/pre-commit` 并不存在、`core.hooksPath` 未设，
+于是它是「配置在册、无人执行」。本轮的处置是**二选一里选了「写进文档」这一项**：不在 CI 另挂一份 `pre-commit run --all-files`，
+理由是那 12 个钩与上面 `npm test` / `lint` / `typecheck` 同源判据、只是换条链重跑，会把 CI 时长翻倍而不增加任何覆盖面。
+判据的覆盖面因此是：CI 守全部阻断项，`pre-commit` 只把同一批判据前移到提交前 30 秒。装好后用 `pre-commit run --all-files` 验一次，
+应为 12 个钩全跑（没装的人不会有任何提示——这就是本段存在的意义）。
+
 端到端回归的维护约定（v1.15.0 起）：E2E 刻意**不进** `npm test`（那条链被 c8 整体包裹算覆盖率，混入浏览器进程会污染口径，与 lint 同理，见 `frontend/lint.mjs` 头注）。
 它是"三条红线在真实浏览器渲染结果"这一层的唯一常驻证据——改视图、改文案、改样式时，五步链路断言与双视口溢出断言必须同步更新；
 新增页面请一并纳入 `e2e/app.spec.mjs` 的"五步全页面"循环（漏掉一页＝把最可能溢出的一半留在盲区，本轮实测就差点这么干）。
