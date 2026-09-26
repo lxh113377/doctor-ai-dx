@@ -5,7 +5,7 @@
 fastapi>=0.141.1
 uvicorn[standard]>=0.53.0
 httpx>=0.28.1
-pydantic>=2.8
+pydantic>=2.13.5
 python-dotenv>=1.2.3
 # 显式声明：scripts/branch_guard.py 要解析 ci.yml（此前它只作为 uvicorn[standard] 的传递依赖存在）。
 # 把"靠传递依赖"写成声明依赖，是 lock_guard 的「声明⊆锁」对账能真正管住它的前提。
