@@ -43,6 +43,18 @@
   **可寻址的 FHIR server**，而我方 Bundle 是 `/api/dx` 响应内嵌的产物，挂上去要先把 MVP 改造成持久化
   FHIR 后端——那是产品定位变更，不是测试补强。以「改判」形态登记，不留悬空 P1。
 
+- **失败面如实登记（同一轮的第一次 CI 红因，是我自己写的诊断步骤）**：`live-browser` 首次推送即把
+  `infra-lint` 作业判红——`actionlint` 报 `live-smoke.yml:88:9: shellcheck SC1073 error: Couldn't parse
+  this command expansion`（外加 SC1009/SC1072）。红因不是新用例，而是那条「失败时把线上真实版本打进摘要」的
+  `run` 块：写成 `echo "…$(curl … || echo 取不到（连接层失败）)"`，全角括号落在命令替换内部把 shellcheck
+  解析器顶死了；同一次编辑还**残留了旧草稿的第二个 `{ … } >> $GITHUB_STEP_SUMMARY` 块没删**（同族 #118：
+  追加新行没删旧行）。修法是把两条 curl 各自先赋给变量、摘要只 echo 变量，删掉重复块。
+  本机验证面受限如实写明：`docker info` 报 daemon 不在（`failed to connect to the docker API at
+  npipe:…dockerDesktopLinuxEngine`）、`shellcheck`/`actionlint` 均不在 PATH ⇒ 无法本机复现 CI 侧 lint
+  （这正是台账 #47 记着的差距）；退而取可得的最强验证——用脚本从 YAML 里抽出全部 3 个 `run: |` 块落盘后
+  `bash -n` 逐个过（3/3 parse），并全仓扫描「命令替换内含全角/全角标点」形态确认只剩注释里那一条举例。
+  教训入形：**给失败路径写的诊断代码，本身必须无能力让作业再红一次。**
+
 ## [1.36.0] - 2026-09-27
 
 第三十九轮开源对标收口。本轮的两条主张：**给金标准补第二个可复现的测量面**（台账 #116），

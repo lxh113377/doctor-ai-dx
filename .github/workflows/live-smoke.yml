@@ -85,20 +85,25 @@ jobs:
       - name: 失败时把线上真实版本与入口健康态打进摘要（区分"站点没了"与"渲染坏了"两类红因）
         if: failure()
         shell: bash
+        # 写作约束（第四十轮 CI 实测）：本块曾被 shellcheck 判 SC1073 解析失败——形态是
+        # "双引号串里嵌 $(curl … || echo 取不到（连接层失败）)"，多字节全角括号落在命令替换内。
+        # CI 侧 lint 是唯一权威（本机无 docker 守护进程，跑不了 rhysd/actionlint），故这里改成
+        # 先各自取值到变量、再只 echo 变量：诊断步骤本身不许把作业再弄红一次（失败面必须无能力失败）。
         run: |
           BASE="https://doctor-ai-dx.pages.dev"
+          HEALTH="$(curl -s -m 20 "$BASE/api/health")" || HEALTH=""
+          HTTPCODE="$(curl -s -o /dev/null -w '%{http_code}' -m 20 "$BASE")" || HTTPCODE="000"
+          if [ -z "$HEALTH" ]; then
+            HEALTH="UNREACHABLE"
+          fi
           {
-            echo "### live 浏览器回归失败现场"
+            echo '### live 浏览器回归失败现场'
             echo
-            echo "- GET /api/health：$(curl -s -m 20 "$BASE/api/health" || echo 取不到（连接层失败）")"
-            echo "- GET / 状态码：$(curl -s -o /dev/null -w '%{http_code}' -m 20 "$BASE" || echo 连接失败)"
+            echo "- BASE: $BASE"
+            echo "- GET /api/health 响应体: \`$HEALTH\`"
+            echo "- GET / 状态码: $HTTPCODE"
+            echo "- 读数说明: health 为 UNREACHABLE 或状态码为 000 ⇒ 站点/网络层问题；两者正常而作业红 ⇒ 渲染或断言问题"
           } >> "$GITHUB_STEP_SUMMARY"
-          { echo '### live 浏览器回归失败现场'; echo
-            echo "- health: \`(curl -s -m 20 $LIVE_URL_BASE/api/health || echo 取不到）\`"
-            echo "- 主页 HTTP: \$(curl -s -o /dev/null -w '%{http_code}' -m 20 ${LIVE_URL_BASE:-https://doctor-ai-dx.pages.dev} || echo 连接失败)"
-          } >> "$GITHUB_STEP_SUMMARY"
-        env:
-          LIVE_URL_BASE: https://doctor-ai-dx.pages.dev
 
   # 第二十四轮对标落地：peer 侧 openemr 有 `docker/container_benchmarking/`、ragflow 有 `test/benchmark/`，
   # 而我方 docs/EVAL_CARD.md 的 p50 4.1s / p95 4.73s 长期是**一次本机运行的记录**——产出脚本不在仓里
