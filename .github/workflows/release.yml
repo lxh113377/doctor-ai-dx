@@ -18,6 +18,7 @@ on:
 
 permissions:
   contents: write
+  actions: read     # 第四十轮 #47：发布前置要读同提交在 ci.yml 上的结论
   packages: write   # 第二十二项：镜像推 GHCR 需要（只在本工作流的出包之后才用）
 
 jobs:
@@ -43,6 +44,15 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
         with:
           python-version: "3.12"
+
+      - name: 发布前置——该 tag 的 commit 在 ci.yml 上必须全绿（台账 #47 的机制化）
+        # 红因是实测不是推测：本轮 d5e197f 的 CI 判红（infra-lint SC1073），而同一时刻
+        # `Release artifacts (tag)` 跑完并 success；v1.21.0 / v1.32.0 也是同形事故（#47 已第 N 次）。
+        # 四态：FAIL/PENDING 拦停，PASS 放行，UNVERIFIED（该 commit 无 ci.yml 运行记录）放行但 loudly 记——
+        # 新指标先量误报率再接线，取不到数不假装已核。绕闸的正确做法是修 CI 后重锚 tag，不是删这一步。
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python scripts/release_ci_gate.py --ref "${TAG}"
 
       - name: Install（运行时从锁安装 + dev 件，与 ci.yml 同源）
         # **必须分两条命令**：`--require-hashes` 会作用于该次 pip 的**全部**需求输入，

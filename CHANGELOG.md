@@ -5,6 +5,27 @@
 
 ## [Unreleased]
 
+- **台账 #47 机制化｜`scripts/release_ci_gate.py` 接进 `release.yml` 出包链**（落点在第 4 个 step，
+  在 `npm ci` 之前——拦停要便宜）。复发证据（实测非推测）：本轮 `d5e197f` 的 `CI - build & deploy` 判红
+  （infra-lint SC1073）的**同一时刻** `Release artifacts (tag)` 跑完并 success；更早 v1.21.0、v1.32.0
+  也是"从一个红的提交出了工件"。同一族 ≥3 次 ⇒ 按复发性硬门槛当轮必须交机器载体，不再写"下次注意"。
+  - 四态判定（`decide()` 写成纯函数，夹具在内存造输入驱动，不落盘不 fork）：
+    **FAIL**（有已完成且非 success 的 run，含 `cancelled`/`startup_failure`）与 **PENDING**（还有 run 在跑）⇒ `rc=1` 拦停；
+    **PASS** ⇒ `rc=0`；**UNVERIFIED**（该 commit 在 `ci.yml` 上零运行记录）⇒ `rc=0` 但 loudly 记——
+    新指标先量误报率再接线，取不到数不假装已核，也不让"我没数据"冒充"我核过了"。
+  - 四向实测（真样本，不是夹具）：`--ref d5e197f` ⇒ `FAIL 红 run=1：…/runs/36288312587 (conclusion=failure)` rc=1；
+    `--ref v1.37.0`（解引用到 `b2da019`）⇒ `PASS 全部绿（completed run=1）` rc=0；
+    传显示名 `--workflow "CI - build & deploy"` ⇒ 自动解析到文件名后**同样判红**；
+    `--ref v9.99.9`（不存在的 tag）⇒ `UNVERIFIED` 并打出 git 的原始报错，不静默。
+    `--selftest` 6/6，其中「绿 + 在跑」必须判 PENDING、「零 run」必须判 UNVERIFIED 两条就是变异体的专属输入面。
+  - 过程踩到的两个真坑（都写进注释）：`gh api` 的 runs 端点**只认文件名或数字 ID**，传显示名 HTTP 404；
+    GET 的查询参数必须拼进 URL，用 `-f` 会进请求体 ⇒ 同样 404。这两个坑的**危险形态**是"闸在跑但永远 404"，
+    于是每条 tag 都读成 UNVERIFIED 而无人察觉——所以解析函数认不出时原样送回、由上层把原因打进输出。
+  - 顺带：`release.yml` 的 `permissions` 补 `actions: read`（读同提交的 run 结论所需）。
+  - 本机验证面如实登记：`codespell` 不在 PATH（`command not found`），由 pre-commit 的 13 钩与 CI infra-lint 覆盖；
+    `ruff`/`mypy`/`type_gate`（39 文件 0 错误）/`suite_guard`/`action_pin`(15/15)/`check_text_hygiene` 本机全过。
+
+
 ## [1.37.0] - 2026-09-27
 
 第四十轮开源对标收口。本轮的主张是**把 live 分支第一次放进浏览器级回归**（台账 #24，挂账 6 轮），
