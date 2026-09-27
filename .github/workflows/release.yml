@@ -432,7 +432,11 @@ jobs:
             gh release edit "$TAG" --notes-file dist-release/NOTES.md
           fi
           cd dist-release
-          gh release upload "$TAG" doctor-ai-dx-source-*.zip frontend.cdx.json backend.cdx.json SHA256SUMS.txt --clobber
+          # 上传清单必须显式带上 *.sha256 旁挂：第四十二轮 CI 实测——旁挂在 dist-release/ 里生成好了、
+          # 仓内「旁挂 ⇄ 台账」对账也打了 3 份一致，但这条**白名单**没含它们，
+          # 于是 Release 上 assets=4（旁挂 0 份）。白名单是「派生件即第二真值」的第三种形态：
+          # 生成面与交付面各写一份清单，加一类工件时必须同轮改两处，否则新工件只在本地存在。
+          gh release upload "$TAG" doctor-ai-dx-source-*.zip frontend.cdx.json backend.cdx.json SHA256SUMS.txt *.sha256 --clobber
           cd ..
           gh release view "$TAG" --json tagName,assets,body --jq '"assets=" + ([.assets[].name] | join(",")) + " body_len=\(.body|length)"'
 
@@ -468,7 +472,15 @@ jobs:
         run: |
           set -e
           rm -rf /tmp/verify && mkdir -p /tmp/verify && cd /tmp/verify
-          gh release download "$TAG" -p 'SHA256SUMS.txt' -p '*.sha256' -p '*.zip' -p '*.cdx.json'
+          # `--repo` 不是可选装饰：`cd /tmp/verify` 之后 cwd 已离开仓库，gh 退回"从 git remote 猜仓库"，
+          # CI 侧当场 `failed to run git: fatal: not a git repository` 退出 1（run 36296156410 第 27 步）。
+          # 本机三向实测当时 cwd 都在仓库内 ⇒ **第二个入口没被跑到**（同族铁律，登记台账 #130）。
+          # 拉取失败另起一行具名报错：三方实算没有输入时，读者要看到的是"拉不回什么"，不是 gh 的 git 抱怨。
+          if ! gh release download "$TAG" --repo "$GITHUB_REPOSITORY" \
+               -p 'SHA256SUMS.txt' -p '*.sha256' -p '*.zip' -p '*.cdx.json'; then
+            echo "::error::从远端拉不回资产（repo=$GITHUB_REPOSITORY tag=$TAG）＝三方实算没有输入，不许记绿"
+            exit 1
+          fi
           norm_ledger() {
             awk '{ f = $2; sub(/^\*/, "", f); sub(/^\.\//, "", f); print f " " $1 }' SHA256SUMS.txt
           }
