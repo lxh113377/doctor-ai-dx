@@ -140,11 +140,12 @@ repos:
       # 入口面的相对轮次词看守（第四十三轮，#106「手抄快照必然过期」的代词形态）。
       # 起因是实测：第四十一轮在 AGENTS 里写的「本轮实测 8/8 ALL PASS」到第四十二轮就已指错对象，
       # 而那句话读起来仍然通顺——数字过期会被判据抓到，代词过期没人抓。
-      # 射程只含 AGENTS/README/CONTRIBUTING/SECURITY 四面；CHANGELOG 与 docs/* 是按版本组织的历史
-      # 叙述体，故意留在射程外（扩面前须先逐处补绝对锚点，理由写进脚本头注，不悄悄扩面）。
+      # 射程＝AGENTS/README/CONTRIBUTING/SECURITY 四面 + docs/*.md（v1.41.0 扩面：docs 内 29+3 行相对
+      # 轮次词已逐处补绝对锚点，扩面与补锚同笔提交）。CHANGELOG 仍在射程外——它按版本组织，
+      # 每节自带 `## [x.y.z]` 锚点，且历史叙述体里的「本轮」指代当时那一版，不该被改写。
       - id: round-wording-guard
         name: 入口面相对轮次词看守（禁「本轮/上一轮」；「本次提交」类不误报）
         entry: python scripts/round_wording_guard.py --quiet
         language: system
         pass_filenames: false
-        files: ^(AGENTS|README|CONTRIBUTING|SECURITY)\.md$
+        files: ^(AGENTS|README|CONTRIBUTING|SECURITY)\.md$|^docs/[^/]+\.md$
