@@ -1,7 +1,7 @@
 {
   "name": "doctor-ai-dx-frontend",
   "private": true,
-  "version": "1.35.0",
+  "version": "1.36.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -28,7 +28,7 @@
     "test:api": "node tests/api_contract_guard.mjs",
     "test:error-parity": "node tests/error_parity_guard.mjs",
     "test:bundle": "node tests/bundle_size_guard.mjs",
-    "test": "npm run test:smoke && npm run test:engine && npm run test:accuracy && npm run test:abstain && npm run test:scope && npm run test:table && npm run test:negation && npm run test:retrieval && npm run test:retrieval-parity && npm run test:repetition && npm run test:register && npm run test:semantic && npm run test:live && npm run test:contract && npm run test:fhir && npm run test:kb && npm run test:route && npm run test:privacy && npm run test:env && npm run test:limits && npm run test:docs && npm run test:api && npm run test:error-parity && npm run test:components && npm run test:version",
+    "test": "npm run test:smoke && npm run test:engine && npm run test:accuracy && npm run test:gold2 && npm run test:abstain && npm run test:scope && npm run test:table && npm run test:negation && npm run test:retrieval && npm run test:retrieval-parity && npm run test:repetition && npm run test:register && npm run test:semantic && npm run test:live && npm run test:contract && npm run test:fhir && npm run test:kb && npm run test:route && npm run test:privacy && npm run test:env && npm run test:limits && npm run test:docs && npm run test:api && npm run test:error-parity && npm run test:components && npm run test:version",
     "test:retrieval-parity": "node tests/retriever_parity.mjs",
     "test:repetition": "node tests/repetition_guard.mjs",
     "test:components": "vitest run",
@@ -65,7 +65,8 @@
     "probe:ood": "node tests/ood_probe.mjs",
     "probe:register": "node tests/register_probe.mjs",
     "test:register": "node tests/register_probe.mjs",
-    "probe:ablation": "node tests/bonus_ablation.mjs"
+    "probe:ablation": "node tests/bonus_ablation.mjs",
+    "test:gold2": "node tests/gold_second_source.mjs"
   },
   "dependencies": {
     "react": "^19.3.0",

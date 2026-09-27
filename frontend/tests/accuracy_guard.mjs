@@ -46,7 +46,10 @@ for (const g of gold.cases) {
 // 上一版写 `/阻塞/` 本意是"视网膜中央动脉阻塞"，却把"慢性**阻塞**性肺疾病"也算成危急 ⇒ 主指标分母虚高
 // （第二十八轮实测：31 例里 23 例被判危急，其中 ev-09 只是普通上感）。同类错误第二次犯（#50 的抽样、#59 的小节），
 // 故这里改为显式词表，并在下面打印每个词命中了几例——分母怎么来的必须能看见。
-const CRITICAL_TERMS = ["急症", "红旗", "危重", "需急诊", "需转诊", "动脉阻塞", "夹层", "栓塞", "异位妊娠", "脓毒症", "会厌", "出血", "梗死", "休克", "套叠", "马尾"]
+const CRITICAL_TERMS = JSON.parse(readFileSync(new URL("./fixtures/critical_terms.json", import.meta.url), "utf8")).terms
+if (!Array.isArray(CRITICAL_TERMS) || CRITICAL_TERMS.length < 10) {
+  bad(`危急词表读空或过短（${Array.isArray(CRITICAL_TERMS) ? CRITICAL_TERMS.length : "非数组"} 条）⇒ 主指标分母无从谈起`)
+}
 const termHits = {}
 let top1 = 0
 let top3 = 0
