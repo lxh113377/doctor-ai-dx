@@ -1,0 +1,24 @@
+name: 前端 Node 环境（钉版 setup-node + npm 缓存）
+description: >-
+  第四十一轮 #46 的第一份 composite action：把此前在 ci.yml(×2)/live-smoke.yml/release.yml
+  各抄一份的 setup-node 序列收进一处。peer 形态现取（gh api，2026-09-27）：
+  `openemr/openemr` 的 `.github/actions` 有 6 份 composite（其一同为"多架构驱动安装"），
+  而 `infiniflow/ragflow`／`cqframework/clinical_quality_language`／`bloodworks-io/phlox`
+  均无该目录——差距不在工作流份数，在**改一次环境要改几处**。
+  钉版仍然写在这里（40 位提交号 + 人读版本注释），由 `scripts/action_pin.py` 统一射程覆盖。
+author: lxh113377
+
+inputs:
+  node-version:
+    description: Node 主版本（默认 22，与 .nvmengine/CI 其余作业同源）
+    required: false
+    default: "22"
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v7.0.0
+      with:
+        node-version: ${{ inputs.node-version }}
+        cache: npm
+        cache-dependency-path: frontend/package-lock.json

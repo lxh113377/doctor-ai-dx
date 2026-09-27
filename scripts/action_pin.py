@@ -29,9 +29,13 @@ import urllib.error
 import urllib.request
 from collections.abc import Callable, Iterable
 from pathlib import Path
+from typing import cast
 
 REPO = Path(__file__).resolve().parents[1]
 WF_DIR = REPO / ".github" / "workflows"
+ACT_DIR = REPO / ".github" / "actions"
+ACT_REL = ".github/actions"
+CONSOLIDATION_FIXTURE = REPO / "frontend" / "tests" / "fixtures" / "ci_consolidation.json"
 API = "https://api.github.com"
 
 # 一条 `uses:` 行拆成：前导空白与可选短横、目标 owner/repo[/sub/path]、ref、行尾剩余内容。
@@ -42,6 +46,10 @@ USES_RE = re.compile(
     r"(?P<tail>.*)$"
 )
 USES_ANY_RE = re.compile(r"^\s*-?\s*uses:\s*$|^\s*-?\s*uses:\s+\S")
+# composite action 的本地引用形如 `uses: ./.github/actions/<name>`，**没有 @ref**。
+# 此前枚举器不认它 ⇒ 落进「uses 行解析不了」判红（第四十一轮实测：加第一份 composite 即红 4 处），
+# 而不是被当成一类引用受判据保护。Pin.is_local 这个属性早就写好了，缺的只是让它出现的正则。
+LOCAL_USES_RE = re.compile(r"^(?P<head>\s*-?\s*uses:\s*)(?P<target>\./[^\s#]+)(?P<tail>.*)$")
 SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 TAG_IN_TAIL_RE = re.compile(r"#\s*(?P<tag>\S+)")
 TOP_KEY_RE = re.compile(r"^(?P<key>[A-Za-z_][\w-]*):(?:\s*(?P<val>\S.*))?$")
@@ -97,7 +105,29 @@ def read_workflows() -> list[tuple[str, str]]:
     if not WF_DIR.is_dir():
         print(f"[GATE:action-pin-fail] 工作流目录不存在：{WF_DIR}", file=sys.stderr)
         raise SystemExit(2)
-    return [(p.name, p.read_text(encoding="utf-8")) for p in sorted(WF_DIR.glob("*.y*ml"))]
+    faces = [(p.name, p.read_text(encoding="utf-8")) for p in sorted(WF_DIR.glob("*.y*ml"))]
+    # composite action 里也能写 `uses:` ——不扫它，钉版判据就对这一面完全失明（同族：#47 的取数面缺口）
+    if ACT_DIR.is_dir():
+        for ap in sorted(ACT_DIR.glob("*/action.y*ml")):
+            faces.append((f"{ACT_REL}/{ap.parent.name}/{ap.name}", ap.read_text(encoding="utf-8")))
+    return faces
+
+
+def default_action_exists(target: str) -> bool:
+    """本地引用 `./.github/actions/<name>` 是否在盘上有 action.yml。"""
+    rel = target[2:] if target.startswith("./") else target
+    base = REPO / rel
+    return (base / "action.yml").is_file() or (base / "action.yaml").is_file()
+
+
+def read_consolidation_ceiling() -> int | None:
+    """#46 收口棘轮的上限来自 fixture（唯一源）；读不到就返回 None，由判据记红而不是跳过。"""
+    try:
+        data = json.loads(CONSOLIDATION_FIXTURE.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    v = data.get("inline_setup_node_max")
+    return v if isinstance(v, int) and not isinstance(v, bool) else None
 
 
 def iter_pins(files: Iterable[tuple[str, str]]) -> tuple[list[Pin], list[str]]:
@@ -114,6 +144,11 @@ def iter_pins(files: Iterable[tuple[str, str]]) -> tuple[list[Pin], list[str]]:
                 continue
             m = USES_RE.match(line)
             if m is None:
+                lm = LOCAL_USES_RE.match(line)
+                if lm is not None:
+                    # ref 为空串：is_local=True，因此不参与钉版/上游对账（那是外部 action 的判据）
+                    pins.append(Pin(fname, lineno, lm.group("target"), "", lm.group("head"), lm.group("tail")))
+                    continue
                 if USES_ANY_RE.match(line):
                     unparsed.append(f"{fname}:{lineno}: {line.strip()}")
                 continue
@@ -284,10 +319,18 @@ def local_checks(
     unparsed: list[str],
     min_workflows: int = MIN_WORKFLOWS,
     min_pins: int = MIN_PINS,
+    action_exists: Callable[[str], bool] | None = None,
+    inline_ceiling: int | None = None,
+    ceiling_provider: Callable[[], int | None] | None = None,
 ) -> list[Row]:
-    names = sorted({f for f, _ in files})
+    # 取数面分两层：composite 文件参与**钉版类**判据（它里面也能写 uses），
+    # 但不参与**工作流级**判据（permissions / pull_request_target / checkout 凭据只对 workflows 有意义）。
+    wf_files = [(f, txt) for f, txt in files if not f.startswith(ACT_REL + "/")]
+    act_files = [(f, txt) for f, txt in files if f.startswith(ACT_REL + "/")]
+    exists = action_exists or default_action_exists
+    names = sorted({f for f, _ in wf_files})
     rows: list[Row] = [
-        ("覆盖面：工作流数量达下限", len(files) >= min_workflows, f"workflows={len(files)} 下限={min_workflows}"),
+        ("覆盖面：工作流数量达下限", len(wf_files) >= min_workflows, f"workflows={len(wf_files)} 下限={min_workflows}"),
         ("覆盖面：action 引用数达下限", len(pins) >= min_pins, f"uses={len(pins)} 下限={min_pins}"),
         ("每条 uses 行都能被枚举器解析", not unparsed, "; ".join(unparsed) or "无"),
     ]
@@ -309,10 +352,10 @@ def local_checks(
     rows.append(("同一 action 全仓只钉一个提交号", not split,
                  "; ".join(f"{t} -> {sorted(x[:8] for x in s)}" for t, s in sorted(split.items())) or "无"))
 
-    grant_map = {f: all_grants(t) for f, t in files}
+    grant_map = {f: all_grants(t) for f, t in wf_files}
     # 取「顶层显式 permissions 块」为在场判据：与 phlox 4/4 同一取向——默认最小权限写在文件顶层，
     # job 级只作为可见增量存在；否则"忘了写"与"故意不写"在文件里长得一模一样。
-    text_of: dict[str, str] = dict(files)
+    text_of: dict[str, str] = dict(wf_files)
     no_perms = [f for f in names if scan_permissions(text_of[f])[0] is None]
     rows.append(("每份工作流顶层显式声明 permissions", not no_perms, "; ".join(no_perms) or "无"))
 
@@ -326,16 +369,36 @@ def local_checks(
                if v == "write" and s.split("/")[-1] in NEVER_WRITE]
     rows.append(("最小权限：禁止的写权限零出现", not illegal, "; ".join(illegal) or "无"))
 
-    prts = [f"{f}:{ln}" for f, t in files for ln, line in enumerate(t.splitlines(), 1)
+    prts = [f"{f}:{ln}" for f, t in wf_files for ln, line in enumerate(t.splitlines(), 1)
             if re.match(r"^\s*pull_request_target\s*:", line)]
     rows.append(("不使用 pull_request_target（fork 可拿 secrets）", not prts, "; ".join(prts) or "无"))
 
     cred: dict[str, str] = {}
-    for fname, text in files:
+    for fname, text in wf_files:
         cred.update(checkout_credential_state(text, [p for p in pins if p.fname == fname]))
     bad = {k: v for k, v in cred.items() if v != "false" and k.split(":")[0] not in CREDENTIALED_ALLOW}
     rows.append(("checkout 一律不留持久凭据（persist-credentials: false）", not bad,
                  "; ".join(f"{k}={v}" for k, v in sorted(bad.items())) or "无"))
+
+    # —— 第四十一轮 #46：composite action 的三条配套判据 ——
+    local_refs = [pin for pin in pins if pin.is_local]
+    missing = [f"{pin.where()} -> {pin.target}" for pin in local_refs if not exists(pin.target)]
+    rows.append(("本地 action 引用指向的 action.yml 在场（死引用只在运行时才红）", not missing,
+                 "; ".join(missing) or "无"))
+
+    inline = sum(len(re.findall(r"uses:\s+actions/setup-node@", txt)) for _, txt in wf_files)
+    provider = ceiling_provider or read_consolidation_ceiling
+    ceiling = inline_ceiling if inline_ceiling is not None else provider()
+    if ceiling is None:
+        rows.append(("覆盖面：内联 setup-node 段数受棘轮约束", False,
+                     f"上限取不到（fixture 缺失/非法：{CONSOLIDATION_FIXTURE}）＝判据失效，不许记绿；实测内联={inline}"))
+    else:
+        rows.append(("覆盖面：内联 setup-node 段数不超收口上限（只降不升）", inline <= ceiling,
+                     f"内联={inline} 上限={ceiling} composite={len(act_files)}"))
+
+    orphan = [f for f, _ in act_files if not any(pin.target.endswith(f.split('/')[-2]) for pin in local_refs)]
+    rows.append(("composite action 不得成为无人引用的僵尸件", not orphan or not act_files,
+                 "; ".join(orphan) or f"composite={len(act_files)} 引用={len(local_refs)}"))
     return rows
 
 
@@ -371,7 +434,7 @@ def report(rows: list[Row], pin_count: int, file_count: int, quiet: bool = False
             continue
         print(f"{'PASS' if ok else 'FAIL'} :: {name}" + ("" if ok else f" :: {detail}"))
     print(f"[GATE:action-pin-{'pass' if not failed else 'fail'}] {len(rows) - len(failed)}/{len(rows)} 项通过"
-          f"（action 引用 {pin_count} 处，工作流 {file_count} 份）")
+          f"（action 引用 {pin_count} 处，取数面 {file_count} 份＝工作流+composite）")
     return 1 if failed else 0
 
 
@@ -471,7 +534,8 @@ def run_selftest() -> int:
     def none_provider(_t: str) -> dict[str, str] | None:
         return None
 
-    cases: list[tuple[str, list[tuple[str, str]], bool, bool, bool]] = [
+    # 末位是可选注入面（红因点名/桩 resolver/上限）——加宽类型，避免新增用例被 mypy 判成形态错
+    cases: list[tuple[object, ...]] = [
         ("正样本全绿（含上游对账通过）", good_files(), True, True, False),
         ("浮动 ref 判红", mutated(f"@{GOOD_SHA}  # v7.0.1", "@v7"), False, True, False),
         ("缺版本注释判红", mutated("  # v7.0.1", ""), False, True, False),
@@ -484,25 +548,62 @@ def run_selftest() -> int:
         ("checkout 未关持久凭据判红", mutated("        with:\n          persist-credentials: false\n", ""), False, True, False),
         ("同一 action 双提交号判红", good_files() + [("ci2.yml", GOOD_BODY.replace(GOOD_SHA, "2" * 40))], False, True, False),
         ("uses 行解析不了判红", good_files() + [("ci3.yml", GOOD_BODY + "  c:\n    steps:\n      -   uses:\n")], False, True, False),
+        # —— 第四十一轮 #46：composite action 的专属反例，每条绑定"只有它能使其变红"的输入面，
+        #    并断言红因就是那一条（不是"有任意红"就算过——同族铁律：反向自证恒假却长得像在自检）。
+        ("本地 action 死引用判红", good_files() + [("ci4.yml", GOOD_BODY.replace(
+            "- uses: actions/checkout@", "- uses: ./.github/actions/nope\\n      - uses: actions/checkout@"))],
+         False, True, False, {"action_exists": lambda _t: False, "red_sub": "action.yml 在场"}),
+        ("本地 action 引用合规判绿（正向对照：引用存在 + composite 入射程）", good_files() + [
+            ("ci6.yml", GOOD_BODY.replace("- uses: actions/checkout@",
+                                          "- uses: ./.github/actions/setup-node-frontend\\n      - uses: actions/checkout@")),
+            (".github/actions/setup-node-frontend/action.yml", GOOD_BODY)],
+         False, True, False, {"action_exists": lambda _t: True, "expect_green": True}),
+        ("composite 无人引用（僵尸件）判红", good_files() + [(".github/actions/x/action.yml", GOOD_BODY)],
+         False, True, False, {"red_sub": "僵尸件"}),
+        ("内联 setup-node 超棘轮上限判红", good_files() + [("ci5.yml", GOOD_BODY
+            + "\\n  s:\\n    steps:\\n      - uses: actions/setup-node@" + GOOD_SHA + "  # v7.0.0\\n")],
+         False, True, False, {"inline_ceiling": 0, "red_sub": "内联=1 上限=0"}),
+        ("上限取不到时判红（fixture 缺失不得静默放行）", good_files(), False, True, False,
+         {"ceiling_provider": lambda: None, "red_sub": "上限取不到"}),
         ("扫描面为空判红", _two(), False, True, True),
         ("上游读不到时判环境错误（不得记绿）", good_files(), False, False, False),
     ]
     passed = 0
-    for label, files, expect_green, network_ok, real_min in cases:
+    for case in cases:
+        # 用例形态 5 元或 6 元（末位是注入面），用 cast 收口而不是把 cases 放宽成 object 元组——
+        # 后者会让 mypy 在本仓"错误数必须为 0"的地板下直接判红。
+        label = str(case[0])
+        files = cast("list[tuple[str, str]]", case[1])
+        expect_green = cast("bool", case[2])
+        network_ok = cast("bool", case[3])
+        real_min = cast("bool", case[4])
+        opts = cast("dict[str, object]", case[5]) if len(case) > 5 else {}
         pins, unparsed = iter_pins(files)
         # 覆盖面判据按真值下限跑（否则"下限本身是否生效"永不被测）；其余样本用 1/1 以免误归因。
         mins = (MIN_WORKFLOWS, MIN_PINS) if real_min else (1, 1)
-        rows = local_checks(files, pins, unparsed, min_workflows=mins[0], min_pins=mins[1])
+        rows = local_checks(
+            files, pins, unparsed, min_workflows=mins[0], min_pins=mins[1],
+            action_exists=cast("Callable[[str], bool] | None", opts.get("action_exists")),
+            inline_ceiling=cast("int | None", opts.get("inline_ceiling")),
+            ceiling_provider=cast("Callable[[], int | None] | None", opts.get("ceiling_provider")),
+        )
         up_rows, unresolved = upstream_checks(pins, ok_provider if network_ok else none_provider)
         rows += up_rows
         bad = [n for n, ok, _ in rows if not ok]
+        bad_txt = [f"{n} :: {d}" for n, ok, d in rows if not ok]
         env_err = unresolved > 0
         if expect_green:
             ok = not bad and not env_err
         else:
             ok = bool(bad) or env_err
+        # 红因对不上＝等于没测（A-get-memory Step 2.7 硬判据②）：点名到那条判据**或其证据文本**，
+        # 否则"有任意一条红"也能让用例通过，而那条红可能与本用例的注入毫无关系。
+        sub = str(opts.get("red_sub") or "")
+        if sub and not any(sub in x for x in bad_txt):
+            ok = False
         print(f"{'ok  ' if ok else 'BAD '} :: {label}"
-              + ("" if ok else f" -> 判红项={bad or '无'} 环境错误={env_err}"))
+              + ("" if ok else f" -> 判红项={bad or '无'} 环境错误={env_err}"
+                 + (f" 期望红因含[{sub}]" if sub else "")))
         passed += 1 if ok else 0
     print(f"[GATE:action-pin-selftest-{'pass' if passed == len(cases) else 'fail'}] {passed}/{len(cases)}")
     return 0 if passed == len(cases) else 1

@@ -88,6 +88,15 @@ if (changelog) {
 console.log("== CHANGELOG 小节单调性（append-only 机器核）==")
 const headsOf = (text) => new Set([...text.matchAll(/^## \[([^\]]+)\][^\n]*$/gm)].map((m) => m[1]))
 const cur = headsOf(changelog)
+// 重复小节头判据（第四十一轮 #125）：**上面用的是 Set，重复会被静默吸收**——
+// 本轮我改 CHANGELOG 时误插了一个 `## [1.37.0]` 头，单调性判据照样 12 pass / 0 fail。
+// 危害不是难看：Release 正文由 CHANGELOG 按标题切节生成，重复头意味着正文可能取到错的那一节。
+const headList = [...changelog.matchAll(/^## \[([^\]]+)\][^\n]*$/gm)].map((m) => m[1])
+const dupHeads = [...new Set(headList.filter((h, k) => headList.indexOf(h) !== k))]
+check(`小节头零重复（Release 正文按标题切节，重复会取错节；现算小节头=${headList.length} 个）`,
+  dupHeads.length === 0, dupHeads.length ? `重复：${dupHeads.join(", ")}` : "无重复")
+check("重复判据自身有分母（小节头 <5＝解析失效，不许记绿）",
+  headList.length >= 5, `实测=${headList.length}`)
 // 环境判定：CI 的 actions/checkout 默认 depth 1 浅克隆 ⇒ 本地根本没有 tag。
 // 这条判据的发力点在**本地提交时**（本轮我就是用编辑器把 `## [1.23.0]` 整行弄丢的，pre-commit 跑得它）。
 // 所以：取到 tag ⇒ 硬核；浅克隆取不到 ⇒ **显式 SKIPPED**（既不静默记绿，也不做成 CI 里永远响的假警报）；

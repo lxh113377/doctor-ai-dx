@@ -5,6 +5,44 @@
 
 ## [Unreleased]
 
+## [1.38.0] - 2026-09-27
+
+第四十一轮开源对标收口。本轮的轴＝**维护状态那一维的真实差距不在工作流份数，在"改一次环境要改几处"**
+（台账 #46），以及**判据的取数面有没有跟着架构变化一起扩**。三条产品红线零触碰。
+
+- **第一份 composite action｜`.github/actions/setup-node-frontend/action.yml`（台账 #46 开工）**：
+  peer 现取对照（`gh api repos/<owner>/<name>/contents/.github/actions`）——
+  `openemr/openemr`（5,475★）有 **6 份** composite（其中 `setup-chromedriver-multiarch` 与我方
+  "多作业重复装驱动"同形）、`infiniflow/ragflow`／`cqframework/clinical_quality_language`／
+  `bloodworks-io/phlox` 均为 **404（无该目录）**。我方此前 4 处逐字重复同一段 setup-node
+  （`ci.yml`×2／`live-smoke.yml`×1／`release.yml`×1），现全部收进一处；`dep-audit.yml` 与
+  `link-health.yml` 形态不同（无 npm 缓存／无缓存），**如实留 2 处内联**并由棘轮钉住只降不升。
+- **取数面缺口（本轮最值钱的一条，靠"先看红"抓到）**：加完 composite 直接跑
+  `python scripts/action_pin.py --verify --offline` ⇒ `FAIL 每条 uses 行都能被枚举器解析 ::
+  ci.yml:31: uses: ./.github/actions/setup-node-frontend` ×4。根因：枚举器只认 `owner/repo@ref`，
+  而本地引用 `./…` **没有 @ref** ⇒ 新面不在钉版判据射程内（`Pin.is_local` 属性早就写好了，
+  缺的只是让它出现的正则——"概念有、防呆缺"的半已知形态）。若当时把这条判据放宽成"跳过 ./ 开头"，
+  composite 里的 action 就会**永久不受钉版保护**，而这正是 supply-chain 判据的全部意义。
+- **本轮为此新增三条判据（`scripts/action_pin.py`，取数面由 7 份工作流扩为 8 份＝工作流+composite）**：
+  ① 本地 action 引用指向的 `action.yml` 必须在场（死引用此前只在 CI 运行时才红）；
+  ② 内联 `setup-node` 段数 ≤ 上限，上限来自唯一源 `frontend/tests/fixtures/ci_consolidation.json`
+  （本轮实测 2），**只降不升；上限取不到（fixture 缺失/非法）判红而不是跳过**；
+  ③ composite 不得成为无人引用的僵尸件。
+  工作流级判据（顶层 permissions／`pull_request_target`／checkout 持久凭据）明确**不作用于** composite 文件，
+  避免把 composite 误判成"没写 permissions"。
+- **反向自证升级到"点名红因"**：`--selftest` 由 14 例增至 **19/19**，其中 5 例是本轮新增
+  （死引用／僵尸件／棘轮超限／上限取不到／**正向对照**"引用存在且 composite 入射程必须判绿"）。
+  并修掉这套自证本身的一处弱判据：原先只要求"有任意一条红"即算通过，现要求红因**点名到该条判据或其证据文本**
+  （`red_sub`）——否则"环境错误导致的红"也能让用例假过。首轮就有两例因红因对不上被判 BAD，正是这条弱判据被抓现行。
+  变异实测：把 `ci.yml` 的引用改成不存在的目录 ⇒ `rc=1` 且 `FAIL … ci.yml:31 -> ./.github/actions/does-not-exist`；
+  复原 ⇒ `rc=0 17/17`。
+- **继承上一轮的载体当轮兑现**：`scripts/shell_block_probe.py`（第四十轮第 14 只钩）本轮改动 4 份工作流时
+  实跑 **27/27 块通过**——上一轮"提交时全绿、CI 才红"的时机缺口这次没再出现。
+- **回归**：`npm test` 26 套件全绿、`pre-commit run --all-files` 14 钩全 Passed、
+  `type_gate` 检查 40 文件 0 错误（阈值 0）、`action_pin --selftest` 19/19、`--verify --offline` 17/17、
+  `gen_openapi.py --check` `OPENAPI OK: version=1.38.0 paths=6`。版本五处声明同步至 1.38.0。
+
+
 - **台账 #47 机制化｜`scripts/release_ci_gate.py` 接进 `release.yml` 出包链**（落点在第 4 个 step，
   在 `npm ci` 之前——拦停要便宜）。复发证据（实测非推测）：本轮 `d5e197f` 的 `CI - build & deploy` 判红
   （infra-lint SC1073）的**同一时刻** `Release artifacts (tag)` 跑完并 success；更早 v1.21.0、v1.32.0

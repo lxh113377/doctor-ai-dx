@@ -1,0 +1,6 @@
+{
+  "inline_setup_node_max": 2,
+  "as_of": "2026-09-27",
+  "measured_by": "scripts/action_pin.py（取数面=.github/workflows/*.y*ml 内联 `uses: actions/setup-node@` 计数）",
+  "note": "第四十一轮 #46 收口棘轮。基线由当轮实测得出（composite 抽走 4 处后剩 dep-audit 与 link-health 各 1 处），只降不升：新增内联 setup-node 即判红，删到 0 需同步改本字段并在 CHANGELOG 留名（破坏棘轮须留痕，同族 #110）。上限取不到时 action_pin 判红而不是跳过。"
+}
