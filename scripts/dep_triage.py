@@ -20,6 +20,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 import urllib.error
@@ -131,6 +132,37 @@ def _pr(n: int, days: int, marked: bool, now: datetime) -> dict[str, Any]:
             "labels": []}
 
 
+def permissions_block(text: str) -> str:
+    """顶层 `permissions:` 段的正文（作业级 permissions 缩进更深，故意不取——本判据对的是全流默认面）。"""
+    out, seen = [], False
+    for ln in text.splitlines():
+        if ln.startswith("permissions:"):
+            seen = True
+            continue
+        if seen:
+            if ln.startswith(" ") or not ln.strip():
+                out.append(ln)
+            else:
+                break
+    return "\n".join(out)
+
+
+def check_workflow_pairing(workflow_text: str) -> tuple[bool, str]:
+    """配对判据（第四十五轮）：本脚本**要读的 API** ⇄ **工作流声明的权限**，加上"有没有会真触发的通路"。
+
+    一手起因（实测）：`gh api …/workflows/dep-triage.yml/runs --jq .total_count` ⇒ **0**，
+    该作业自建仓以来一次都没跑过；而它的 `permissions` 只有 `contents: read`，本脚本取的是
+    `/repos/{repo}/pulls?state=open` ⇒ 就算哪天 cron 生效，第一次执行也是 403。
+    两个缺口同源：**"配了作业"既不代表它会被触发，也不代表它跑得通。**
+    """
+    wf = REPO / ".github" / "workflows" / "dep-triage.yml"
+    if not workflow_text:
+        return False, f"读不到 {wf} ⇒ 配对判据没有输入，不判绿"
+    granted = re.search(r"^\s*pull-requests:\s*read", permissions_block(workflow_text), re.M) is not None
+    fires = re.search(r"^  workflow_run:", workflow_text, re.M) is not None
+    return granted and fires, f"pull-requests:read={granted}｜会触发的通路 workflow_run={fires}"
+
+
 def run_selftest() -> int:
     now = datetime(2026, 9, 26, 12, 0, tzinfo=UTC)
     cfg = {"max_age_days": 14, "marker": "dep-triage:v1"}
@@ -157,7 +189,23 @@ def run_selftest() -> int:
         cfg_ok = False
     print(f"{'ok  ' if cfg_ok else 'BAD '} :: 阈值文件可读且合法（fixture 是判据的输入）")
     passed += 1 if cfg_ok else 0
-    total = len(cases) + 1
+    # ── 第四十五轮补的两条：真实工作流的"权限＋通路"配对，以及它自己的反向腿 ──────────────
+    try:
+        real_text = (REPO / ".github" / "workflows" / "dep-triage.yml").read_text(encoding="utf-8")
+    except OSError as bad:
+        real_text = ""
+        print(f"BAD  :: 读不到 dep-triage.yml：{type(bad).__name__} {bad}")
+    pair_ok, pair_detail = check_workflow_pairing(real_text)
+    print(f"{'ok  ' if pair_ok else 'BAD '} :: 真实工作流配对（pull-requests 权限＋会触发的通路）-> {pair_detail}")
+    passed += 1 if pair_ok else 0
+    neg_perm, _ = check_workflow_pairing("on:\n  workflow_run:\n    workflows: [x]\npermissions:\n  contents: read\n")
+    neg_trig, _ = check_workflow_pairing("on:\n  schedule: []\npermissions:\n  contents: read\n  pull-requests: read\n")
+    both = check_workflow_pairing("on:\n  schedule: []\npermissions:\n  contents: read\n")
+    neg_ok = (not neg_perm) and (not neg_trig) and (not both[0])
+    print(f"{'ok  ' if neg_ok else 'BAD '} :: 反例三向（缺权限红／缺通路红／只有 cron 红）"
+          f"-> 缺权限={not neg_perm} 缺通路={not neg_trig} 只有 cron={not both[0]}")
+    passed += 1 if neg_ok else 0
+    total = len(cases) + 3
     print(f"[GATE:dep-triage-selftest-{'pass' if passed == total else 'fail'}] {passed}/{total}")
     return 0 if passed == total else 1
 

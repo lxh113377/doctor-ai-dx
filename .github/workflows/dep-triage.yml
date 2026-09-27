@@ -9,10 +9,26 @@ name: Dependabot triage
 on:
   schedule:
     - cron: "0 3 * * 2"   # 每周二 11:00 UTC+8，与 dep-audit（周一）/link-health（周三）错开
+  # 第四十五轮补：本作业**创建至今 0 条 run**（`gh api …/workflows/dep-triage.yml/runs --jq .total_count` ⇒ 0），
+  # 也就是 r23 立的"超龄即判红"从来没判过一次。cron 保留但不指望（r44 已实测：本仓 event=schedule 全仓 0 触发，
+  # 形状合法与会不会发生是两件事）。挂 `workflow_run` 是因为**这条通路同轮已被证明确实会触发**
+  # （live-smoke／link-health 换同一条后当场拿到 run #1）。
+  workflow_run:
+    workflows: ["CI - build & deploy"]
+    types: [completed]
+    branches: [main]
   workflow_dispatch: {}
+
+concurrency:
+  group: dep-triage-${{ github.ref }}
+  cancel-in-progress: false
 
 permissions:
   contents: read
+  # 第四十五轮实测补的第二半：`scripts/dep_triage.py` 取的是 `/repos/{repo}/pulls?state=open`，
+  # 而这里原本只给 `contents: read` ⇒ 就算它哪天真被触发，第一次执行就会 403。
+  # "配了作业"与"作业跑得通"是两件事，缺的那条权限由 dep_triage.py 的自证腿钉住（判据 8）。
+  pull-requests: read
 
 jobs:
   triage:

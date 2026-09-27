@@ -23,10 +23,14 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import shutil
 import subprocess
 import sys
 from datetime import UTC, datetime
+from pathlib import Path
+
+import yaml  # 锁内已声明（与 branch_guard 同源）：不自己写 YAML 解析器
 
 #: 必须用 per-workflow 端点。实测两件事：
 #:   · `repos/{repo}/actions/runs?workflow=<file>` 的 `workflow` 参数被 API **忽略**（返回的是全仓混合 run）；
@@ -89,6 +93,48 @@ def decide(runs, workflow_file: str, now: datetime, max_age_days: float, artifac
     return ("PASS" if age_days <= max_age_days else "FAIL"), len(ok), readout
 
 
+def scheduled_workflows(workdir: Path) -> list[str]:
+    """列出**声明了 cron** 的工作流文件名（"在册排班"的枚举器，不靠人记）。"""
+    out = []
+    for f in sorted(workdir.glob("*.yml")) + sorted(workdir.glob("*.yaml")):
+        try:
+            doc = yaml.safe_load(f.read_text(encoding="utf-8")) or {}
+        except Exception:                      # noqa: BLE001 - 解析不动＝看不见的排班，更要点名
+            out.append(f.name)
+            continue
+        on = doc.get(True) or doc.get("on") or {}      # YAML 1.1 会把裸 `on` 解析成布尔真
+        if isinstance(on, dict) and on.get("schedule"):
+            out.append(f.name)
+    return out
+
+
+def patrolled_workflows(ci_text: str) -> list[str]:
+    """从 ci.yml 的 `--workflow <file>` 调用里枚举**已被巡检**的工作流。"""
+    return sorted(set(re.findall(r"live_freshness_guard\.py\s+--workflow\s+(\S+\.ya?ml)", ci_text)))
+
+
+def check_patrol_coverage(workdir: Path, ci_path: Path) -> tuple[bool, str]:
+    """配对判据（第四十五轮）：**声明了 cron 的作业，必须每一个都被新鲜度巡检覆盖。**
+
+    一手起因：r44 实测本仓 `event=schedule` 全仓 0 条 run，四条 cron 里只有两条被我按名字写了巡检步
+    ⇒ "在册的排班"与"被巡检的排班"是两个集合，缺的那一半会安静地永远不发生（dep-triage 就是这么躺着的）。
+    差集由两个枚举器现算，不写死名单。
+    """
+    if not ci_path.exists():
+        return False, f"读不到 {ci_path} ⇒ 巡检面无法核对，不判绿"
+    sched = scheduled_workflows(workdir)
+    if not sched:
+        return False, f"{workdir} 里一条 schedule 都没有 ⇒ 取数面空（不判『覆盖完整』）"
+    covered = patrolled_workflows(ci_path.read_text(encoding="utf-8"))
+    if not covered:
+        return False, f"在册排班 {len(sched)} 条，但 ci.yml 里一条巡检步都没找到 ⇒ 全裸奔"
+    missing = sorted(set(sched) - set(covered))
+    extra = sorted(set(covered) - set(sched))
+    tail = f"（另：被巡检但已不排班 {extra}）" if extra else ""
+    return not missing, (f"在册排班={sched}｜已巡检={covered}｜缺={missing}{tail}；"
+                         f"覆盖 {len(set(sched) & set(covered))}/{len(sched)}")
+
+
 def selftest() -> int:
     now = datetime(2026, 9, 27, 12, 0, tzinfo=UTC)
     def mk(when, status="completed", conclusion="success", art=True):
@@ -114,6 +160,21 @@ def selftest() -> int:
                          "live-smoke.yml", now, 3.0, "")
     cases.append(("raw 非空但无一条属目标 workflow ⇒ UNVERIFIED（不拿别人的 run 顶数）",
                   st == "UNVERIFIED", why))
+    # ── 排班⇄巡检配对判据（第四十五轮）：真面＋两条专属输入面 ─────────────────────────
+    wf_dir = Path(__file__).resolve().parents[1] / ".github" / "workflows"
+    ok_real, detail_real = check_patrol_coverage(wf_dir, wf_dir / "ci.yml")
+    cases.append(("真实面：每条声明 cron 的作业都被新鲜度巡检覆盖", ok_real, detail_real))
+    import tempfile
+    tmp = Path(tempfile.mkdtemp(prefix="patrol_"))
+    (tmp / "cron-bare.yml").write_text("on:\n  schedule:\n    - cron: '0 3 * * 2'\njobs: {}\n", encoding="utf-8")
+    (tmp / "ci.yml").write_text("jobs:\n  x:\n    steps:\n      - run: python scripts/live_freshness_guard.py "
+                                "--workflow other.yml\n", encoding="utf-8")
+    ok_miss, detail_miss = check_patrol_coverage(tmp, tmp / "ci.yml")
+    cases.append(("反例：在册排班没被巡检覆盖 ⇒ 必须判红并点名", not ok_miss and "cron-bare.yml" in detail_miss,
+                  detail_miss))
+    (tmp / "cron-bare.yml").write_text("on:\n  push:\n    branches: [main]\njobs: {}\n", encoding="utf-8")
+    ok_zero, detail_zero = check_patrol_coverage(tmp, tmp / "ci.yml")
+    cases.append(("零输入：面里一条排班都没有 ⇒ 不判『覆盖完整』", not ok_zero, detail_zero))
     bad = len(cases) - sum(1 for _name, b, _why in cases if b)
     for name, ok, why in cases:
         print(f"  {'PASS' if ok else 'FAIL'} {name} :: {why[:90]}")
@@ -129,10 +190,18 @@ def main() -> int:
     ap.add_argument("--max-age-days", type=float, default=3.0)
     ap.add_argument("--artifact", default="", help="要求最新成功 run 留有该 artifact 名（仅核有无 artifacts 面）")
     ap.add_argument("--selftest", action="store_true")
+    ap.add_argument("--patrol", action="store_true",
+                    help="静态配对：在册 cron 作业 ⇄ ci.yml 的巡检覆盖（零网络，可进阻断链）")
     ap.add_argument("--now", default="", help="注入当前时刻（ISO，仅测试用）")
     a = ap.parse_args()
     if a.selftest:
         return selftest()
+    if a.patrol:
+        wf_dir = Path(__file__).resolve().parents[1] / ".github" / "workflows"
+        ok, detail = check_patrol_coverage(wf_dir, wf_dir / "ci.yml")
+        print(("PASS :: " if ok else "FAIL :: ") + detail)
+        print("[GATE:schedule-patrol-pass]" if ok else "[GATE:schedule-patrol-fail]")
+        return 0 if ok else 1
     runs, err = run_gh(a.repo, a.workflow)
     if runs is None:
         print(f"UNVERIFIED :: {err}")

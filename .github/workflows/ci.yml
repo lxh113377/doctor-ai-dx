@@ -137,6 +137,10 @@ jobs:
           test "$n" -ge 80   # 本轮实测 87（git ls-files 六类后缀）；取下限而非现值，留删改余量
           codespell
           echo "[GATE:codespell-pass] 零拼写告警（误报须带原因登记进 .codespellrc）"
+      - name: 排班⇄巡检覆盖对账（在册 cron 作业必须每一条都被新鲜度巡检覆盖，静态零网络）
+        # 第四十五轮立的阻断步：r44 发现"本仓 event=schedule 全仓 0 条 run"之后，我只给两条作业补了
+        # 巡检——dep-triage 又躺了一轮才被同一招抓到。**"漏了哪一半"不该靠人记名字**，故两边集合现算求差。
+        run: python scripts/live_freshness_guard.py --patrol
       - name: CI 观察器自证（空集/延迟出现/未收尾/expect 不满 四条轮询路径，离线）
         run: python scripts/ci_watch.py --selftest
       - name: 依赖声明完整性（import ⊆ 声明面 + 非 optional peer ↔ 锁解析）
@@ -355,3 +359,21 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: python scripts/live_freshness_guard.py --workflow link-health.yml --max-age-days 10
+      - name: dep-triage（Dependabot 分诊闭环）最近是否真跑过
+        # 第四十五轮：这条作业自建仓以来 0 条 run（r44 立的巡检当时只写了 live-smoke/link-health 两条，
+        # "在册排班"与"被巡检排班"是两个集合）。同轮把 dep-triage 挂上会真触发的 workflow_run 通路，
+        # 并补上这一条巡检步；两集合的差集由下面那步 `--patrol` 常驻看守，不再靠人记名字。
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python scripts/live_freshness_guard.py --workflow dep-triage.yml --max-age-days 10
+      - name: dep-audit（依赖漏洞审计）最近是否真跑过
+        # 本判据的红是"覆盖对账"抓出来的：给 dep-triage 补巡检步后，`--patrol` 立刻又点名两条
+        # 在册却无人巡检的排班（dep-audit／codeql）。它们的 43／117 条 run 全来自 push 触发，
+        # cron 那一路同仓实测 0 次 ⇒ "跑得勤"不等于"排班活着"，两件事都要有读数。
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python scripts/live_freshness_guard.py --workflow dep-audit.yml --max-age-days 10
+      - name: codeql（静态分析）最近是否真跑过
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python scripts/live_freshness_guard.py --workflow codeql.yml --max-age-days 10

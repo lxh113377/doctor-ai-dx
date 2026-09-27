@@ -5,6 +5,11 @@
 
 ## [Unreleased]
 
+## [1.42.0] - 2026-09-27
+
+第四十五轮开源对标收口。本轮轴＝**在册 ≠ 在跑，在跑 ≠ 跑得通；台账 ≠ 事实**。三条产品红线零触碰。
+上一轮留下的三条尾巴（本随本版发布）：
+
 - **`shell_block_probe.py` 的取数面补第二式**（一手发现，由"证明探针读到了我新加的那一步"引出）：抽取器原本只认
   `run: |`，于是仓里**所有内联写法** `run: python x --selftest` 与折叠式 `run: >-` 一直不在射程内。
   实测分母由 **30/30 → 74/74**（=44 个从未被探过的块，本轮全部通过，没有藏违规，但"没测"与"没东西"从此可分）。
@@ -21,6 +26,25 @@
   （该路径在 `/srv` 下确实不存在 ⇒ SKIP 判定成立），但证据行失去了定位信息，读起来像判据没算路径。
   抽成可注入的 `probe_path(ref, mode)` 并加两条自测（disk 须等于 `REPO_ROOT` 拼接、image 须带 `/srv` 前缀），
   `--selftest` 由 10 项增至 12 项。落在 tag 之后 ⇒ 由下一次发布携带，不改已发布的 `v1.41.0`。
+
+- **`event=schedule` 的第三轮续账（台账 #140）**：`dep-triage.yml` 自建仓以来 **0 条 run**
+  （`gh api …/workflows/dep-triage.yml/runs --jq .total_count` ⇒ 0，与 r44 同一条取证）。本轮不再"等 cron 复活"：
+  挂上 **r44 已被证明确实会触发**的 `workflow_run`（CI on main completed）＋`concurrency`，cron 保留。
+  同时补上第二次缺口——它的 `permissions` 原本只有 `contents: read`，而 `scripts/dep_triage.py` 取的是
+  `/repos/{repo}/pulls?state=open` ⇒ **就算被触发，第一次执行也是 403**。两个缺口同源：
+  配了作业既不代表它会被触发，也不代表它跑得通。
+- **配对判据两条（都会红，不靠人记名字）**：① `dep_triage.py --selftest` 加真实面＋**反例三向**
+  （缺权限红／缺通路红／只有 cron 红）8/8；② 新 `live_freshness_guard.py --patrol` 进 `infra-lint` **阻断步**：
+  枚举声明 cron 的作业 ⇄ ci.yml 里被新鲜度巡检覆盖的作业，差集非空即红，`--selftest` 7→10 项。
+  **上线当轮就再抓两条**：`dep-audit.yml`（43 条 run）与 `codeql.yml`（117 条）在册排班却无人巡检，
+  且它们的 run 全部来自 push 触发 ⇒ 补两条巡检步后 `--patrol` 5/5——"跑得勤"与"排班活着"是两件事。
+- **台账断言对账守卫 `scripts/ledger_claim_guard.py`（新，freeze_check 第 15 检）**：Step0 一手实测抓到
+  `memory/07-next-steps.md` 第 9 行「框架升级批 vite 6→8 ＋ plugin-react 4→6」是挂了**二十二手**的**假欠账**——
+  `58ef355`（第二十三轮）就成对升完，盘上现算 vite 8.3.1／plugin-react 6.1.1，open PR=0。代价不是"多一行字"，
+  而是**新对话会照着假账去升已经升完的东西**。只认"依赖名能在 package-lock/requirements 解析出来"的 `N→M`
+  （全量 `N→M` 实测 47 行，绝大多数是覆盖率与评分增量），三态含 EMPTY；自证 8/8，含作用包别名腿
+  （lock 写 `@vitejs/plugin-react`、台账写 `plugin-react` 都要认得——第一版只登记全名，同句半条断言漏判）
+  与"真欠账不得误报"反向腿。历史分卷内的版本断言只作第二层分母证明（已关闭的叙述体不改写）。
 
 ## [1.41.0] - 2026-09-27
 
