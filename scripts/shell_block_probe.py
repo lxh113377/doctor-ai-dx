@@ -27,7 +27,11 @@ import sys
 import tempfile
 from pathlib import Path
 
-BLOCK_RE = re.compile(r"^(\s*)run: \|\s*$")
+BLOCK_RE = re.compile(r"^(\s*)run: [>|][-+]?\s*$")
+#: 内联写法 `run: python x --selftest` 也是 shell 文本。v1.41.0 实测：抽取器原本只认 `run: |`，
+#: 给 ci.yml 加一条内联步后探针分母**一个数都没变**（30/30）⇒ 仓里所有内联 run 一直不在射程内
+#: （不是缺陷暴露，是判据看不见自己少测了；同一族禁令：取数面必须能自证覆盖）。
+INLINE_RE = re.compile(r"^(\s*)run:\s+(\S.*?)\s*$")
 FULLWIDTH = re.compile(r"[（）【】：；，]")
 # SC2012 一族（shellcheck 的**风格级**判据，`bash -n` 结构上抓不到）：用 `ls` 枚举文件再喂给程序消费。
 # 为什么补：CI 侧 actionlint 因 `arts="$(ls -1 | wc -l)"` 把发布作业判红过一次
@@ -61,29 +65,40 @@ def find_bash() -> str:
 
 
 def extract_blocks(text: str) -> list[tuple[int, str]]:
-    """从 YAML 抽出 `run: |` 的字面块正文（按块缩进减两级）。返回 [(起始行号, 脚本正文)]。"""
+    """从 YAML 抽出所有 `run:` 的 shell 文本。返回 [(起始行号, 脚本正文)]。
+
+    两式都抽：块标量（`run: |`／`run: >-`，正文按块缩进减两级）与内联标量（`run: python x`）。
+    内联式只脱外层成对引号，不做其它解释——判据要对齐的是 runner 实际喂给 shell 的那串字。
+    """
     lines = text.split(NL)
     out: list[tuple[int, str]] = []
     i = 0
     while i < len(lines):
         m = BLOCK_RE.match(lines[i])
-        if not m:
-            i += 1
-            continue
-        indent = len(m.group(1))
-        j, body = i + 1, []
-        while j < len(lines):
-            ln = lines[j]
-            if ln.strip() == "":
-                body.append("")
+        if m:
+            indent = len(m.group(1))
+            j, body = i + 1, []
+            while j < len(lines):
+                ln = lines[j]
+                if ln.strip() == "":
+                    body.append("")
+                    j += 1
+                    continue
+                if len(ln) - len(ln.lstrip()) <= indent:
+                    break
+                body.append(ln[indent + 2:])
                 j += 1
-                continue
-            if len(ln) - len(ln.lstrip()) <= indent:
-                break
-            body.append(ln[indent + 2:])
-            j += 1
-        out.append((i + 1, NL.join(body).rstrip(NL)))
-        i = j
+            out.append((i + 1, NL.join(body).rstrip(NL)))
+            i = j
+            continue
+        mi = INLINE_RE.match(lines[i])
+        if mi:
+            val = mi.group(2)
+            if len(val) >= 2 and val[0] == val[-1] and val[0] in "\"'":
+                val = val[1:-1]
+            if val and not val.startswith("#"):
+                out.append((i + 1, val))
+        i += 1
     return out
 
 
@@ -134,6 +149,8 @@ def selftest(tmpdir: str) -> int:
         ("git ls-files / find / 裸 ls 展示 不得误报（反向腿）", good_ls, False),
         ("整行注释含 $(…) 与全角括号不得误报（注释豁免反向腿）",
          '# 注释里写 echo "$(取不到（连接层失败）)" 只是说明文字\nn=1\necho "$n"\n', False),
+        ("内联 run 的专属输入面：全角括号写进内联式也必须被抓（证明新射程真被判定）",
+         'run: echo "$(取不到（连接层失败）)"\n', True),
     ]
     bash = find_bash()
     print(f"  INFO bash={bash if bash else '不可用（语法腿跳过，只跑启发式）'}")
@@ -148,13 +165,27 @@ def selftest(tmpdir: str) -> int:
         ok = bool(got) == want_issue
         bad += 0 if ok else 1
         print(f"  {'PASS' if ok else 'FAIL'} {name} :: 有问题={bool(got)} 期望={want_issue} {got[:1]}")
-    # 抽取器分母自证：含 2 个 run 块的 YAML 必须正好抽到 2
-    # （真实形态是 `- name:` 换行后才写 `run: |`；写成 `- run: |` 抽不到，首版夹具就错过在这里）
-    yaml = "steps:\n  - name: a\n    run: |\n      echo a\n  - name: b\n    run: |\n      echo b\n      echo c\n"
-    n = len(extract_blocks(yaml))
-    print(f"  {'PASS' if n == 2 else 'FAIL'} 抽取器分母（2 块输入须抽到 2）:: 实测={n}")
-    bad += 0 if n == 2 else 1
-    ran = len(cases) + 1 - skipped
+    # 抽取器分母自证：块标量与内联标量**都**要抽到（v1.41.0 实测原抽取器只认 `run: |`，
+    # 加了一条内联步而分母纹丝不动 ⇒ 分母自证必须把两式都摆进夹具，否则"看不见"与"没发生"同形）
+    yaml = ("steps:\n  - name: a\n    run: |\n      echo a\n"
+            "  - name: b\n    run: |\n      echo b\n      echo c\n"
+            "  - name: c\n    run: python scripts/x.py --selftest\n"
+            "  - name: d\n    run: >-\n      echo folded\n")
+    got_blocks = extract_blocks(yaml)
+    n = len(got_blocks)
+    print(f"  {'PASS' if n == 4 else 'FAIL'} 抽取器分母（2 块标量＋1 内联＋1 折叠 = 4）:: 实测={n}")
+    bad += 0 if n == 4 else 1
+    inline_hit = any("scripts/x.py" in body for _ln, body in got_blocks)
+    print(f"  {'PASS' if inline_hit else 'FAIL'} 内联 run 真被抽到（不是只多了行数）:: 命中={inline_hit}")
+    bad += 0 if inline_hit else 1
+    bad_inline = probe('echo "$(取不到（连接层失败）)"', tmpdir, "st_inline_bad", bash) if bash else []
+    if bash:
+        print(f"  {'PASS' if bad_inline else 'FAIL'} 内联面的坏样本必须被抓（专属输入面）:: {bad_inline[:1]}")
+        bad += 0 if bad_inline else 1
+    else:
+        print("  SKIP 内联坏样本 :: 本机无 bash，语法腿不判")
+        skipped += 1
+    ran = len(cases) + 3 - skipped
     print(f"SELFTEST: {ran - bad}/{ran}")
     print("[GATE:shell-probe-selftest-pass]" if bad == 0 else "[GATE:shell-probe-selftest-fail]")
     return 0 if bad == 0 else 1

@@ -91,6 +91,10 @@ jobs:
           python-version: "3.12"
       - name: 全仓文本控制字符扫描（C0 与 DEL，\t\n\r 除外）
         run: python scripts/check_text_hygiene.py
+      - name: 入口面轮次词看守自证（7 项，含「钩子 files 触发过滤器必须覆盖脚本自己扫的每个耐久面」差集判据）
+        # 复发计数=3 的机器落点（#46 composite uses:／#129 run 块解析级／本轮脚本扩面而钩子没扩）。
+        # 只写在 --selftest 里不算挂上执行路径，故这一步进链：差集非空即 CI 红。
+        run: python scripts/round_wording_guard.py --selftest
 
   # 第二十一轮补（对标 OpenEMR 的三条 infra linting 工作流：`Github Actions Linting` /
   # `Dockerfile Linting`(hadolint + .hadolint.yaml) / `Docker Compose Linting`，实测 peer 1/3 有、
