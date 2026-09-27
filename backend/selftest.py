@@ -102,6 +102,18 @@ def in_image(path: str, dests: list[str]) -> bool:
     return any(path == d or path.startswith(d + "/") for d in dests)
 
 
+def probe_path(ref: str, mode: str) -> str:
+    """把「仓库根相对引用」换成两种模式下**真正被探的那个路径**（单独成函数是为了可注入自测）。
+
+    v1.41.0 发布日志实测到 disk 模式回显过 `data/knowledge.json -> data/knowledge.json`
+    （两侧同一串，读起来像判据没算路径）：结论没错，但证据行失去了定位信息。
+    镜像里跑 plain `python selftest.py` 走的就是 disk 这条。
+    """
+    if mode == "image":
+        return _posix_norm(f"/srv/{ref}")          # 镜像内 parents[2] == /srv
+    return os.path.join(REPO_ROOT, *ref.split("/"))
+
+
 def scope_plan(suites: list[str], mode: str) -> list[tuple[str, bool, list[str]]]:
     """返回 [(套件, 可跑?, 缺失引用)]。mode="disk" 按盘上存在性；"image" 按 Dockerfile 推算。"""
     dests: list[str] = []
@@ -120,12 +132,8 @@ def scope_plan(suites: list[str], mode: str) -> list[tuple[str, bool, list[str]]
             refs = required_repo_paths(f.read())
         missing = []
         for ref in refs:
-            if mode == "image":
-                probe = _posix_norm(f"/srv/{ref}")               # 镜像内 parents[2] == /srv
-                ok = in_image(probe, dests)
-            else:
-                probe = ref
-                ok = os.path.exists(os.path.join(REPO_ROOT, *ref.split("/")))
+            probe = probe_path(ref, mode)
+            ok = in_image(probe, dests) if mode == "image" else os.path.exists(probe)
             if not ok:
                 missing.append(f"{ref} -> {probe}")
         plan.append((rel, not missing, missing))
@@ -181,6 +189,13 @@ def selftest() -> int:
     cases.append(("反向：改 Dockerfile 若把 data 放进镜像，同一判据必须转可跑",
                   in_image("/srv/data/knowledge.json", dests + ["/srv/data"]),
                   "注入 /srv/data 后仍判取不到 ⇒ 判据与 Dockerfile 脱钩"))
+    d_probe = probe_path("data/knowledge.json", "disk")
+    cases.append(("disk 模式证据行须给**真正探过的绝对路径**（不得两侧同一串）",
+                  d_probe == os.path.join(REPO_ROOT, "data", "knowledge.json") and d_probe != "data/knowledge.json",
+                  f"实测 {d_probe!r}（REPO_ROOT={REPO_ROOT!r}）"))
+    cases.append(("image 模式证据行须给 /srv 前缀（镜像内 parents[2] 的真实位置）",
+                  probe_path("data/knowledge.json", "image") == "/srv/data/knowledge.json",
+                  f"实测 {probe_path('data/knowledge.json', 'image')!r}"))
     fake = scope_plan(["tests/不存在的套件.py"], "image")
     cases.append(("套件文件缺失 ⇒ 点名且不判可跑", fake[0][1] is False and "套件文件缺失" in fake[0][2][0],
                   f"实测 {fake[0]}"))
