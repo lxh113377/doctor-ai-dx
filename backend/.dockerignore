@@ -1,7 +1,39 @@
+# 构建上下文排除表（context = ./backend，见 docker-compose.yml 与 release.yml 的 docker build）
+# 为什么要这张表：Dockerfile 全是**显式 COPY**（app/ run.py selftest.py tests/ requirements*.lock），
+# 所以这里的条目不改变镜像内容，改的是**每次 build 要打包传给 daemon 的字节数**。
+# 第四十三轮实测：本目录 117 个文件 / 11,683,702 B，其中 45 个 / 10,990,819 B（**94.1%**）
+# 是工具缓存与覆盖率产物，而旧表只盖了 __pycache__/*.pyc/.pytest_cache/.venv/venv ⇒ 白白传 10.5 MB。
+# 新增的四类都是本机跑一次门禁就会长出来的（mypy/ruff/coverage），不是偶发文件。
 __pycache__/
+**/__pycache__/
 *.pyc
+*.pyo
+
+# 类型/风格/测试缓存（本机实测体积：.mypy_cache 10,842,341 B、.ruff_cache 17,406 B、.coverage 131,072 B）
+.mypy_cache/
+**/.mypy_cache/
+.ruff_cache/
+**/.ruff_cache/
+.pytest_cache/
+**/.pytest_cache/
+.coverage
+.coverage.*
+coverage.xml
+.c8-tmp/
+
+# 环境与密钥类：即便 Dockerfile 没有 COPY 它们，也不许进上下文（纵深防御，见 docs/PITFALLS.md）
 .env
 .env.*
-.pytest_cache/
+!.env.example
+
+# 虚拟环境与本地依赖树（镜像按 requirements.lock 装，绝不带本机 venv 进去）
 .venv/
 venv/
+node_modules/
+
+# 版本控制与编辑器残留
+.git/
+.gitignore
+*.swp
+.idea/
+.vscode/

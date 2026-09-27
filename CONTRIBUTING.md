@@ -49,14 +49,21 @@ CI 会跑同样的东西；`main` 分支保护要求 `build-and-test` 与 `backe
 
 **克隆后必须跑一次 `pre-commit install`**（第三十三轮 #95 收口）。`.pre-commit-config.yaml` 自 v1.6.1 就在仓里，
 但那是**本机钩子配置**，不是 CI 步骤——实测 v1.29.0 之前本机 `.git/hooks/pre-commit` 并不存在、`core.hooksPath` 未设，
-于是它是「配置在册、无人执行」。本轮的处置是**二选一里选了「写进文档」这一项**：不在 CI 另挂一份 `pre-commit run --all-files`，
-理由是那 14 个钩与上面 `npm test` / `lint` / `typecheck` 同源判据、只是换条链重跑，会把 CI 时长翻倍而不增加任何覆盖面。
+于是它是「配置在册、无人执行」。第三十三轮（v1.30.0）的处置是**二选一里选了「写进文档」这一项**：不在 CI 另挂一份 `pre-commit run --all-files`，
+理由是那 16 个钩与上面 `npm test` / `lint` / `typecheck` 同源判据、只是换条链重跑，会把 CI 时长翻倍而不增加任何覆盖面。
 判据的覆盖面因此是：CI 守全部阻断项，`pre-commit` 只把同一批判据前移到提交前 30 秒。装好后用 `pre-commit run --all-files` 验一次，
-应为 14 个钩全跑（没装的人不会有任何提示——这就是本段存在的意义）。
+应为 16 个钩全跑（没装的人不会有任何提示——这就是本段存在的意义）。
+
+一条命令跑完本机全部验证面（步骤清单唯一源 = `scripts/verify.py`，文档不再各抄一份命令序列）：
+
+```bash
+python scripts/verify.py --suite gate
+```
+
 
 端到端回归的维护约定（v1.15.0 起）：E2E 刻意**不进** `npm test`（那条链被 c8 整体包裹算覆盖率，混入浏览器进程会污染口径，与 lint 同理，见 `frontend/lint.mjs` 头注）。
 它是"三条红线在真实浏览器渲染结果"这一层的唯一常驻证据——改视图、改文案、改样式时，五步链路断言与双视口溢出断言必须同步更新；
-新增页面请一并纳入 `e2e/app.spec.mjs` 的"五步全页面"循环（漏掉一页＝把最可能溢出的一半留在盲区，本轮实测就差点这么干）。
+新增页面请一并纳入 `e2e/app.spec.mjs` 的"五步全页面"循环（漏掉一页＝把最可能溢出的一半留在盲区，第十七轮（v1.15.0）实测就差点这么干）。
 
 静态检查与类型门禁的维护约定（v1.12.0 / v1.13.0 起）：
 
@@ -107,7 +114,7 @@ CI 会跑同样的东西；`main` 分支保护要求 `build-and-test` 与 `backe
 - **环境变量口径**：新增任何 `os.getenv("X")` / `env?.X` 读取，必须同步写进 `backend/.env.example`，
   否则 `npm run test:env` 判红（反向也一样：示例里留一个代码不读的键同样判红）。
 - **版本真值链（升版本必做四步）**：① 同改 `backend/app/version.py` + `functions/lib/version.js` + `frontend/package.json` 三处 → ② `python scripts/gen_openapi.py`（外科同步契约版本，禁手改/全量重写 `docs/openapi.json`）→ ③ `npm run test:version` 五方对账绿 → ④ 打 tag `vX.Y.Z`。`/api/health` 的 `version` 字段即以此链为源。
-  - ④ **必须是附注 tag**（`git tag -a vX.Y.Z -m "…"`）：`git push --follow-tags` **只推附注 tag**，轻量 tag 会静默留在本机——实测这样"推送成功"后 `git ls-remote --tags` 查不到本轮 tag，且 `release.yml`（tag 触发）根本没被唤起。发布后自查两行：`git ls-remote --tags origin refs/tags/vX.Y.Z` 有输出、`gh run list --workflow "Release artifacts (tag)"` 有该 tag 的 run。
+  - ④ **必须是附注 tag**（`git tag -a vX.Y.Z -m "…"`）：`git push --follow-tags` **只推附注 tag**，轻量 tag 会静默留在本机——实测这样"推送成功"后 `git ls-remote --tags` 查不到当次那个 tag，且 `release.yml`（tag 触发）根本没被唤起。发布后自查两行：`git ls-remote --tags origin refs/tags/vX.Y.Z` 有输出、`gh run list --workflow "Release artifacts (tag)"` 有该 tag 的 run。
   - 本机复现 CI 出包（跨环境逐字节一致，实测 SHA256 全等）：`TZ=UTC0 git -c core.autocrlf=false archive --format=zip --mtime=$(git log -1 --format=%ct <tag>) -o out.zip <tag>`，再用 `python scripts/release_repro_check.py --ref <tag> --against out.zip` 判定。行尾与时区两个成因的来龙去脉见 `docs/ARCHITECTURE.md` 门禁表同名行。
 - **后端测试套件清单**：唯一源是 `backend/tests/suite.json`；执行一律走 `python backend/selftest.py`（`--coverage` 供覆盖率链）。**不要在 CI/compose/package.json 里再抄一份清单**——`scripts/suite_guard.py` 会把漏挂与回潮都判红（第十八轮真实踩过：新增 `test_limits.py` 后镜像 selftest 与 coverage:py 各抄的旧清单都没挂上）。
 - **发布镜像**：打 tag 后由 `release.yml` 推 `ghcr.io/lxh113377/doctor-ai-dx:<tag>` 与 `:latest`；作业内还有一步**匿名**读 manifest 的实证（不带任何凭据换 token），拉不到就判红——评审要能一条命令拉下来。判据的 `Accept` 必须含 **OCI index** 类型：`build-push-action` 推上去的是 index 而非单 manifest，只列 manifest 两类会收到 `404 MANIFEST_UNKNOWN: OCI index found, but Accept header does not support OCI indexes`（v1.18.0 就因这个误判成"包是私有"，实为判据自身缺陷，见 `CHANGELOG.md` 的 1.18.1）。改 Dockerfile 后必须本地 `docker build -t probe backend && docker run --rm --entrypoint python probe selftest.py` 复验（`COPY selftest.py` 漏了就是"镜像发布出去跑不起自证"）。

@@ -111,7 +111,7 @@
 - 个人包可见性 PATCH 用 `GITHUB_TOKEN`/PAT 均 404（该端点要求更高 scope）；源仓库公开时包默认 public，真判据是匿名 manifest 实测。
 
 ### C6 工作流文本的本地时机腿分两层，只补一层会二次判红（第四十二轮实测）
-- 症状：本机 `pre-commit` 14 钩全绿（含 run 块语法探针），推送后 CI `infra-lint` 判红
+- 症状：本机 `pre-commit` 全部钩位绿（含 run 块语法探针；钩数唯一源 = `.pre-commit-config.yaml`，本行不抄历史数字），推送后 CI `infra-lint` 判红
   ——`release.yml:468 shellcheck SC2012:info: Use find instead of ls`（run 36295599503）。
 - 根因：本机无 `shellcheck`/`actionlint` 二进制、`docker info` 报 daemon 不在，探针只能跑 `bash -n`。
   `bash -n` 是**解析级**（第四十轮那一红：命令替换里的全角括号），SC2012 是**风格级**——脚本合法但 CI 不认。
@@ -370,11 +370,20 @@
   补出「gold 只能靠加权词才进 top-5」的用例之后，这条才具备被评估的资格。
 
 
-## F. 提交前自检顺序（照抄即可）
+## F. 提交前自检顺序
+
+**首选一条命令**（步骤清单唯一源 = `scripts/verify.py` 的 `SUITES` 表，本文件不再抄第二份）：
+
+```bash
+python scripts/verify.py --suite gate     # 静态＋本机测试面
+python scripts/verify.py --suite all      # 再加交付面（需工作区父仓，缺则记 SKIP 不记绿）
+```
+
+下面这份展开是**它每一步的等价手工序列**，只作排查用；两者不一致时以 `verify.py` 为准：
 
 ```bash
 # 以下全部在**仓库根**执行（别一半在根一半在 frontend，`../` 写法最容易错）
-pre-commit run --all-files                          # 十四钩（清单唯一源 .pre-commit-config.yaml，第三十七轮起钩数由 docs_link_guard 现算对账；
+pre-commit run --all-files                          # 十六钩（清单唯一源 .pre-commit-config.yaml，第三十七轮起钩数由 docs_link_guard 现算对账；
 #   第 14 只是第四十轮加的 run 块语法探针 scripts/shell_block_probe.py）
 (cd frontend && npm test)                           # 二十六件套（含 docs_link_guard、error_parity）
 (cd frontend && npm run test:e2e)                   # 双视口浏览器回归（Playwright）

@@ -125,3 +125,26 @@ repos:
         additional_dependencies: ["codespell>=2.4.1,<2.5"]
         pass_filenames: false
         always_run: true
+
+      # 构建上下文卫生守卫进提交链（第四十三轮，对标 bloodworks-io/phlox 带 .dockerignore 的形态）。
+      # 一手数据：本机 `backend/` 117 文件 / 11,683,702 B，其中 45 文件 / 10,990,819 B（94.1%）是
+      # 工具缓存（单 .mypy_cache 就 10.8 MB），而旧 .dockerignore 只盖了 5 类 ⇒ 每次 build 白传 10 MB。
+      # 为什么必须占钩位而不是"想起来再跑"：本机没有 docker daemon（`docker info` 失败），
+      # 上下文体积无法用 docker 实测，能测的只有"名字级覆盖"这一半——那就把这一半钉成阻断。
+      - id: docker-context-guard
+        name: Docker 构建上下文守卫（垃圾类须被 .dockerignore 覆盖；零输入判 EMPTY 不判绿）
+        entry: python scripts/docker_context_guard.py --quiet
+        language: system
+        pass_filenames: false
+
+      # 入口面的相对轮次词看守（第四十三轮，#106「手抄快照必然过期」的代词形态）。
+      # 起因是实测：第四十一轮在 AGENTS 里写的「本轮实测 8/8 ALL PASS」到第四十二轮就已指错对象，
+      # 而那句话读起来仍然通顺——数字过期会被判据抓到，代词过期没人抓。
+      # 射程只含 AGENTS/README/CONTRIBUTING/SECURITY 四面；CHANGELOG 与 docs/* 是按版本组织的历史
+      # 叙述体，故意留在射程外（扩面前须先逐处补绝对锚点，理由写进脚本头注，不悄悄扩面）。
+      - id: round-wording-guard
+        name: 入口面相对轮次词看守（禁「本轮/上一轮」；「本次提交」类不误报）
+        entry: python scripts/round_wording_guard.py --quiet
+        language: system
+        pass_filenames: false
+        files: ^(AGENTS|README|CONTRIBUTING|SECURITY)\.md$

@@ -58,7 +58,7 @@ npm --prefix frontend run actions                # Actions 钉版与最小权限
 python backend/selftest.py     # 镜像面自证（套件清单唯一真相源 backend/tests/suite.json）
 ```
 
-改完提交前跑 `pre-commit run --all-files`（14 个钩，与 CI 同源判据，不是另一套标准；钩名清单唯一源 = `.pre-commit-config.yaml`，文档里的钩数由 `docs_link_guard` 从该文件现算对账）。
+改完提交前跑 `pre-commit run --all-files`（16 个钩，与 CI 同源判据，不是另一套标准；钩名清单唯一源 = `.pre-commit-config.yaml`，文档里的钩数由 `docs_link_guard` 从该文件现算对账）。
 
 ## 4. 改 X 之前先知道 Y（本仓最容易踩的六条）
 
@@ -74,7 +74,7 @@ python backend/selftest.py     # 镜像面自证（套件清单唯一真相源 b
 ## 5. 发布与验收口径
 
 - 打 tag `vX.Y.Z` ⇒ `.github/workflows/release.yml` 先跑全部门禁，绿了才产出源码包 + 双端 SBOM + SHA256SUMS + 多架构镜像（`linux/amd64`、`linux/arm64`）并挂 Release。本机 `git archive` 重建的包与 Release 资产**逐字节相同**是硬判据（`scripts/release_repro_check.py`）。
-- 每个工件另旁挂 `<工件>.sha256`（评审只下载一个文件也能就地核验，形态借鉴 `openemr/openemr` 的 release 资产），台账与旁挂的键一律用**裸文件名**（实测旧版台账写成 `./backend.cdx.json`，两种键形对不上会让三方核验集体读到空值）。发布后还有一步**远端三方实算**：`gh release download` 把工件／旁挂／台账拉回本地重算，比对「远端工件字节 ⇄ 旁挂 ⇄ 台账」；判定是**双向**的——正向遍历旁挂（字节对不上就点名），反向**以台账为分母**逐条要求同名旁挂在场（少一份旁挂在只遍历旁挂的写法里＝不存在、永绿），旁挂 <3 份或台账解析 <3 条一律判红。为什么必须走到远端这一步：仓内自比抓不到"上传的字节 ≠ 被哈希的字节"，本轮实测就是这么抓出 `assets=4 / 旁挂 0` 的假交付的。注意 `gh` 在 `cd /tmp` 之后须带 `--repo`，否则它去猜 git remote 并当场失败。
+- 每个工件另旁挂 `<工件>.sha256`（评审只下载一个文件也能就地核验，形态借鉴 `openemr/openemr` 的 release 资产），台账与旁挂的键一律用**裸文件名**（实测旧版台账写成 `./backend.cdx.json`，两种键形对不上会让三方核验集体读到空值）。发布后还有一步**远端三方实算**：`gh release download` 把工件／旁挂／台账拉回本地重算，比对「远端工件字节 ⇄ 旁挂 ⇄ 台账」；判定是**双向**的——正向遍历旁挂（字节对不上就点名），反向**以台账为分母**逐条要求同名旁挂在场（少一份旁挂在只遍历旁挂的写法里＝不存在、永绿），旁挂 <3 份或台账解析 <3 条一律判红。为什么必须走到远端这一步：仓内自比抓不到"上传的字节 ≠ 被哈希的字节"，第四十二轮实测就是这么抓出 `assets=4 / 旁挂 0` 的假交付的。注意 `gh` 在 `cd /tmp` 之后须带 `--repo`，否则它去猜 git remote 并当场失败。
 - 「发布完成」的判据是**远端可见物**（tag 在 origin、run success、Release 资产在），不是本机提交成功。
 - 护栏把发布拦下来＝这是成功而不是故障：不绕过、不放宽阈值，如实报"未发 + 拦在哪"。
 - 已知边界与在办事项见 `docs/PITFALLS.md`（每条坑必须写出"哪条常驻判据在守它"，写不出的不许进手册）。

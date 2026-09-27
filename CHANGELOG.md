@@ -5,6 +5,54 @@
 
 ## [Unreleased]
 
+## [1.40.0] - 2026-09-27
+
+第四十三轮开源对标收口。本轮轴＝**第二开发者上手面与构建上下文卫生**（对标取证 `gh api` 现取：
+`bloodworks-io/phlox` 有 `Makefile` ＋ `.dockerignore`、`openemr/openemr` 有 `CODE_OF_CONDUCT`；
+我方治理件里 `README/CONTRIBUTING/SECURITY/CHANGELOG/PR 模板/ISSUE 模板/dependabot/.env.example/docs`
+全为 Y，缺的是 `.dockerignore` 的**覆盖率**与"一条命令跑完验证"这件事本身）。三条产品红线零触碰。
+
+- **构建上下文治理｜`backend/.dockerignore` 补全**：一手实测 `backend/` 117 文件 / 11,683,702 B，
+  其中 **45 文件 / 10,990,819 B（94.1%）是工具缓存与覆盖率产物**，而旧表只盖了
+  `__pycache__`/`*.pyc`/`.pytest_cache`/`.venv`/`venv` —— 单 `.mypy_cache` 就 10,842,341 B。
+  Dockerfile 全是显式 COPY ⇒ 这不影响镜像内容，影响的是**每次 build 传给 daemon 的字节**
+  （compose 与 release 两条链每次都要 build）。补 `.mypy_cache`/`.ruff_cache`/`.coverage*`/
+  `coverage.xml`/`.c8-tmp`/`node_modules`/`.git` 等，并**同时写裸名与 `**/名` 两种形态**
+  （`**` 与裸目录名在嵌套层的行为差异本机无 docker daemon 可实测，不假装知道）。
+  载体：`scripts/docker_context_guard.py`（第 16 只钩）。两向实测打在真实文件上：
+  把表退回旧版 ⇒ `rc=1`、点名 45 项共 10,990,819 B（列出前 8 大）；补回 ⇒ `rc=0 1 个上下文全部干净`；
+  `--selftest 7/7`（含"未覆盖必须被抓"反例、"无 .dockerignore ⇒ 覆盖集为空"、"空上下文 ⇒ rc=2 EMPTY"、
+  "有源文件无垃圾 ⇒ PASS 形状"四条专属输入面）。
+- **验证统一入口｜`scripts/verify.py`**：为什么不是 Makefile——本机实测 `which make` 与
+  `which mingw32-make` **双双 not found**，写一份"我这台机器跑不了"的入口正是本仓要治的形态。
+  它只编排不复制判据（每步调既有载体），失败**不提前 exit**（先红的不许吞掉后面的），
+  套件取到 0 步 ⇒ rc=2 而不是记绿，跨仓步骤取不到 ⇒ 记 **SKIP 而不是 PASS**。
+  文档侧收口：`README` / `CONTRIBUTING` / `docs/PITFALLS.md` §F 的手抄命令序列改为指向
+  `python scripts/verify.py --suite gate`（同族 #106「抄件必然过期」）。
+  本轮它自己撞出两个坑：① Windows 下 `npm` 实为 `npm.cmd`，不 `shutil.which` 就是
+  `FileNotFoundError` ⇒ 合规套件被记成 rc=127 **假红**；② 失败证据只打 stderr 末行，
+  被一条 `npm warn` 顶掉了真正的判据行（`RESULT: 26 pass / 1 fail` 差点看不见）
+  ⇒ 改成失败时两条流各截 12 行。**同族铁律再兑现：证据格式化属于判据的一部分。**
+- **入口面相对轮次词看守｜`scripts/round_wording_guard.py`**：`AGENTS.md`/`README.md` 是**新对话唯一
+  续接入口**，而"本轮/上一轮"离开写作那刻就失去指代——第四十一轮在 AGENTS 里写的「本轮实测 8/8
+  ALL PASS」到第四十二轮已成**错数**（当时 12 检）。改写全部 5 处命中为绝对锚点（blame 反查 first-tag：
+  README→v1.23.1、CONTRIBUTING→v1.30.0/v1.15.0/v1.15.1、AGENTS→第四十二轮）。
+  词表刻意**收窄**：只禁 `本轮`/`上一轮`；`本次提交`、"把下一轮排查带到别的系统" 这类不是轮次计数器的
+  用法由 selftest 的反向腿保证不误报（第一版全禁就会造出一条逼人删规则的假红）。
+  `--selftest 5/5`，真实扫描 4 面零命中。
+- **一次自我否决（不留假闭环）**：台账 #134（savepoint 把 09 撑到 10,376B / 47 行）经查**不是本仓可修项**——
+  `git show HEAD:handoff_lib/volumegov.py | grep -c 'def to_tasks'` 实测 **0** ⇒ 整条派单链是
+  另一会话**尚未提交**的在途实现。我先前已改了 `flow.py` 三处，随即**全部撤销**并把该文件还原为
+  对方的单一 hunk（`git diff --numstat` = 41 插入 0 删除），改为只在自己仓里立守卫：
+  根仓 `work/freeze_check.mjs` 第 14 检「09 体积与任务数封顶」（注入 14 行 ⇒ `FAIL 任务行=15（上限 12）`，
+  撤掉 ⇒ 14/14）。**归属未证的缺陷不去"修"，是纪律不是客气。**
+- **回归**：`npm test` **全绿**（26 套件，钩数对账 16；本轮中途曾 `26 pass / 1 fail`，
+  起因是我加第 15 只钩后六处手抄「14 个钩」没跟着改——判据当场抓到，改文案不改判据）；
+  `pre-commit run --all-files` 16 钩 rc=0；`ruff` All checks passed；`verify.py --suite gate` 5/5；
+  `python backend/selftest.py` `rc=0`；根仓 `node work/freeze_check.mjs` **ALL PASS (14/14)**。
+  过程自纠两处：`ruff --unsafe-fixes` 把 UP031 改成 `.format()` 仍判红且更难读 ⇒ 回退重写为 f-string；
+  我第一版把 `**/X` 与裸 `X` 的语义差异当成已证，实为未实测，已按"两种形态都写 + 边界写进注释"处理。
+
 ## [1.39.0] - 2026-09-27
 
 第四十二轮开源对标收口。本轮的轴＝**交付工件的可核验性**（peer 现取：`openemr/openemr` 给每个产物旁挂
