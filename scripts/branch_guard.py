@@ -12,10 +12,15 @@ PR 带着红的 e2e 也能合进 main。这属于"判据写了但不被强制"�
 
 判据（任一失败 exit 1）：
  1. `ci.yml` 存在聚合 job，且 `if: always()`（否则任一前置失败时聚合不跑，required check 永不出现＝保护形同虚设）
- 2. 聚合 job 的 `needs` ⊇ {ci.yml 中全部非 deploy、非聚合自身的 job}（**新增作业忘记挂进来即判红**）
+ 2. 聚合 job 的 `needs` ⊇ {ci.yml 中全部阻断作业}（**新增作业忘记挂进来即判红**）
  3. `deploy.needs` 同样覆盖全部阻断作业（部署不得绕过任何一道判据）
  4. 聚合 job 的 id 与脚本内登记的 required check 名一致（改 id 必须同步改仓库保护，防止"改了名字保护还在指旧名"）
- 5. `--remote` 时读 GitHub API 实测：required_status_checks.contexts ⊇ {聚合检查名}；无权限则打印 SKIP 并说明，**不静默判绿**
+ 5. 聚合 job 与 `deploy` **不得**声明 `continue-on-error`（否则聚合检查恒绿，第 2/3 条一起失效）
+ 6. `--remote` 时读 GitHub API 实测：required_status_checks.contexts ⊇ {聚合检查名}；无权限则打印 SKIP 并说明，**不静默判绿**
+
+「阻断 / 非阻断」怎么划（v1.41.0 改判）：不再靠脚本里写死的作业名清单——那正是本判据要防的形态
+（新加一个只想报告、不想阻断的作业，就得回头改豁免表）。改由**作业自己的声明**决定：
+`continue-on-error: true` ⇒ advisory（只报告不阻断），并在汇总行里点名（可见＝可审，不静默少测）。
 
 用法：
   python scripts/branch_guard.py [--quiet]            # 本地/CI 静态对账（零凭据）
@@ -41,6 +46,17 @@ AGGREGATE_ID = "all-checks-passed"  # ci.yml 里的 job key
 NON_BLOCKING = {AGGREGATE_ID, "deploy"}  # deploy 是条件作业（AUTO_DEPLOY 未设时 skipped），不能当阻断判据
 
 
+def advisory_jobs(jobs: dict) -> list[str]:
+    """由作业**自己的声明**划出的非阻断面：`continue-on-error: true`。
+
+    为什么不写死名单：v1.41.0 加 `schedule-health`（只想报告排班是否生效、不想阻断合入）时，
+    第一反应是往 NON_BLOCKING 里加名字——那等于给豁免表开后门，下一个作业照抄就谁都能豁免。
+    声明式划界后，豁免要生效必须在 ci.yml 里公开写 `continue-on-error`，而本文件的判据 5
+    又禁止把这个声明用在聚合/deploy 上（否则恒绿的聚合检查会让全部判据失效）。
+    """
+    return sorted(k for k, v in jobs.items() if isinstance(v, dict) and v.get("continue-on-error") is True)
+
+
 def load_jobs() -> dict:
     with open(CI, encoding="utf-8") as f:
         doc = yaml.safe_load(f)
@@ -61,11 +77,15 @@ def main() -> int:
     args = ap.parse_args()
 
     jobs = load_jobs()
-    blocking = [j for j in jobs if j not in NON_BLOCKING]
+    advisory = advisory_jobs(jobs)
+    blocking = [j for j in jobs if j not in NON_BLOCKING and j not in advisory]
     checks: list[tuple[str, bool, str]] = []
 
     agg = jobs.get(AGGREGATE_ID)
     checks.append((f"存在聚合 job `{AGGREGATE_ID}`", agg is not None, f"ci.yml jobs={list(jobs)}"))
+    const_green = [j for j in (AGGREGATE_ID, "deploy") if j in advisory]
+    checks.append(("聚合与 deploy 不得声明 continue-on-error（恒绿的聚合检查会让本文件全部判据一起失效）",
+                   not const_green, f"实测点名恒绿作业={const_green}；advisory={advisory}"))
     if agg:
         needs = agg.get("needs") or []
         needs = [needs] if isinstance(needs, str) else list(needs)
@@ -91,7 +111,8 @@ def main() -> int:
     checks.append(("deploy.needs 覆盖全部阻断作业（部署不得绕过判据）", not dep_missing, f"缺 {dep_missing}"))
 
     if not args.quiet:
-        print(f"== 分支保护 ↔ CI 作业图对账（ci.yml jobs={len(jobs)}，阻断作业={len(blocking)}）==")
+        print(f"== 分支保护 ↔ CI 作业图对账（ci.yml jobs={len(jobs)}，阻断作业={len(blocking)}，"
+              f"advisory={advisory}）==")
     rc = 0
     for name, ok, detail in checks:
         if ok and args.quiet:
