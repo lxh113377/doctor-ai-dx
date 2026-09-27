@@ -82,6 +82,33 @@ def check(root: Path, verbose: bool) -> int:
     return 0
 
 
+def hook_uncovered_faces(root: Path, files_re: str | None = None) -> list[str]:
+    """返回「脚本会扫、但提交链的钩子射程不会触发」的面。
+
+    为什么要有这条（复发计数=3 的机器落点）：#46（composite 的 uses: 不受保护）、#129（run 块只补解析级）、
+    本轮（脚本射程加了 docs/*.md 而 `.pre-commit-config.yaml` 的 `files:` 没跟上 ⇒ 真实提交里钩子打印
+    Skipped，判据根本没跑到）。前两次都靠下一轮人肉发现，这次让自测当场判红：
+    钩子的 `files:` 只是**触发过滤器**（`pass_filenames: false` 时不参与取数），
+    所以每个耐久面都必须能被它匹配到，否则该面的改动永远绕开这道闸。
+    """
+    cfg = root / ".pre-commit-config.yaml"
+    if not cfg.exists():
+        return ["<.pre-commit-config.yaml 缺失>"]
+    text = cfg.read_text(encoding="utf-8")
+    blk = re.search(r"-\s+id:\s*round-wording-guard\b(.*?)(?=\n\s{6}-\s+id:|\Z)", text, re.S)
+    if not blk:
+        return ["<钩子 round-wording-guard 不在配置里>"]
+    if files_re is None:
+        m = re.search(r"^\s*files:\s*(.+)$", blk.group(1), re.M)
+        if not m:
+            return []          # 没有 files: ＝全量触发，覆盖一切
+        files_re = m.group(1).strip()
+    pat = re.compile(files_re)
+    faces = list(FACES) + sorted(str(p.relative_to(root)).replace("\\", "/")
+                                 for p in root.glob(DOC_GLOB))
+    return [f for f in faces if not pat.search(f)]
+
+
 def selftest(root: Path) -> int:
     cases = []
     cases.append(("真实入口面须零命中（正例）", scan_text(
@@ -98,6 +125,13 @@ def selftest(root: Path) -> int:
     (injected / "README.md").write_text("正常一行。\n", encoding="utf-8")
     (injected / "CONTRIBUTING.md").write_text("正常两行。\n再来一行。\n", encoding="utf-8")
     cases.append(("有命中时 check() 返回 1（不是只打印）", check(injected, False) == 1))
+    uncov = hook_uncovered_faces(root)
+    narrow = r"^(AGENTS|README|CONTRIBUTING|SECURITY)\.md$"
+    got_narrow = hook_uncovered_faces(root, narrow)
+    print(f"  信息 钩子 files: 现算未覆盖面={uncov}；退回扩面前的写法时={got_narrow}")
+    cases.append(("每个耐久面都必须能被钩子 files: 触发（Skipped＝判据没跑到）", uncov == []))
+    cases.append(("反向腿：files: 退回扩面前的写法 ⇒ 必须点名 docs 面（证明这条判据有牙）",
+                  any(f.startswith("docs/") for f in got_narrow)))
     bad_sum = sum(0 if ok2 else 1 for _n, ok2 in cases)
     for name, ok2 in cases:
         print(f"  {'PASS' if ok2 else 'FAIL'} {name}")

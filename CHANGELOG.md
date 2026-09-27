@@ -5,6 +5,12 @@
 
 ## [Unreleased]
 
+- `round_wording_guard.py --selftest` 加两条：钩子的 `files:` 必须覆盖脚本自己扫的每一个耐久面（5→7 项）。
+  这是「扩面只扩一半」一族第三次复发（#46 composite 的 `uses:` 不受保护、#129 run 块只补解析级、本轮脚本射程
+  加了 `docs/*.md` 而钩子 `files:` 没跟上 ⇒ 真实提交里打印 Skipped＝判据根本没跑到），
+  按复发计数门槛本轮改成**机器落点**：`hook_uncovered_faces(root, files_re=None)` 现算未覆盖面，
+  反向腿把 `files:` 退回扩面前的写法时必须点名 `docs/*` 五个面（实测 7/7，`未覆盖=[]` ⇄ `['docs/ARCHITECTURE.md', …]`）。
+
 - `backend/selftest.py`：SKIP 证据行改印**真正探过的绝对路径**。发现方式很值钱——`v1.41.0` 发布日志里
   镜像内那一步把缺失项打成 `data/knowledge.json -> data/knowledge.json`（两侧同一串）。结论没错
   （该路径在 `/srv` 下确实不存在 ⇒ SKIP 判定成立），但证据行失去了定位信息，读起来像判据没算路径。
