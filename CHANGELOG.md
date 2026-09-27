@@ -56,6 +56,22 @@
 - 文档：`README.md`／`CONTRIBUTING.md`／仓库 `AGENTS.md`／`docs/ARCHITECTURE.md` 的门禁表补"一键演示链烟测"一行
   （套件仍是 25 件——本判据属作业链面，不进 `npm test`，避免把浏览器/子进程混进 c8 口径，与 r14 同一条理由）。
 
+### 补记：`v1.35.0` 首推被自家类型门禁拦红（台账 #117，同轮交付载体）
+
+- **失败面**：首推后 `ci.yml` 的 `backend-test` 与 `release.yml` 的 `verify-and-package` **双双判红**，
+  原文 `scripts/demo_smoke.py:134: error: Module has no attribute "CREATE_NEW_PROCESS_GROUP" [attr-defined]`
+  （run 36283850904 / 36283853857）。而**本机 mypy 报 0 error**——mypy 的 `os`/`subprocess` 桩按平台分文件，
+  Windows 侧看不见 Linux 缺这个符号、反之看不见 `os.killpg`。同族另一半（`killpg`/`getpgid`）我当轮已经预判到并走了
+  `getattr`，`CREATE_NEW_PROCESS_GROUP` 这半没预判到 ⇒ 又是一次"半边修好"（记忆条 fix-the-class 的第四次同型）。
+- **载体**：`scripts/type_gate.py` 现对 `--platform linux` 与 `--platform win32` **各再跑一遍**，两遍都要求
+  ① 错误数 ≤ 同一阈值、② `checked` 文件数与本机全等（否则"静默不跑"会记绿，R247 零输入不得记通过）、
+  ③ mypy 自身 rc∉{0,1} 直接 rc=2 不放行。
+- **两侧实测**：现值 `TYPE GATE SUMMARY: 检查文件=38 错误=0 阈值=0 跨平台桩遍数=2` → `[GATE:type-pass]` rc=0；
+  变异体（把 getattr 改回直写 `subprocess.CREATE_NEW_PROCESS_GROUP`）→ **`FAIL 跨平台桩 linux`、rc=1**，
+  本机那一遍仍绿（正是 CI 当初的形状）；按备份复原后 rc=0。
+- **发版处置**：因**零下游可见物**三条实测成立（`gh release view v1.35.0` = not found／CI 在 type gate 即停故 Release 未产出／
+  线上 health 仍 1.34.0），按 v1.33.0／v1.34.0 同一判据把 tag 重锚到载体提交，旧对象在案。
+
 ## [1.34.0] - 2026-09-27
 
 第三十七轮开源对标收口。本轮的主张不是"改进了检索质量"，而是**把一条一直没被度量的安全增量量出来**，

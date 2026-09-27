@@ -95,6 +95,30 @@ def main() -> int:
     checked = int(m.group("checked"))
     errors = int(m.groupdict().get("err", 0) or 0)
 
+    # 跨平台桩第二遍（第三十八轮，台账 #117）。为什么必须跑两台：mypy 的 `os`/`subprocess` 桩按平台分文件，
+    # 本机（Windows）看不见 Linux 侧符号、反之亦然 ⇒ "直写平台专属符号"这类真缺陷只在**对面那台**才红。
+    # 一手事故：本轮 `subprocess.CREATE_NEW_PROCESS_GROUP` 直写，本机 mypy 0 error、CI（Linux）1 error 判红。
+    # 两条 pass 都要求"真的数到同一批文件"，否则静默不跑也会记绿（R247 零输入不得记通过）。
+    plat_rows: list[tuple[str, bool, str]] = []
+    for plat in ("linux", "win32"):
+        prun = subprocess.run([sys.executable, "-m", "mypy", "--platform", plat],
+                              capture_output=True, text=True, cwd=REPO)
+        pout = (prun.stdout or "") + (prun.stderr or "")
+        if prun.returncode not in (0, 1):
+            plat_rows.append((f"mypy --platform {plat} 可解析", False,
+                              f"rc={prun.returncode}（mypy 自身报错不得当成通过）：{pout.strip()[:200]}"))
+            continue
+        pm = SUMMARY.search(pout) or PLAIN.search(pout)
+        if not pm:
+            plat_rows.append((f"mypy --platform {plat} 可解析", False, f"解析不到统计行：{pout.strip()[:200]}"))
+            continue
+        pchecked = int(pm.group("checked"))
+        perrors = int(pm.groupdict().get("err", 0) or 0)
+        plat_rows.append((f"跨平台桩 {plat}：错误 {perrors} ≤ 阈值且文件数与本机同（{pchecked}=={checked}）",
+                          perrors <= int(floor["expected_errors"]) and pchecked == checked,
+                          "\n" + "\n".join(ln for ln in pout.splitlines() if ": error:" in ln)[:600]
+                          if perrors or pchecked != checked else f"checked={pchecked} errors={perrors}"))
+
     budget = int(floor.get("max_suppressions", 0))
     sup = find_suppressions()
     checks: list[tuple[str, bool, str]] = [
@@ -110,6 +134,8 @@ def main() -> int:
          "\n" + "\n".join(ln for ln in out.splitlines() if ": error:" in ln)[:900]),
     ]
 
+    checks.extend(plat_rows)
+
     failed = 0
     for name, ok, detail in checks:
         if ok:
@@ -118,7 +144,8 @@ def main() -> int:
         else:
             failed += 1
             print(f"  FAIL {name} :: {detail}")
-    print(f"\nTYPE GATE SUMMARY: mypy={run_version} 检查文件={checked} 错误={errors} 阈值={floor['expected_errors']}")
+    print(f"\nTYPE GATE SUMMARY: mypy={run_version} 检查文件={checked} 错误={errors} 阈值={floor['expected_errors']} "
+          f"跨平台桩遍数={len(plat_rows)}")
     if failed:
         print("[GATE:type-fail] 类型门禁未达标（禁止用注释/ignore 静默放行；如需豁免须在阈值文件写明理由）")
         return 1

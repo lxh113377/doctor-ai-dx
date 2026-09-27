@@ -131,7 +131,10 @@ def spawn_demo(bash: str, log_handle: object) -> subprocess.Popen[bytes]:
         "stdin": subprocess.DEVNULL,
     }
     if os.name == "nt":
-        popen_kw["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
+        # 走 getattr 而不是直写：mypy 的 subprocess 桩按平台分文件，Linux 侧没有 CREATE_NEW_PROCESS_GROUP
+        # ⇒ 直写会让 CI 的 type_gate 判 attr-defined 而本机全绿（本轮实测：本机 0 error、CI 1 error）。
+        # 与 stop_demo 里 os.killpg/getpgid 同一族，两处一律走 getattr。
+        popen_kw["creationflags"] = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
     else:
         popen_kw["start_new_session"] = True
     return subprocess.Popen([bash, str(SH)], **popen_kw)
