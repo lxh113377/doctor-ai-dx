@@ -279,7 +279,7 @@ def selftest() -> int:
     st, _n, why = decide([mk("2026-09-27T06:00:00Z", conclusion="failure")], "live-smoke.yml", now, 3.0, "")
     cases.append(("只有失败 run ⇒ FAIL", st == "FAIL", why))
     st, _n, why = decide([], "live-smoke.yml", now, 3.0, "")
-    cases.append(("raw 空 run 列表 ⇒ FAIL（从未触发），绝不记绿", st == "FAIL", why))
+    cases.append(("raw 空 run＋无可算排班 ⇒ FAIL（按停摆处理），绝不记绿", st == "FAIL", why))
     st, _n, why = decide([mk("2026-09-27T06:00:00Z", art=False)], "live-smoke.yml", now, 3.0, "eval-report-live")
     cases.append(("要求 artifact 但该 run 无 artifacts 面 ⇒ FAIL", st == "FAIL", why))
     st, _n, why = decide([mk("garbage")], "live-smoke.yml", now, 3.0, "")
