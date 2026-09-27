@@ -169,6 +169,13 @@ jobs:
         run: npx playwright install --with-deps chromium
       - name: E2E（五步链路 + 红旗独立呈现 + 降级标注 + 红线负向 + 1440/390 双视口无横向溢出 + 零控制台异常）
         run: npx playwright test
+      # 台账 #44（第三十八轮）：评审拿到仓库后跑的**第一条命令**就是 `./start-demo.sh`，此前全仓零引用
+      # （实测 `grep -rl "start-demo" frontend/tests scripts/ backend/tests .github/workflows` = 0 命中）。
+      # E2E 测的是我自己手写的 `wrangler pages dev` 等价命令，不是这条脚本——脚本里的路径/端口/依赖分支烂掉
+      # 不会有东西变红。本步真跑 start-demo.sh 本体并复用 live_smoke 的红线断言（对账接线＝demo_smoke --wired）。
+      - name: 一键演示链烟测（跑的就是 start-demo.sh，含拆除后端口释放复验）
+        working-directory: .
+        run: python3 scripts/demo_smoke.py --quiet --wired
 
   backend-test:
     runs-on: ubuntu-latest

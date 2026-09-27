@@ -95,11 +95,18 @@ async def http_error(request: Request, exc: StarletteHTTPException):
     注：必须注册在 Starlette 基类上，FastAPI 的 HTTPException 是其子类；只注册子类会漏掉
     路由未匹配时 Starlette 自己抛的 404（实测 {"detail":"Not Found"} 仍外泄）。"""
     request_id = getattr(request.state, "request_id", None) or new_request_id()
+    started = getattr(request.state, "started", None)
     headers = dict(exc.headers or {})
     headers["X-Request-Id"] = request_id
     detail = str(exc.detail)
     if exc.status_code == 404 and detail == "Not Found":
         detail = f"not found: {request.url.path}"  # 与 Functions 侧 fail(404, `not found: ${path}`) 同文案
+    # 台账 #42（第三十八轮补）：此前只有权威面（Functions console）给 4xx 落 warn，镜像面这条处理器
+    # **一行日志都不打** ⇒ 双端可观测性不对称，运维从镜像侧看不出 404 风暴（对外行为两侧一直是一致的）。
+    # 级别口径与同文件的 RequestTooLarge 一致：客户端错误绝不落 error（那会把真故障埋进噪声里）。
+    log_event("warn", req=request_id, path=request.url.path, method=request.method,
+              ms=int((time.perf_counter() - started) * 1000) if started else None,
+              kind=type(exc).__name__, status=exc.status_code, msg=redact(detail, current_api_key()))
     return JSONResponse(
         status_code=exc.status_code,
         content={"code": exc.status_code, "message": redact(detail, current_api_key())},

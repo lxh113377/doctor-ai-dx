@@ -5,6 +5,57 @@
 
 ## [Unreleased]
 
+## [1.35.0] - 2026-09-27
+
+第三十八轮开源对标收口。本轮主张：**把"文档承诺给评审跑的第一条命令"变成被测对象**，
+并用两次实测把三条长期挂着的台账分别关掉（其中两条是"前提其实不成立"）。三条产品红线零触碰。
+
+- ✅ **台账 #44 关闭（P2 → 已交付）——`scripts/demo_smoke.py`**：对标取证（2026-09-27 `gh api` 现取，peer 一律全名）
+  `openemr/openemr` 把"装完跑什么"本身做成被测面（6 个 composite ＋ `windows-ci.yml`），
+  `cqframework/clinical_quality_language`（333★，HL7 CQL 规范实现）有 `check-pr.yml` ＋ `issue-matcher.yml`。
+  我方此前 **全仓零处引用 `start-demo`**（实测 `grep -rl "start-demo" frontend/tests scripts/ backend/tests .github/workflows` = 0 命中），
+  而 README 把它写成评审的第一条命令；e2e 测的是我手写的 `wrangler pages dev` **等价命令**，不是这份脚本——
+  脚本里的路径／端口／依赖分支烂掉不会有东西变红。新件三条腿：
+  **腿 1 配对对账**（`start-demo.sh` ↔ `.ps1` 按 10 个键要求**两侧同时命中**，端口从两侧现取后逐字全等，不抄常量）；
+  **腿 2 真起服务**（直接跑 `bash start-demo.sh` 本体，等 `/api/health` 就绪 → `GET /` 拿 SPA 壳 → `POST /api/dx/c1`
+  走红线断言，拆除后**复验端口真的还回来了**）；**腿 1b 接线自证**（`--wired` 核对本判据确实挂在 CI 与出包预检两条链上，
+  漏一面即红——"写了没接线＝没写"）。红线断言一律 `import live_smoke` 复用，**不写第二套口径**。
+  - **首跑即抓到真实漂移**：`.sh` 的 `npm install` 带 `--no-audit --no-fund` 而 `.ps1` 不带 ⇒ 已补齐并把它列进对账键防回潮。
+  - 本机实测（Windows / Git Bash）：`服务就绪 5.5s`、`version 1.35.0 == 仓内单一源`、红旗命中 ACS、引用 5 条全在白名单、
+    `mode=rule-fallback`（零密钥确定性）、FHIR `entry=22`、单次 0.02s、`拆除后端口已释放`；**16 项全绿**。
+  - 反例/变异体实测（`--selftest` **16/16**）：ps1 端口改 9999 ⇒ 端口判据红；sh 侧删 `--port` ⇒ 红（不是跳过）；
+    `--local` 只剩一侧 ⇒ 红；两份都读空 ⇒ 覆盖面判据红；工作流两面清空 ⇒ 两个面行各红；
+    `EADDRINUSE`/`npm error` 日志归因分别为 `port-in-use`/`install-failed`（不许混报成"超时"）；
+    `llm_mode≠live` 而 `mode=live` ⇒ 判红，真 live 与 rule-fallback 均放行。
+  - 落点：`ci.yml` e2e 作业新增真跑一步（`python3 scripts/demo_smoke.py --quiet --wired`）＋
+    `release.yml` 预检新增离线两腿（`--pair-only --wired`，出包链与预检链同闸＝#47 那半条）。
+- ✅ **台账 #42 关闭（P3 → 已补对称）**：对标发现的"双端可观测性不对称"是真缺口——权威面 4xx 走 `observe.js` 落 warn，
+  镜像面 `main.py:http_error` 处理器**一行都不打**，于是"对外行为一致"掩盖了"运维可见性不一致"（从镜像侧看不出 404 风暴）。
+  修法＝在唯一出口处补一条 `log_event("warn", …, status=…)`（级别口径与同文件 `RequestTooLarge` 一致，客户端错误绝不落 error），
+  并给 `backend/tests/test_api_observe.py` 加 4 条判据（两条 404 各落一条 warn／归因最小集齐／4xx 无 error 级／字段白名单含新键）。
+  实测该文件 **46 pass / 0 fail**；变异体实测：删掉那行 log_event ⇒ **恰好这一条判红**（`warn(404) 条数=0`），按 sha256 复原后转绿（`3b1ea570a47cf09e`）。
+- ✅ **台账 #50 的一半以「早已承接」关闭**：本轮冷读 `frontend/tests/negation_probe.mjs` 才发现它就是第二十五轮为 #50 落地的
+  全表枚举器——分母交给规则表（`DANGER` 每条×每个关键词生成"必命中/被否必不命中"两向用例，COMBO 逐组逐词），
+  且带"派生用例 <100 条即判红"的读空守卫，已在 `npm test` 阻断链上；现跑实测 **232 pass / 0 fail**，
+  镜像端 `backend/tests/smoke_engine.py` 有等价派生探针。**台账没回写而挂了 13 轮**（同 #54 那族的"实测已完成、账没改"形态）。
+  剩下的"金标准地板二次校准"另立 **#116**（`accuracy_guard` 目前只在 LLM 路径上量一次，缺第二次独立测量）。
+- ✅ **台账 #101 以「前提不成立」关闭**：原话是「`D-二聚体` 一类检验项词仍在加权表」。本轮用枚举器核加权表真值
+  `data/knowledge.json.red_flag_terms` —— **32 个词逐个看，没有一个属于检验项**（全是症状/体征侧）；
+  `D-二聚体` 实际落在 `red_flag_rules.json` 的关键词表与 `knowledge.json` 的 kb-003 关键词里，
+  这两处出现它是**正确的**（"D-二聚体升高"本就是肺栓塞红旗的输入线索、也是指南正文用词）。⇒ 不分栏、不改表，
+  关闭理由是现算的枚举读数而不是"我觉得没事"；若将来真引入检验项词表，再按原方案挂 `kb_guard` 对账。
+- 🟡 **台账 #46 以「换落点」处置**：原建议照抄 openemr 的 composite action。本轮先取分母（V1.14 规矩）：
+  7 份工作流里 `setup-node` 4 份、`setup-python` 3 份、`npm ci` 2 份，而**判据逻辑早已全在 `scripts/` 与 `npm run` 单源里**，
+  重复的只是工具链引导那几行 YAML。openemr 是 6 个 composite 对 79 份工作流（≈1:13），我方 7 份不构成同型问题；
+  更关键的是 composite 本机无法直跑（无 `act`），会把"只有 CI 能验"的面**扩大**——正是 #47 记的那类债。
+  故本轮不做 composite，改为把"新判据必须进阻断链"机器化（`demo_smoke --wired` 是自锚定的第一例）。
+- 🆕 **台账 #115 登记（P3）**：`health.llm_mode` 的词表（`live|mock-fallback`）没有任何判据钉住，只写在 README 散文与
+  `openapi` 的 summary 文本里；而 `dx.mode` 是另一套词表（`live|rule|rule-fallback|mock`）。本轮实测同一次请求
+  两侧读出 `llm_mode=mock-fallback` 与 `mode=rule-fallback`——**不是缺陷**（一个是"有没有 Key"、一个是"这单走了哪条链"），
+  但两套词表只在文档散文里对齐，缺一个单一来源。做法候选：把两表写进 `data/` 侧的一份枚举文件，由 `api_contract_guard` 对账。
+- 文档：`README.md`／`CONTRIBUTING.md`／仓库 `AGENTS.md`／`docs/ARCHITECTURE.md` 的门禁表补"一键演示链烟测"一行
+  （套件仍是 25 件——本判据属作业链面，不进 `npm test`，避免把浏览器/子进程混进 c8 口径，与 r14 同一条理由）。
+
 ## [1.34.0] - 2026-09-27
 
 第三十七轮开源对标收口。本轮的主张不是"改进了检索质量"，而是**把一条一直没被度量的安全增量量出来**，

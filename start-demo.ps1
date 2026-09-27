@@ -14,7 +14,7 @@ Write-Host "=== 医 · 基层AI辅助诊断系统 演示启动 ===" -ForegroundC
 if (-not (Test-Path (Join-Path $Frontend "node_modules\wrangler"))) {
     Write-Host "[1/3] 安装依赖 ..." -ForegroundColor Yellow
     Push-Location $Frontend
-    & npm install
+    & npm install --no-audit --no-fund
     Pop-Location
 }
 

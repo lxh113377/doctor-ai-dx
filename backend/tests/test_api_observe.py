@@ -109,6 +109,29 @@ check("未知路径 404 同样走 {code,message} 契约且文案与 Functions �
       nf.status_code == 404 and nf.json().get("code") == 404 and "detail" not in nf.json()
       and nf.json().get("message") == "not found: /api/nope", json.dumps(nf.json(), ensure_ascii=False)[:140])
 
+print("== 4xx 可观测性双端对称（台账 #42，第三十八轮补）==")
+# 权威面（Functions console）一直给 4xx 落 warn，镜像面这条处理器此前**一行都不打** ⇒
+# "对外行为两侧一致"掩盖了"运维可见性两侧不一致"（从镜像侧看不出 404 风暴）。
+# 本块钉三件事：有 warn、级别不是 error、字段仍在归因白名单内（新键 status 已登记）。
+buf4 = io.StringIO()
+with redirect_stdout(buf4):
+    r404_case = client.post("/api/dx/nope", json=FORGED)
+    r404_path = client.get("/api/nope")
+rows4 = [json.loads(ln) for ln in buf4.getvalue().splitlines() if ln.startswith("{")]
+w4 = [e for e in rows4 if e.get("lvl") == "warn" and e.get("status") == 404]
+check("两次 404 各落一条 warn（镜像面与权威面可观测性对称；读空即红）",
+      len(w4) == 2 and r404_case.status_code == 404 and r404_path.status_code == 404,
+      f"warn(404) 条数={len(w4)} 实得状态={r404_case.status_code}/{r404_path.status_code} "
+      f"捕获行={[(e.get('lvl'), e.get('status')) for e in rows4][:4]}")
+check("warn 行带归因最小集（path/method/req 齐，msg 是医生可读文案）",
+      all(e.get("path") and e.get("method") and e.get("req") and isinstance(e.get("msg"), str) for e in w4),
+      json.dumps(w4[:1], ensure_ascii=False)[:160])
+check("4xx 绝不落 error 级（客户端错误不得挤占真故障信号）",
+      not [e for e in rows4 if e.get("lvl") == "error"], str([e.get("lvl") for e in rows4][:6]))
+check("warn 字段仍落在白名单内（本条新增的 status 已登记，不是随手加键）",
+      all(set(e) <= {"app", "lvl", "req", "path", "method", "ms", "kind", "msg", "status"} for e in w4),
+      str(sorted(w4[0])) if w4 else "无 warn 行可比")
+
 print("== 路由级全链路 200（抽取→诊断→检查→报告）==")
 HIST = [{"role": "user", "content": c} for c in
         ["压榨样/紧缩感", "向左肩臂放射", "活动/劳累时加重", "出冷汗", "高血压，吸烟"]]

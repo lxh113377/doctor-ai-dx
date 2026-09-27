@@ -71,6 +71,9 @@ jobs:
           python scripts/dep_completeness.py
           python scripts/action_pin.py --verify
           python scripts/live_smoke.py --selftest
+          # 一键演示链（#44）：出包链里跑**离线两腿**——两份脚本配对对账 + 本判据自身是否真挂在阻断链上。
+          # 不在这里真起服务（那属 CI 的 e2e 作业，需要 npm ci 与端口），但"判据没接线"必须在出包前就红。
+          python scripts/demo_smoke.py --pair-only --wired
           # 三张临床表的生成器自证（#92/#93）：中止面必须真会中止、生成字节可复现。
           # npm test 里已有各自的守卫，这里补的是「出包链与预检链同闸」那半边（台账#47 的教训）。
           node scripts/export_knowledge.mjs --selftest

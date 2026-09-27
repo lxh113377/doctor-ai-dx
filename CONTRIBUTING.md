@@ -38,6 +38,8 @@ cd frontend && npm run typecheck              # Python 类型门禁（mypy 严�
 cd frontend && npm run lock                   # 依赖锁定对账（requirements.lock 钉版+哈希 且 Dockerfile 真从锁装）
 cd frontend && npm run build && npm run test:e2e   # 端到端浏览器回归（首次先 npx playwright install --with-deps chromium）
 cd backend && python tests/smoke_engine.py && python tests/test_api_observe.py
+python scripts/demo_smoke.py --selftest          # 一键演示链反例自证（16 项，纯离线）
+python scripts/demo_smoke.py                     # 真跑评审的第一条命令 start-demo.sh（第三十八轮 #44；CI e2e 作业同一步）
 cd frontend && npm run eval:live && npm run perf:gate   # 线上 live 复现 + 性能地板线（需 14 天内新鲜报告与公网可达）
 ```
 

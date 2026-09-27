@@ -51,6 +51,8 @@ cd .. && npm --prefix frontend run typecheck     # mypy（零豁免档，阈值 
 npm --prefix frontend run lock                   # 依赖锁对账（钉版 + sha256 + Dockerfile 真从锁装）
 npm --prefix frontend run deps:check             # import↔声明面、非 optional peer↔package-lock
 npm --prefix frontend run smoke:live             # 打线上：version 对账 + 404/413 契约 + 三条红线在场
+python scripts/demo_smoke.py --pair-only --wired # 一键演示链：两份脚本配对对账 + 本判据接线自证（零网络）
+python scripts/demo_smoke.py                     # 真跑 start-demo.sh 起本地服务并核三条红线（需 node 与 Git Bash）
 npm --prefix frontend run actions                # Actions 钉版与最小权限（本机离线档）
 python backend/selftest.py     # 镜像面自证（套件清单唯一真相源 backend/tests/suite.json）
 ```
