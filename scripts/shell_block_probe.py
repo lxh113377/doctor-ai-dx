@@ -100,11 +100,17 @@ def probe(script: str, tmpdir: str, key: str, bash: str) -> list[str]:
             tail = (r.stderr or r.stdout).strip()[:160]
             issues.append(f"bash -n rc={r.returncode}: {tail}")
     for k, ln in enumerate(script.split(NL), 1):
+        s = ln.strip()
+        # 整行注释一律跳过两条启发式腿：shell 不解析注释文本，shellcheck 也不会因注释报 SC1073。
+        # 不跳的后果实测过：第四十二轮我给 release.yml 写的一条注释（内含 `$(…)` 与全角括号）
+        # 被本探针判成 FAIL——扫描器命中了被匹配串自己的说明文字（同族自指假命中）。
+        # 解析级那条腿不受影响：`bash -n` 看的是整块，注释真把引号/缩进搞坏了它照样红。
+        if s.startswith("#"):
+            continue
         if "$(" in ln and FULLWIDTH.search(ln):
             issues.append(f"L{k}: 命令替换内含全角标点（shellcheck 解析器会当场顶死）:: {ln.strip()[:90]}")
-        s = ln.strip()
-        # 两条豁免见模块头 LS_ENUM 上方注释：注释行与 `git ls-files` 不参与本腿，防自指假命中。
-        if s.startswith("#") or GIT_LS.search(ln):
+        # 第二条豁免见模块头 LS_ENUM 上方注释：`git ls-files` 本身就是被推荐的替代写法。
+        if GIT_LS.search(ln):
             continue
         if LS_ENUM.search(ln):
             issues.append(f"L{k}: shellcheck SC2012 形态（用 ls 枚举文件喂给程序，改用 find）:: {s[:90]}")
@@ -126,6 +132,8 @@ def selftest(tmpdir: str) -> int:
         ("ls 管道计数必须被抓（CI 判红形态 run 36295599503）", bad_ls_pipe, True),
         ("$(ls) 喂 for 循环必须被抓", bad_ls_for, True),
         ("git ls-files / find / 裸 ls 展示 不得误报（反向腿）", good_ls, False),
+        ("整行注释含 $(…) 与全角括号不得误报（注释豁免反向腿）",
+         '# 注释里写 echo "$(取不到（连接层失败）)" 只是说明文字\nn=1\necho "$n"\n', False),
     ]
     bash = find_bash()
     print(f"  INFO bash={bash if bash else '不可用（语法腿跳过，只跑启发式）'}")
