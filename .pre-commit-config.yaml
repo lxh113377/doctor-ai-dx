@@ -86,12 +86,14 @@ repos:
       # 工作流 run 块的本地语法探针（第四十轮，台账 #47 同族的"CI 才判红"时机缺口）。
       # 触发实测：本轮 infra-lint 报 live-smoke.yml:88 shellcheck SC1073——全角括号落进 $( ) ⇒
       # 提交时全绿、CI 才红，而 Release 在同一时刻已经发出。本机没有 docker 守护进程、
-      # shellcheck/actionlint 不在 PATH ⇒ 跑得动的只有 `bash -n`，所以这条只做解析级那一半，
-      # **不冒充 actionlint**（风格级判据仍在 CI 侧，边界写在脚本 docstring 里）。
+      # shellcheck/actionlint 不在 PATH ⇒ 跑得动的只有 `bash -n`（解析级）＋**已枚举**的启发式形态。
+      # 第四十二轮实测：只有解析级时，同族第二次仍从 CI 判红（`SC2012: Use find instead of ls`，
+      # run 36295599503）⇒ 该轮把「命令替换内全角标点」与「ls 枚举喂程序」两条钉进探针。
+      # 边界不变：**不冒充 actionlint**，未枚举的风格级规则仍只有 CI 侧能抓（残留缺口见 docs/PITFALLS.md C6）。
       # 语言选 system 而非 python 包：钩内再起 bash 由脚本自己解析（实测 Windows 上裸 `bash`
       # 会命中 WSL ⇒ rc=127 假红；脚本显式优先 Git Bash，找不到就只跑启发式腿，绝不假红）。
       - id: shell-block-probe
-        name: 工作流 run 块语法探针（本机 bash -n + 命令替换内全角标点；docker/shellcheck 缺位时的本地时机）
+        name: 工作流 run 块探针（bash -n ＋已枚举 shellcheck 形态：命令替换内全角标点 / SC2012 用 ls 枚举）
         entry: python scripts/shell_block_probe.py
         language: system
         pass_filenames: false

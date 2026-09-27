@@ -35,6 +35,17 @@
   即第四十轮 CI 判红的同一形态第二次出现，这次**没进 CI 就被拦下**；改成先赋值再 echo 后
   `28/28 块通过`。同轮另记一次管道归因错误：`python x.ps1 2>/dev/null | tail` 的 rc 是 tail 的，
   差点把"镜像检查根本没跑"读成"跑过了"（同族：退出码死在管道里）。
+- **但本机腿仍有第二层缺口（CI 实测判红，不是推理）**：推送后 `infra-lint` 红在
+  `release.yml:468 → shellcheck SC2012:info: Use find instead of ls` —— 就是上面那条新步里的
+  `arts="$(ls -1 | wc -l)"`。它 `bash -n` 完全合法（本机 28/28 全绿是**真的**，只是量的不是同一件事），
+  属"能跑但 CI 不认"的风格级判据 ⇒ 第四十轮那条本地时机腿只补了解析级，**覆盖声明当时写窄了**。
+  正解两步：① 该行改 `find . -maxdepth 1 -type f | wc -l`；② 探针加第三腿（`ls` 枚举喂程序 ⇒ 判红，
+  两条豁免防自指：`git ls-files` 本身是替代写法、注释行不参与扫描），selftest 4/4 → **7/7**，
+  含 3 条新反例 + 1 条反向腿（`git ls-files`/`find`/裸 `ls` 展示**不得误报**）。
+  两向实测在**真实文件**上做：把 `ls -1 | wc -l` 放回 `release.yml` ⇒ `rc=1` 且点名
+  `release.yml:468: L30: …SC2012 形态…`；改回 `find` ⇒ `rc=0 28/28`。
+  残留缺口如实留着：探针只覆盖**已枚举**的 shellcheck 形态，其余风格级规则本机仍抓不到
+  （本机无 `shellcheck` 二进制、`docker info` 报 daemon 不在，二者都不在允许静默安装的范围内）。
 - **回归**：`npm test` 26 套件 **532 PASS / 0 FAIL**（rc=0）；`pre-commit run --all-files` 14 钩全 Passed；
   `ruff` All checks passed；`type_gate` mypy 检查 40 文件 0 错误；`gen_openapi.py --check` `version=1.39.0`；
   版本五处声明同步；根仓 `node work/freeze_check.mjs` **ALL PASS (12/12)**（第 12 检「交付面在场与字节可读」

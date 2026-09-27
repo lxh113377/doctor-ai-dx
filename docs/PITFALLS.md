@@ -110,6 +110,18 @@
 - 纪律：**判据红了先读响应体，再动状态开关**；猜测式提示语会把下一轮排查带到别的系统上。
 - 个人包可见性 PATCH 用 `GITHUB_TOKEN`/PAT 均 404（该端点要求更高 scope）；源仓库公开时包默认 public，真判据是匿名 manifest 实测。
 
+### C6 工作流文本的本地时机腿分两层，只补一层会二次判红（第四十二轮实测）
+- 症状：本机 `pre-commit` 14 钩全绿（含 run 块语法探针），推送后 CI `infra-lint` 判红
+  ——`release.yml:468 shellcheck SC2012:info: Use find instead of ls`（run 36295599503）。
+- 根因：本机无 `shellcheck`/`actionlint` 二进制、`docker info` 报 daemon 不在，探针只能跑 `bash -n`。
+  `bash -n` 是**解析级**（第四十轮那一红：命令替换里的全角括号），SC2012 是**风格级**——脚本合法但 CI 不认。
+  上一轮把这条本地腿写成"补齐了 CI 时机"，**覆盖声明写窄了层**，于是同族第二次再花一轮去撞。
+- 判据：`scripts/shell_block_probe.py` 现有三腿（解析 / 命令替换内全角标点 / `ls` 枚举喂程序），
+  `--selftest` 7 项含反向腿（`git ls-files`、`find`、裸 `ls` 展示不得误报）；
+  两向实测在真实文件上做：放回 `ls -1 | wc -l` ⇒ `rc=1` 点名，改 `find` ⇒ `rc=0 28/28`。
+- 残留缺口（不许写成已闭环）：探针只覆盖**已枚举**的 shellcheck/actionlint 形态，其余风格级规则仍只有
+  CI 侧能抓；补法是本机装 shellcheck 或起 docker daemon，两者都属"需用户同意的系统安装"，未擅自安装。
+
 ---
 
 ## D. Windows + Git Bash 专属

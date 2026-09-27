@@ -493,7 +493,9 @@ jobs:
               bad="$bad $base(台账=${led:0:10} 实算=${got:0:10})"
             fi
           done
-          arts="$(ls -1 | wc -l)"
+          # 计数一律走 find 不走 ls：本机探针只跑 `bash -n`（解析级），抓不到 shellcheck 的
+          # SC2012（风格级），CI 侧 actionlint 因此把发布判红过一轮（2026-09-27 run 36295599503）。
+          arts="$(find . -maxdepth 1 -type f | wc -l)"
           echo "远端核验：旁挂数=$n_art 下载目录条目=$arts"
           if [ "$n_art" -lt 3 ]; then
             echo "::error::远端只拿到 $n_art 份旁挂校验（应 ≥3）＝资产没真上传，不许记绿"

@@ -5,11 +5,13 @@
 （形如 `$(curl … || echo 取不到（连接层失败）)`）⇒ CI 侧 actionlint 报
 `shellcheck SC1073: Couldn't parse this command expansion`，`infra-lint` 判红；
 而**同一时刻 Release 已经发出去了**（台账 #47）。本机为什么拦不住：`docker info` 报 daemon 不在、
-`shellcheck`/`actionlint` 不在 PATH。`bash -n` 是本机跑得动的那一半，这条探针只做那一半，
-**不冒充 actionlint**：解析级的红在提交前就看见，风格级判据仍留在 CI 侧（差距如实留档）。
+`shellcheck`/`actionlint` 不在 PATH。`bash -n` 是本机跑得动的那一半，**第四十二轮实测证明"只做那一半"不够**：
+同族第二次仍从 CI 判红（`arts="$(ls -1 | wc -l)"` → `SC2012:info`，run 36295599503），
+而它在 `bash -n` 下完全合法 ⇒ 于是补上**可枚举的启发式腿**（全角标点、`ls` 枚举喂程序）。
+边界照旧：**不冒充 actionlint**，未枚举的风格级规则仍只有 CI 侧抓得到（残留缺口见 docs/PITFALLS.md C6）。
 
 三态输出（零输入绝不记绿，见 memory「零输入不得记 PASS」）：
-  FAIL    某个 run 块 bash -n 不过，或命令替换里含全角标点（本轮 shellcheck 的致命形态）
+  FAIL    某个 run 块 bash -n 不过，或命中已枚举的 shellcheck 形态（命令替换内全角标点 / 用 ls 枚举文件喂程序）
   EMPTY   一个 run 块都没抽到 ⇒ 抽取器或取数面坏了＝判据失效（rc=2）
   PASS    全部通过且分母 ≥1
 bash 找不到时**只跑启发式腿并明说**——绝不因为"我的解释器环境问题"把合规脚本判成红（假红比没判据更糟）。
@@ -27,6 +29,14 @@ from pathlib import Path
 
 BLOCK_RE = re.compile(r"^(\s*)run: \|\s*$")
 FULLWIDTH = re.compile(r"[（）【】：；，]")
+# SC2012 一族（shellcheck 的**风格级**判据，`bash -n` 结构上抓不到）：用 `ls` 枚举文件再喂给程序消费。
+# 为什么补：CI 侧 actionlint 因 `arts="$(ls -1 | wc -l)"` 把发布作业判红过一次
+# （2026-09-27 run 36295599503，infra-lint `SC2012:info`）——本机探针当时 28/28 全绿，
+# 说明上一轮立的"本地时机腿"只补了解析级，**没覆盖"能跑但 CI 不认"那一层**。
+# 两条豁免是必需的，否则会造出自指假命中：`git ls-files` 本身就是被推荐的替代写法；
+# 注释行不得参与扫描（本文件正文里就写着"计数一律走 find 不走 ls"）。
+LS_ENUM = re.compile(r"(?:\$\(\s*ls\b|\bls\b[^|;\n]*\|)")
+GIT_LS = re.compile(r"\bgit\s+ls\b")
 NL = "\n"
 
 
@@ -92,6 +102,12 @@ def probe(script: str, tmpdir: str, key: str, bash: str) -> list[str]:
     for k, ln in enumerate(script.split(NL), 1):
         if "$(" in ln and FULLWIDTH.search(ln):
             issues.append(f"L{k}: 命令替换内含全角标点（shellcheck 解析器会当场顶死）:: {ln.strip()[:90]}")
+        s = ln.strip()
+        # 两条豁免见模块头 LS_ENUM 上方注释：注释行与 `git ls-files` 不参与本腿，防自指假命中。
+        if s.startswith("#") or GIT_LS.search(ln):
+            continue
+        if LS_ENUM.search(ln):
+            issues.append(f"L{k}: shellcheck SC2012 形态（用 ls 枚举文件喂给程序，改用 find）:: {s[:90]}")
     return issues
 
 
@@ -99,10 +115,17 @@ def selftest(tmpdir: str) -> int:
     good = 'BASE="https://x"\nH="$(curl -s "$U")" || H=""\necho "$H"'
     bad_parse = 'if [ -z "$X" ; then\necho hi\n'
     bad_width = 'echo "- health: $(curl -s "$U" || echo 取不到（连接层失败）)"'
+    bad_ls_pipe = 'arts="$(ls -1 | wc -l)"\necho "n=$arts"'
+    bad_ls_for = 'for f in $(ls dist-release); do echo "$f"; done'
+    good_ls = ('n=$(git ls-files "*.md" | wc -l)\n'
+               'arts="$(find . -maxdepth 1 -type f | wc -l)"\nls -1\n')
     cases = [
         ("合规块必须零问题", good, False),
         ("真语法错必须被抓", bad_parse, True),
         ("命令替换内全角括号必须被抓（本轮事故形态）", bad_width, True),
+        ("ls 管道计数必须被抓（CI 判红形态 run 36295599503）", bad_ls_pipe, True),
+        ("$(ls) 喂 for 循环必须被抓", bad_ls_for, True),
+        ("git ls-files / find / 裸 ls 展示 不得误报（反向腿）", good_ls, False),
     ]
     bash = find_bash()
     print(f"  INFO bash={bash if bash else '不可用（语法腿跳过，只跑启发式）'}")
