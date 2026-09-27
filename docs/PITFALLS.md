@@ -357,7 +357,8 @@
 
 ```bash
 # 以下全部在**仓库根**执行（别一半在根一半在 frontend，`../` 写法最容易错）
-pre-commit run --all-files                          # 十三钩（清单唯一源 .pre-commit-config.yaml，第三十七轮起钩数由 docs_link_guard 现算对账）
+pre-commit run --all-files                          # 十四钩（清单唯一源 .pre-commit-config.yaml，第三十七轮起钩数由 docs_link_guard 现算对账；
+#   第 14 只是第四十轮加的 run 块语法探针 scripts/shell_block_probe.py）
 (cd frontend && npm test)                           # 二十六件套（含 docs_link_guard、error_parity）
 (cd frontend && npm run test:e2e)                   # 双视口浏览器回归（Playwright）
 python backend/selftest.py                          # 六套件 exit 0

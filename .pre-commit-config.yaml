@@ -83,6 +83,20 @@ repos:
         pass_filenames: false
         files: ^\.github/workflows/.*\.ya?ml$
 
+      # 工作流 run 块的本地语法探针（第四十轮，台账 #47 同族的"CI 才判红"时机缺口）。
+      # 触发实测：本轮 infra-lint 报 live-smoke.yml:88 shellcheck SC1073——全角括号落进 $( ) ⇒
+      # 提交时全绿、CI 才红，而 Release 在同一时刻已经发出。本机没有 docker 守护进程、
+      # shellcheck/actionlint 不在 PATH ⇒ 跑得动的只有 `bash -n`，所以这条只做解析级那一半，
+      # **不冒充 actionlint**（风格级判据仍在 CI 侧，边界写在脚本 docstring 里）。
+      # 语言选 system 而非 python 包：钩内再起 bash 由脚本自己解析（实测 Windows 上裸 `bash`
+      # 会命中 WSL ⇒ rc=127 假红；脚本显式优先 Git Bash，找不到就只跑启发式腿，绝不假红）。
+      - id: shell-block-probe
+        name: 工作流 run 块语法探针（本机 bash -n + 命令替换内全角标点；docker/shellcheck 缺位时的本地时机）
+        entry: python scripts/shell_block_probe.py
+        language: system
+        pass_filenames: false
+        files: ^\.github/workflows/.*\.ya?ml$
+
       - id: text-hygiene
         name: 全仓文本控制字符扫描（防"正则里的词边界被转义成裸退格符"类死判据）
         entry: python scripts/check_text_hygiene.py --quiet

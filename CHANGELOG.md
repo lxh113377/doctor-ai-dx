@@ -22,9 +22,26 @@
     GET 的查询参数必须拼进 URL，用 `-f` 会进请求体 ⇒ 同样 404。这两个坑的**危险形态**是"闸在跑但永远 404"，
     于是每条 tag 都读成 UNVERIFIED 而无人察觉——所以解析函数认不出时原样送回、由上层把原因打进输出。
   - 顺带：`release.yml` 的 `permissions` 补 `actions: read`（读同提交的 run 结论所需）。
-  - 本机验证面如实登记：`codespell` 不在 PATH（`command not found`），由 pre-commit 的 13 钩与 CI infra-lint 覆盖；
+  - 本机验证面如实登记：`codespell` 不在 PATH（`command not found`），由 pre-commit 的钩链（本轮起 14 只）与 CI infra-lint 覆盖；
     `ruff`/`mypy`/`type_gate`（39 文件 0 错误）/`suite_guard`/`action_pin`(15/15)/`check_text_hygiene` 本机全过。
 
+
+- **同轮第二件｜`scripts/shell_block_probe.py`（`.pre-commit-config.yaml` 第 14 只钩 + `release.yml` 出包前置门禁）**：
+  上面那条红的**时机**问题——本机没 docker 守护进程、`shellcheck`/`actionlint` 不在 PATH ⇒ 提交时全绿、
+  CI 才红，而红的时候 Release 已经发出去了。本机跑得动的只有 `bash -n`，所以这条探针只做**解析级**那一半，
+  明写"**不冒充 actionlint**"（风格级判据仍在 CI 侧）。三态：FAIL / EMPTY（一个块都没抽到＝判据失效，rc=2，
+  绝不记绿）/ PASS（分母 ≥1）。
+  - 实测两侧：`--selftest` 4/4（含"合规块必须零问题"对照组与"抽取器分母 2→2"反向断言）；
+    真扫全仓 7 份工作流 **27/27 块通过**；反向对照取**本轮那个红提交的原始字节**
+    （`git show d5e197f:.github/workflows/live-smoke.yml`）⇒ `rc=1` 共 3 处命中，其中一条是 `bash -n` 报的
+    `syntax error near unexpected token '}'`——正是我漏删的旧草稿块，本机居然抓得到；另两条是
+    「命令替换内含全角标点」。
+  - 实现期两个真坑都写进注释：① Windows 上 subprocess 起的裸 `bash` 解析到 **WSL**（rc=127 且把
+    `C:\Users\…` 吞成 `C:Users…`）⇒ 合规块被判红，**假红比没判据更糟**；现显式优先 Git Bash 并真跑
+    `exit 0` 验可用，找不到就只跑启发式腿并明说。② 首版夹具写成 `- run: |` 抽不到块（真实 YAML 是
+    `- name:` 换行后才写 `run: |`）⇒ 分母自证当场把它抓成 `实测=1`。
+  - 钩数 13→**14** 已同步 README/CONTRIBUTING/docs-ARCHITECTURE/仓内 AGENTS 四处（钩数唯一源是配置文件，
+    `docs_link_guard` 现算对账——这条对账本身是上一轮把钩数改成派生真值后才成立的）。
 
 ## [1.37.0] - 2026-09-27
 

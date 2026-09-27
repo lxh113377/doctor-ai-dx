@@ -78,6 +78,8 @@ jobs:
         run: |
           set -e
           python scripts/lock_guard.py
+          # 工作流 run 块语法探针（第四十轮）：本机与出包链同闸，CI 侧还有 actionlint 兜风格级判据。
+          python scripts/shell_block_probe.py
           python scripts/dep_completeness.py
           python scripts/action_pin.py --verify
           python scripts/live_smoke.py --selftest
