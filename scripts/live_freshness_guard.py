@@ -142,20 +142,37 @@ def workflow_cron(wf_file: Path) -> str:
     return ""
 
 
+def parse_schedule_since(shallow: bool, commit_iso_lines: list[str]):
+    """纯函数：浅克隆 ⇒ None（没有入档时刻就无权判"未到期"）。
+
+    CI 一手证据（run 36316298540）：`actions/checkout@…` 默认 depth=1 ⇒ `git log -S` 只看得到检出那次提交，
+    于是每个文件的"入档时刻"都变成**今天**，`cron_prev < since` 恒成立 ⇒ 真停摆会被读成"未到期"而放过。
+    浅克隆下宁可判 UNVERIFIED，也不许把这条判据换成一个永远偏向免贵的读数。
+    """
+    if shallow:
+        return None
+    lines = [s for s in commit_iso_lines if s.strip()]
+    return parse_ts(lines[0]) if lines else None
+
+
 def schedule_since(repo_root: Path, wf_rel: str):
     """排班**入档时刻**＝该文件里第一次出现 `schedule:` 那次提交的提交时间；取不到 ⇒ None。
 
     needle 是**字面串**不是正则（`git log -S` 语义），这里要的正是字面 `schedule:`。
+    注意 `--reverse` 只改**输出顺序**（旧→新），不改 -S 的匹配面（所有触及该字面串的提交），
+    所以"取最早那次"由两半共同保证：过滤条件是字面串、顺序是旧在前。
     """
     if not shutil.which("git"):
         return None
-    r = subprocess.run(["git", "-C", str(repo_root), "log", "-S", "schedule:",
-                        "--format=%cI", "--reverse", "--", wf_rel],
-                       capture_output=True, text=True, encoding="utf-8", errors="replace")
-    if r.returncode != 0:
+    shallow = subprocess.run(["git", "-C", str(repo_root), "rev-parse", "--is-shallow-repository"],
+                             capture_output=True, text=True, encoding="utf-8", errors="replace")
+    commit_iso = subprocess.run(["git", "-C", str(repo_root), "log", "-S", "schedule:",
+                                 "--format=%cI", "--reverse", "--", wf_rel],
+                                capture_output=True, text=True, encoding="utf-8", errors="replace")
+    if commit_iso.returncode != 0:
         return None
-    first = (r.stdout or "").strip().splitlines()
-    return parse_ts(first[0]) if first else None
+    return parse_schedule_since((shallow.stdout or "").strip().lower() == "true",
+                                (commit_iso.stdout or "").splitlines())
 
 
 def decide(runs, workflow_file: str, now: datetime, max_age_days: float, artifact: str,
@@ -256,7 +273,8 @@ def schedule_due_table(workdir: Path, repo_root: Path, now: datetime) -> list[st
         prev = cron_prev(cron, now) if cron else None
         since = schedule_since(repo_root, ".github/workflows/" + name)
         if prev is None or since is None:
-            lines.append(f"  {name}: cron={cron or '取不到'} 到点时刻/入档时刻算不出 ⇒ UNVERIFIED（不猜）")
+            lines.append(f"  {name}: cron={cron or '取不到'} 到点时刻/入档时刻算不出 ⇒ UNVERIFIED（不猜；"
+                         "CI 浅克隆 depth=1 会命中这一支——入档时刻一律不采信）")
             continue
         verdict = "未到期（零 run 不算停摆）" if prev < since else "已到期（必须有 run）"
         lines.append(f"  {name}: cron={cron} 上一轮到点={prev:%Y-%m-%d %H:%MZ} "
@@ -314,6 +332,17 @@ def selftest() -> int:
     d = cron_prev("30 1 * * 1", datetime(2026, 9, 27, 12, 0, tzinfo=UTC))
     cases.append(("cron_prev：每周一 01:30 在 9/27(周日) 的上一轮到点＝9/21 01:30Z",
                   d == datetime(2026, 9, 21, 1, 30, tzinfo=UTC), f"实测 {d}"))
+    got = parse_schedule_since(True, ["2026-09-24T22:57:07+08:00"])
+    cases.append(("浅克隆（CI depth=1）⇒ 入档时刻一律不采信，哪怕 git 明明给了提交",
+                  got is None, f"实测 {got}"))
+    got = parse_schedule_since(False, ["2026-09-24T22:57:07+08:00", "2026-09-27T11:00:00+00:00"])
+    first = datetime.fromisoformat("2026-09-24T22:57:07+08:00")
+    cases.append(("完整历史 ⇒ 取最早那次（--reverse 首行），不是最新",
+                  got == first and got != datetime.fromisoformat("2026-09-27T11:00:00+00:00"),
+                  f"实测 {got} vs 期望 {first}"))
+    got = parse_schedule_since(False, ["", "   "])
+    cases.append(("零输入（该文件里从没出现过 schedule:）⇒ None，不许当成『今天入档』",
+                  got is None, f"实测 {got}"))
     # ── 排班⇄巡检配对判据（第四十五轮）：真面＋两条专属输入面 ─────────────────────────
     wf_dir = Path(__file__).resolve().parents[1] / ".github" / "workflows"
     ok_real, detail_real = check_patrol_coverage(wf_dir, wf_dir / "ci.yml")
