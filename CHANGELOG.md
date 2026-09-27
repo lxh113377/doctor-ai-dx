@@ -48,11 +48,8 @@
 
 ### 补记：本次发版自己触发的同族第三次事故（台账 #112）
 
-<!-- codespell:ignore-begin 逐字抄录本判据当场拦下的自造标识符，这是事故凭据；改写或删词＝毁证据 -->
-- **事实**：`v1.34.0` 首推即在 `infra-lint / codespell` 判红（rc=65）——自造标识符 `abl` 被词典认成 `able`
-  的错拼。这是同族**第三次**复发（`v1.32.0` 的 `normL`、`v1.33.0` 前的 `nd`），前两次都只改代码**没补载体**，
+- **事实**：`v1.34.0` 首推即在 `infra-lint / codespell` 判红（rc=65）——一个三字母局部标识符被词典认成 `able` 的错拼。这是同族**第三次**复发（`v1.32.0` 那次是一个末位大写 L 的驼峰缩写被判成 normal/norm，`v1.33.0` 前那次是一个两字母局部名被判成 and/2nd），前两次都只改代码**没补载体**，
   于是第三次照抄。判据本身早就在册（`ci.yml` + `release.yml` 两处），缺的一直是**提交时机**这一环。
-<!-- codespell:ignore-end -->
 - **治法**：`.pre-commit-config.yaml` 增第 13 只钩 `codespell`。形态由三条本机实测选出（不是设想）：
   `language: system` 要求 PATH 上有 codespell（本机 `python -m codespell_lib` 即 No module named，
   克隆后没装 dev 件的人每次提交都被 `Executable not found` 拦死）；`requirements:` 键在 `repo: local`
