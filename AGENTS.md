@@ -46,6 +46,7 @@ npm run probe:ablation           # 红旗加性项可观测性（#110，**看守
                                   # 因此在补出「gold 只能靠加权词才进 top-5」的用例之前，**禁止**给它换权重或调常数（#98 按此改判关闭）。
 npm run coverage:js            # c8 + 模块级地板（地板清单单一源 tests/fixtures/coverage_floor.json）
 npm run test:e2e               # Playwright 双视口（1440×900 / 390×844）+ 三条红线在场与负向断言
+npm run test:e2e-live            # 打**线上** live 分支的浏览器级回归（#24）：只核红线在场＋结构骨架＋零控制台 error，不断言结论文本
 npm run lint:js                # ESLint --max-warnings=0（警告也算红）
 cd .. && npm --prefix frontend run typecheck     # mypy（零豁免档，阈值 fixtures/type_floor.json）
 npm --prefix frontend run lock                   # 依赖锁对账（钉版 + sha256 + Dockerfile 真从锁装）

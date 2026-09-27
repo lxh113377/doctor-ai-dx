@@ -40,6 +40,8 @@ cd frontend && npm run build && npm run test:e2e   # 端到端浏览器回归（
 cd backend && python tests/smoke_engine.py && python tests/test_api_observe.py
 python scripts/demo_smoke.py --selftest          # 一键演示链反例自证（16 项，纯离线）
 python scripts/demo_smoke.py                     # 真跑评审的第一条命令 start-demo.sh（第三十八轮 #44；CI e2e 作业同一步）
+cd frontend && npm run test:e2e-live             # live 分支浏览器级回归（第四十轮 #24）：打**线上**，只核红线在场与结构骨架，
+                                                 #   绝不断言结论文本；刻意不进 npm test / ci.yml（那两条链零网络零密钥）
 cd frontend && npm run eval:live && npm run perf:gate   # 线上 live 复现 + 性能地板线（需 14 天内新鲜报告与公网可达）
 ```
 

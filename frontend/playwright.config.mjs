@@ -13,6 +13,10 @@ const BASE = `http://127.0.0.1:${PORT}`
 
 export default defineConfig({
   testDir: "./e2e",
+  // 刻意排除 live 面：那条 spec 打的是**线上**、且要求 `version == 仓内单一源`，
+  // 在 push 阶段（线上还没部署新版本）必然红——第四十轮本机实测就红了这一次（本地跑全量时 live spec 被扫进来，
+  // 报 `线上=1.36.0 仓内=1.37.0`，属**正确判红**而非缺陷）。live 面只由 `playwright.live.config.mjs` 承担。
+  testIgnore: "**/live_*.spec.mjs",
   fullyParallel: false,
   workers: 1,
   retries: 0,

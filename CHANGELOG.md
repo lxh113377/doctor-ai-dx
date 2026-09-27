@@ -5,6 +5,44 @@
 
 ## [Unreleased]
 
+## [1.37.0] - 2026-09-27
+
+第四十轮开源对标收口。本轮的主张是**把 live 分支第一次放进浏览器级回归**（台账 #24，挂账 6 轮），
+顺带修掉我自己上一轮迁入台账时造成的镜像失真（新台账 #121），并对 #43 出「一半做、一半以改判关闭」的处置。
+三条产品红线零触碰。
+
+- **台账 #24 关闭｜`frontend/e2e/live_redlines.spec.mjs`（`npm run test:e2e-live`）+ CI `live-browser` 作业**：
+  此前 E2E 只有 rule-fallback 分支（为确定性刻意无密钥），live 分支的浏览器级路径零自动化（对标 `openemr/openemr`
+  的 live 场景 E2E 与 `cqframework/clinical_quality_language` 的 check-pr 形态）。三条用例，全部只断言
+  **红线在场 + 结构字段**，不断言结论文本——结论文本由模型决定，锁它等于把评测集抄进测试：
+  ① `version` 与仓内单一源全等（防"测的是别的站/旧版本"）；② 全界面「AI 辅助参考 · 医生终审」在场
+  **且**负向断言「替代医生」零命中 + 零控制台异常；③ 五步走到辅助诊断，断言疑似诊断/鉴别/引用三组结构非空。
+- **本轮最要紧的一条不是"跑绿"，是"这条判据有没有能力红"**：spec 里加了 mode 行为回执——监听 `/api/dx`
+  与 `/api/intake` 响应，采样 `data.mode`，断言 `modes.length > 0` **且** `mode === "live"` 至少一条。
+  两侧实测：线上 `3 passed (23.2s)`；把同一个 spec 打到本地无密钥 wrangler（rule-fallback）
+  ⇒ `1 failed 2 passed (6.3s)`，红因原文 `链路 mode 采样=["rule","rule","rule","rule","rule","rule","rule-fallback"]`。
+  没有这层回执，"live 回归"可以在某天模型降级后安静地变成"又测了一遍 rule-fallback"（同族：
+  「配置能力需要行为回执」「零输入不得记 PASS」）。
+- **第二真值预防｜抽出 `frontend/e2e/walk.mjs`**：五步走查与 `noConsoleErrors` 原样在 `app.spec.mjs` 里，
+  新 spec 若复制一份，则改一处流程另一处会静默失真。逐字搬出为 `export`，两侧共用。
+  回指代价如实测：本地 CI 阻断链改后 `7 passed (23.7s)`。
+- **顺带抓到一个会自我误导的配置洞**：`playwright.config.mjs` 没有 `testIgnore`，本地全量跑会把
+  `live_redlines.spec.mjs` 一起拉进来，对着 dev server 报 `线上=1.36.0 仓内=1.37.0` —— 那是一条真话，
+  但它测的不是这个 job 的立意。现加 `testIgnore: "**/live_*.spec.mjs"`，live spec 只由
+  `playwright.live.config.mjs`（无 webServer、`retries=1` 吸收公网抖动、baseURL 取 `LIVE_BASE`）承载。
+- **台账 #121 关闭｜根仓 `work/freeze_check.mjs` 第 10 检「两面未结台账对称」**：上一轮（第三十九轮）我把
+  open 条目从 `memory/07-next-steps.md` 壳迁进分卷时，**根 AGENTS.md 的镜像行还留着旧的"未做"叙述**——
+  即迁移方与被镜像方不再对称，新会话读镜像会以为 #24/#103 之类仍未登记。本轮先恢复 #100/#103/#111/#113
+  的可见性并把 #24 补回壳内，再上判据：壳的清单行 open 编号集合 ⇄ 镜像 07 节出现的 `#N` token 集合，
+  双向缺任一侧即红；分母守卫（壳 open <5 或镜像字节 <300 判红，读空不许记绿）。三侧实测：
+  删掉 #121 镜像行 ⇒ `FAIL 镜像缺 #103,#111,#113,#100`；往壳注入 `台账#999` ⇒ `FAIL 壳缺 #999`；复原 ⇒ PASS。
+- **台账 #43 处置（一半做／一半改判）**：对标 `openemr/openemr` 的 `inferno-test.yml`。仓内那一半
+  **早已由 `tests/fhir_guard.mjs` 交付**——本轮现跑 `45 pass / 0 fail`，编码 system 白名单 11 个
+  （10 个 HL7 官方码集 + 1 个自研占位），且带 7 条会红的反例（未登记 system／非法 code／悬挂 reference／
+  混入时钟字段／丢终审文案／编造 ICD）。Inferno 那一半**不做**，理由是可分性而非工作量：Inferno 需要一个
+  **可寻址的 FHIR server**，而我方 Bundle 是 `/api/dx` 响应内嵌的产物，挂上去要先把 MVP 改造成持久化
+  FHIR 后端——那是产品定位变更，不是测试补强。以「改判」形态登记，不留悬空 P1。
+
 ## [1.36.0] - 2026-09-27
 
 第三十九轮开源对标收口。本轮的两条主张：**给金标准补第二个可复现的测量面**（台账 #116），

@@ -53,6 +53,53 @@ jobs:
       - name: 打线上：version 对账 + 404/413 契约 + 三红线在场 + 单次耗时
         run: python scripts/live_smoke.py
 
+  # 第四十轮对标落地（台账 #24）：live 分支此前**没有任何浏览器级自动化**。
+  # `app.spec.mjs` 刻意不设 Key（为了确定性，这是对的选择）⇒ 只覆盖 rule-fallback；
+  # `live_path_guard.mjs` 用 fetch 桩在 Node 里测 ⇒ 测不到真浏览器里的渲染/溢出/控制台异常。
+  # 判据纪律：只断言"红线在场 + 结构骨架 + 零控制台 error + version 对账"，**绝不断言结论文本**
+  # （live 走 DeepSeek，同输入两次输出不同是常态；断言措辞＝测模型心情，红了无法定位）。
+  # 分层口径：不进 `npm test`、不进 `ci.yml`（那条链必须零网络零密钥），挂在每日线上作业上，
+  #          与 `live-site`/`online-eval` 同性质——红了单独知道，不拦合码（advisory 不阻断执行）。
+  live-browser:
+    name: 线上 live 分支浏览器级回归（只核红线在场与结构，不断言结论文本）
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install（只取测试链所需，不构建——测的是线上已部署产物）
+        working-directory: frontend
+        run: npm ci --no-audit --no-fund
+      - name: Install chromium
+        working-directory: frontend
+        run: npx playwright install --with-deps chromium
+      - name: 跑 live 五步链路（retries=1 吸收公网抖动；断言本身不放水）
+        working-directory: frontend
+        run: npm run test:e2e-live
+      - name: 失败时把线上真实版本与入口健康态打进摘要（区分"站点没了"与"渲染坏了"两类红因）
+        if: failure()
+        shell: bash
+        run: |
+          BASE="https://doctor-ai-dx.pages.dev"
+          {
+            echo "### live 浏览器回归失败现场"
+            echo
+            echo "- GET /api/health：$(curl -s -m 20 "$BASE/api/health" || echo 取不到（连接层失败）")"
+            echo "- GET / 状态码：$(curl -s -o /dev/null -w '%{http_code}' -m 20 "$BASE" || echo 连接失败)"
+          } >> "$GITHUB_STEP_SUMMARY"
+          { echo '### live 浏览器回归失败现场'; echo
+            echo "- health: \`(curl -s -m 20 $LIVE_URL_BASE/api/health || echo 取不到）\`"
+            echo "- 主页 HTTP: \$(curl -s -o /dev/null -w '%{http_code}' -m 20 ${LIVE_URL_BASE:-https://doctor-ai-dx.pages.dev} || echo 连接失败)"
+          } >> "$GITHUB_STEP_SUMMARY"
+        env:
+          LIVE_URL_BASE: https://doctor-ai-dx.pages.dev
+
   # 第二十四轮对标落地：peer 侧 openemr 有 `docker/container_benchmarking/`、ragflow 有 `test/benchmark/`，
   # 而我方 docs/EVAL_CARD.md 的 p50 4.1s / p95 4.73s 长期是**一次本机运行的记录**——产出脚本不在仓里
   # （README 指的是一个 clone 后不存在的工作区路径），第三方既复现不了也无从知道它后来有没有退化。

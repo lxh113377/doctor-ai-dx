@@ -5,32 +5,9 @@
 // 本文件跑的是生产构建 + Pages Functions 本地运行时（见 playwright.config.mjs），无密钥 ⇒ 必走降级链路，
 // 因此可重复、可进 CI。live 分支的自动化由 tests/live_path_guard.mjs（fetch 桩）负责，二者职责不重叠。
 import { expect, test } from "@playwright/test"
+import { noConsoleErrors, 走到辅助诊断 } from "./walk.mjs"
 
 const RED_LINE = "AI 辅助参考 · 医生终审"
-
-async function noConsoleErrors(page) {
-  const errs = []
-  page.on("console", (m) => { if (m.type() === "error") errs.push(m.text()) })
-  page.on("pageerror", (e) => errs.push(String(e && e.message)))
-  return errs
-}
-
-async function 走到辅助诊断(page) {
-  const dxCard = page.locator(".card-title", { hasText: "疑似诊断" })
-  await page.getByRole("button", { name: /胸闷、胸痛/ }).click()
-  // 每轮必须等"打字气泡消失"才点下一个快选项：
-  // 实测按"消息数增加"判定会在用户气泡入列的瞬间就返回，而组件在 busy 期间直接吞掉点击
-  // （Intake.jsx 的 choose → if (!busy)），结果是 8 轮预算被空等吃掉一半，表现为"链路卡住"的假故障。
-  for (let i = 0; i < 12; i++) {
-    if (await dxCard.count() > 0) return
-    await expect.poll(async () => await page.locator(".msg .typing").count(), { timeout: 25_000 }).toBe(0)
-    if (await dxCard.count() > 0) return
-    const chip = page.locator(".chip").first()
-    if (await chip.count() === 0) { await page.waitForTimeout(500); continue }
-    await chip.click()
-  }
-  await expect(dxCard).toBeVisible({ timeout: 30_000 })
-}
 
 test.describe("首屏与常驻红线", () => {
   test("3 张脱敏病例卡可见，红线文案与降级标注常驻，且零控制台异常", async ({ page }) => {
