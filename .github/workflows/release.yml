@@ -289,12 +289,61 @@ jobs:
               --severity CRITICAL --ignore-unfixed --exit-code 1 "$IMG"
           done
 
-      - name: SHA256SUMS（三个工件逐一可核验）
+      - name: SHA256SUMS（三个工件逐一可核验）＋逐工件旁挂校验（借鉴 openemr 形态）
         run: |
           cd dist-release
           cp ../docs/sbom/frontend.cdx.json ../docs/sbom/backend.cdx.json .
-          # SC2035：`*` 展开遇到以 - 开头的文件名会被当成选项 ⇒ 显式 ./*
-          sha256sum ./* | tee SHA256SUMS.txt
+          # SC2035：`*` 展开遇到以 - 开头的文件名会被当成选项 ⇒ 显式 ./* 再剥前缀。
+          # 键一律用**裸文件名**：实测已发布的 v1.38.0 台账里是 `./backend.cdx.json` 这种带 ./ 的键，
+          # 而旁挂校验按 basename 生成 ⇒ 两种键形态做等值比较会"三条全不一致"（本机先测就抓到，
+          # 否则这条会直接把发布作业判红）。统一成 basename 后两边可对账。
+          for f in ./*; do
+            base="${f#./}"
+            case "$base" in
+              SHA256SUMS.txt|*.sha256) continue ;;
+            esac
+            sha256sum "$base"
+          done | tee SHA256SUMS.txt
+          # 借鉴来源（gh api 现取，2026-09-27）：`openemr/openemr` 的 Release 给每个工件旁挂
+          # `<工件>.md5` / `.sha256` / `.sha512`，`infiniflow/ragflow` 挂 `SHA256SUMS`。
+          # 我方只做了**单一天台账**，缺的性质是：评审只下载一个资产时无法就地核验（必须先拿台账）。
+          # 因此补**逐工件 `.sha256` 旁挂**；**不做 md5/sha512 两份**——那只是把同一件事说三遍，
+          # 多出来的两份是三个可互相矛盾的数（同族「派生件即第二真值」），一种强摘要足够。
+          for f in ./*; do
+            case "$f" in
+              *.sha256|./SHA256SUMS.txt) continue ;;
+            esac
+            base="$(basename "$f")"
+            sha256sum "$base" > "${base}.sha256"
+          done
+          # 旁挂 ⇄ 台账逐条对账：两处必须给同一个数，且不得出现"零个工件也记绿"。
+          # 键的归一化不是可有可无：本机沙箱实测 Git-Bash 的 `sha256sum` 吐 `hash *file`（二进制模式标记），
+          # 而 Linux runner 吐 `hash  file` ⇒ 按字段位置硬取会把三条全判成"台账=空"。
+          # 故两侧都先剥 `*` 与 `./` 前缀，只按裸文件名比对。
+          norm_ledger() {
+            awk '{ f = $2; sub(/^\*/, "", f); sub(/^\.\//, "", f); print f " " $1 }' SHA256SUMS.txt
+          }
+          pair=0
+          bad=""
+          for s in ./*.sha256; do
+            base="$(basename "$s" .sha256)"
+            ledger="$(norm_ledger | awk -v b="$base" '$1==b {print $2}')"
+            side="$(awk '{print $1}' "$s")"
+            pair=$((pair + 1))
+            if [ -z "$ledger" ] || [ -z "$side" ] || [ "$ledger" != "$side" ]; then
+              bad="$bad $base(台账=${ledger:-空} 旁挂=${side:0:8})"
+            fi
+          done
+          if [ "$pair" -lt 3 ]; then
+            echo "::error::旁挂校验只有 $pair 份（工件应有 ≥3）＝扫描失效，不许记绿"
+            exit 1
+          fi
+          if [ -n "$bad" ]; then
+            echo "::error::旁挂校验与 SHA256SUMS.txt 不一致：$bad"
+            exit 1
+          fi
+          echo "旁挂 ⇄ 台账对账通过：$pair 份一致"
+          ls -1
           cd ..
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
@@ -407,3 +456,52 @@ jobs:
             exit 1
           fi
           test "$remote_len" -gt 500 || { echo "::error::线上正文仅 $remote_len 非空白字节，异常偏短"; exit 1; }
+
+      - name: 线上校验资产三方实算（远端工件字节 ⇄ 旁挂 ⇄ 台账）
+        # 为什么还要这一条：release 目录里那句「旁挂 ⇄ 台账」比的是**同一轮算出来的两个数**，
+        # 结构上接近恒真——沙箱实测：把旁挂文件篡改一个字符再重跑整个块，块开头会重新生成旁挂，
+        # rc 仍是 0。它只抓到过键形态漂移（本轮真抓到两次：台账里的 `./` 前缀、Git-Bash 的 `hash *file`），
+        # 抓不到"上传到 Release 的字节 ≠ 被哈希的字节"。真有牙的形状只有一个：
+        # **从远端把工件下载回来重新算**，三方对齐；缺旁挂／缺工件／零资产一律判红。
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          rm -rf /tmp/verify && mkdir -p /tmp/verify && cd /tmp/verify
+          gh release download "$TAG" -p 'SHA256SUMS.txt' -p '*.sha256' -p '*.zip' -p '*.cdx.json'
+          norm_ledger() {
+            awk '{ f = $2; sub(/^\*/, "", f); sub(/^\.\//, "", f); print f " " $1 }' SHA256SUMS.txt
+          }
+          n_art=0
+          bad=""
+          for s in ./*.sha256; do
+            base="$(basename "$s" .sha256)"
+            if [ ! -f "$base" ]; then
+              bad="$bad $base(远端缺工件)"
+              continue
+            fi
+            want="$(awk '{print $1}' "$s")"
+            got="$(sha256sum "$base" | awk '{print $1}')"
+            led="$(norm_ledger | awk -v b="$base" '$1==b {print $2}')"
+            n_art=$((n_art + 1))
+            if [ -z "$want" ] || [ "$want" != "$got" ]; then
+              bad="$bad $base(旁挂=${want:0:10} 远端实算=${got:0:10})"
+            fi
+            if [ -z "$led" ]; then
+              bad="$bad $base(台账无此条)"
+            elif [ "$led" != "$got" ]; then
+              bad="$bad $base(台账=${led:0:10} 实算=${got:0:10})"
+            fi
+          done
+          arts="$(ls -1 | wc -l)"
+          echo "远端核验：旁挂数=$n_art 下载目录条目=$arts"
+          if [ "$n_art" -lt 3 ]; then
+            echo "::error::远端只拿到 $n_art 份旁挂校验（应 ≥3）＝资产没真上传，不许记绿"
+            exit 1
+          fi
+          if [ -n "$bad" ]; then
+            echo "::error::远端三方不一致：$bad"
+            exit 1
+          fi
+          echo "远端三方对齐通过（工件字节 ⇄ 旁挂 ⇄ 台账）：$n_art 份"
+
