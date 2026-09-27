@@ -8,10 +8,12 @@ name: Delivered artifact smoke
 on:
   schedule:
     - cron: "30 4 * * *"   # 每天 12:30 UTC+8，与 dep-audit（周一）/link-health（周三）/dep-triage（周二）错开
-    # ⚠️ 第四十四轮实测：本仓 `event=schedule` 的 run **总数 = 0**（`gh api .../actions/runs?event=schedule`
-    #   与 per-workflow 端点 `.../workflows/live-smoke.yml/runs` 的 total_count 均为 0，
-    #   而 push / workflow_dispatch 正常）⇒ 只写 cron 等于把"线上仍然可用"的证据挂在一条没人走过的路上。
-    #   保留 cron（哪天平台恢复触发就自动生效），另加下面这条**实测会触发**的通路：main 的 CI 完成后巡检。
+    # ⚠️ 第四十四轮曾记："本仓 event=schedule 总数 = 0 ⇒ 平台不触发"——**第四十六轮一手证伪并纠正**：
+    #   本条 cron 入档于 9/26 05:09Z，9/27 04:30Z 才是它的**第一个到点时刻**；那个时刻一到就真的产出了
+    #   run `36311522262`（cron 时刻 04:30Z → created 10:07Z → started 10:14Z，GitHub 排队 5h37m）。
+    #   ⇒ 当时的 0 条只说明"还没到点"，对机制**零信息量**；把"未到期"读成"不触发"是归因错误。
+    #   cron 继续留着（现在每天真跑，且它一跑就把"发版窗口内版本不对"判红了一次）；
+    #   下面这条 workflow_run 通路**不回滚**——它每次 main CI 完成都出回执，比日排班更勤、也更早。
   workflow_run:
     workflows: ["CI - build & deploy"]
     types: [completed]

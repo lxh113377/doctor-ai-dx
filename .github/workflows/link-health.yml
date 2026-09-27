@@ -3,9 +3,10 @@ name: Citation link health
 on:
   schedule:
     - cron: "0 2 * * 3"   # 每周三 10:00 UTC+8（与 dep-audit 错开）
-    # ⚠️ 第四十四轮实测：本仓 `event=schedule` 的 run 总数 = 0（三条排班作业 live-smoke /
-    #   link-health / dep-triage 的 per-workflow total_count 均为 0），cron 写了也没人执行 ⇒
-    #   回链健康度此前从未真跑过一次。保留 cron，另加实测会触发的通路（main 的 CI 完成后跑）。
+    # ⚠️ 第四十四轮曾记："event=schedule 总数 = 0 ⇒ cron 写了也没人执行"——**第四十六轮纠正**：
+    #   本作业入档 9/25，cron 是每周三，到 9/27 为止**一个到点时刻都还没来过**，0 条 run 是"未到期"不是"不触发"
+    #   （同仓 live-smoke 是日排班，9/27 04:30Z 首次到点就真产出了 run）。`--patrol` 现在逐条印到点账。
+    #   保留 cron（下一个周三它会自己开始跑），另加下面这条不等排班的通路（main 的 CI 完成后跑）。
   workflow_run:
     workflows: ["CI - build & deploy"]
     types: [completed]

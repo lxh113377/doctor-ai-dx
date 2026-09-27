@@ -275,8 +275,8 @@ jobs:
 
       - name: 镜像内自证（真跑一次已发布的镜像，不用推算）
         if: ${{ startsWith(github.ref, 'refs/tags/v') }}
-        # 第四十四轮一手实测补的洞：`event=schedule` 全仓 0 条 run ⇒ live-smoke 里那条
-        # "拉镜像跑 selftest" 的判据从未执行过，一执行就抓到镜像内套件**永远不可能绿**
+        # 第四十四轮一手实测补的洞：那条判据当时**从未执行过**（排班没到点 ⇒ 它跟着一起躺着），
+        # 而 workflow_run 通路让它一执行就抓到镜像内套件**永远不可能绿**
         # （构建上下文只有 backend/，4 个套件回仓库根取 data/*.json 与 frontend/** ⇒ FileNotFoundError
         # 并 fail-fast 带走其余全部）。发布链是最该拦住这件事的地方：正文里写"镜像内可自证"之前，
         # 先在这一步把它真跑一遍，读不到判据行就不发。
