@@ -60,6 +60,10 @@ SUITES: dict[str, list[tuple[str, str, str, str, int]]] = {
 }
 # all 不含 browser：E2E 需要本机装过 Playwright 浏览器，默认链里塞进来会让没装的人第一步就红
 # （假红比没判据更糟，同族禁令）；CI 侧有专门作业跑它。
+# delivery 组的时机面（v1.41.0 实测）：这两步读的是**已发布交付物**，而版本面（package.json/version.js/
+# version.py/openapi.json）在打 tag 之前就先变成 1.41.0 ⇒ 未打 tag 时 `delivery_anchor` 必报
+# "tag 在本仓不存在" rc=2。这是"先改版本、后发版"的固有顺序，不是缺陷，也**不许**为了让 all 变绿去
+# 放宽那两步（它们判的正是"线上=仓内单一源"）⇒ 提交前跑 gate，发版之后再跑 all。
 COMPOSE = {"quick": ["static"], "gate": ["static", "test"],
            "all": ["static", "test", "delivery"], "full": ["static", "test", "browser", "delivery"]}
 

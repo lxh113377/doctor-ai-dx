@@ -51,6 +51,26 @@
      教训：**改结构化配置文件后必须按语义回读（job→steps 归属），只验 YAML 能解析等于没验**；
   ④ 单独跑 `coverage_gate.py` 得 84.47% < 地板 90%，先问红因再下结论：
      那是 `.coverage` 只有局部数据；按正规序列复测 94.75% ⇒ PASS（判据没错，是我喂错输入）。
+- **镜像内自证从未绿过（把"触发器没跑"追到的第二层）**：`live-smoke` 第一次真跑即抓到
+  `FileNotFoundError: '/srv/data/knowledge.json'`。根因不是套件写错，是**构建上下文只有 `backend/`**——
+  9 个套件里有 4 个用 `parents[2]` 回仓库根取 `data/*.json` 与 `frontend/**` 做源码级配对，镜像内该位置是 `/srv/`，
+  Dockerfile 从未往那儿放过东西 ⇒ 该作业**永远不可能绿**，而 fail-fast 还会把后面所有套件一起带走。
+  划界不写死豁免名单：`backend/selftest.py` 静态扫跨树引用（内联链与带前缀别名两式）＋按 `backend/Dockerfile`
+  的 `WORKDIR`/`COPY` 目标推算镜像内容 ⇒ 镜像内逐条 SKIP 并点名缺失路径，CI 侧（仓库根在场）仍跑全 9 套；
+  `--simulate-image` 为本机无 docker 守护进程提供作用域回执，`--selftest 10/10` 含"别名前缀不得错指仓库根"
+  与"解析结果不得含反斜杠"两条会红反例（后者由自测当场抓出：`os.path.normpath` 在 Windows 上会把
+  `/srv/backend` 改写成 `\srv\backend`，判据就只在单机成立）。
+  `release.yml` 加「镜像内自证」步骤（推送后匿名拉取真跑，读不到判据行就不发），
+  Release 正文里那句套数改为引用该回执原文（实测正文曾写"6 套全跑"，而真实清单 9 套、镜像内 5 套——两个数都不对）。
+- **分支保护判据咬住新增作业后的改判**：`branch_guard` 报「聚合 needs 缺 schedule-health」。
+  第一反应是往脚本的 `NON_BLOCKING` 名单加名字＝给豁免表开后门；改为**声明式划界**——
+  作业自己写 `continue-on-error: true` 才算 advisory，汇总行点名 `advisory=[...]`。
+  对偶断言：聚合与 deploy **不得**声明 `continue-on-error`（否则恒绿的聚合检查会让该文件全部判据失效）。
+  两向实测：现状 rc=0（阻断 5＋advisory 1 现算）；把该声明注进 `all-checks-passed` ⇒ rc=1 并点名恒绿作业，
+  撤除后 `ci.yml` 逐字节还原。
+- **同一轮内的第二次"扩面只扩了一半"**：`round_wording_guard` 的脚本射程加了 `docs/*.md`，
+  但 `.pre-commit-config.yaml` 的 `files:` 还停在四个根面 ⇒ 提交上下文里该钩子打印 Skipped，判据根本没跑到。
+  补 `files` 后两向实测：干净 docs 由 Skipped 变 Passed；往 `docs/PITFALLS.md` 注入"本轮"⇒ rc=1 且点名行号。
 - **回归**：`round_wording_guard --selftest 5/5` 且真实扫描 9 面零命中；
   `live_freshness_guard --selftest 7/7`（真实面 FAIL rc=1）；`docker_context_guard --selftest 7/7`；
   `verify.py --selftest 6/6`；`npm test` 全绿；`python backend/selftest.py` rc=0；

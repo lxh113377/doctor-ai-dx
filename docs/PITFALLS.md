@@ -387,7 +387,11 @@ pre-commit run --all-files                          # 十六钩（清单唯一�
 #   第 14 只是第四十轮加的 run 块语法探针 scripts/shell_block_probe.py）
 (cd frontend && npm test)                           # 二十六件套（含 docs_link_guard、error_parity）
 (cd frontend && npm run test:e2e)                   # 双视口浏览器回归（Playwright）
-python backend/selftest.py                          # 六套件 exit 0
+python backend/selftest.py                          # 全 9 套（仓库根在场时）exit 0；镜像内那半见下一行
+python backend/selftest.py --simulate-image         # 本机无 docker 守护进程时：按 backend/Dockerfile 推算镜像里
+#   有什么 ⇒ 打印「可跑 5 / SKIP 4」并逐条点名取不到的跨树路径（v1.41.0 一手实测：镜像内那条判据从未绿过，
+#   因为构建上下文只有 backend/，4 个套件用 parents[2] 回仓库根取 data/*.json 与 frontend/**）
+python backend/selftest.py --selftest               # 作用域分类器自证（10 项，含三条会红的反例）
 python scripts/branch_guard.py                      # 分支保护 ↔ 作业图（加 --remote 还要对线上真实配置）
 python scripts/lock_guard.py                        # 依赖锁 ↔ 声明 ↔ Dockerfile 接线
 (cd frontend && npm run coverage:js && npm run coverage:py)   # 双端覆盖率地板（只升不降）

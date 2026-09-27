@@ -273,6 +273,24 @@ jobs:
           print(f"[GATE:multiarch-pass] 已发布镜像同时含 {len(want)} 个架构：{plats}")
           PY
 
+      - name: 镜像内自证（真跑一次已发布的镜像，不用推算）
+        if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+        # 第四十四轮一手实测补的洞：`event=schedule` 全仓 0 条 run ⇒ live-smoke 里那条
+        # "拉镜像跑 selftest" 的判据从未执行过，一执行就抓到镜像内套件**永远不可能绿**
+        # （构建上下文只有 backend/，4 个套件回仓库根取 data/*.json 与 frontend/** ⇒ FileNotFoundError
+        # 并 fail-fast 带走其余全部）。发布链是最该拦住这件事的地方：正文里写"镜像内可自证"之前，
+        # 先在这一步把它真跑一遍，读不到判据行就不发。
+        run: |
+          set -euo pipefail
+          IMG="ghcr.io/${{ github.repository_owner }}/doctor-ai-dx:${{ github.ref_name }}"
+          docker pull --quiet --platform linux/amd64 "$IMG"
+          docker run --rm --workdir /srv/backend --entrypoint python "$IMG" selftest.py | tee /tmp/img_selftest.txt
+          grep -q 'GATE:selftest-pass' /tmp/img_selftest.txt || {
+            echo "::error::已发布镜像内自证未通过 ⇒ Release 正文不得宣称镜像可自证（先修 Dockerfile/套件作用域）"
+            exit 1
+          }
+          echo "镜像内自证回执 = $(grep -m1 'SELFTEST SUMMARY' /tmp/img_selftest.txt)"
+
       - name: 双架构 CVE 复核（推送后按平台各扫一次，arm64 不许漏扫）
         if: ${{ startsWith(github.ref, 'refs/tags/v') }}
         # 推之前的阻断扫描是 `docker build` 出来的 amd64 本地镜像 ⇒ arm64 那一半没被扫过。
@@ -390,6 +408,17 @@ jobs:
               print(f"::error::{head} 小节正文仅 {len(section)} 字符（<{MIN}，阈值来自 fixtures/release_notes.json）＝说明不足以给人读，判红")
               sys.exit(1)
           assets = (f"doctor-ai-dx-source-{tag}.zip", "frontend.cdx.json", "backend.cdx.json", "SHA256SUMS.txt")
+          # 「镜像内可自证」这句话不许再手抄套数（v1.41.0 实测：正文里写的是"6 套全跑"，
+          # 真实清单 9 套、镜像内可跑 5 套——两个数都不对）。改为引上一步真跑镜像留下的回执原文。
+          img_log = pathlib.Path("/tmp/img_selftest.txt")
+          if not img_log.exists():
+              print("::error::读不到镜像内自证回执 /tmp/img_selftest.txt ⇒ 不发正文（那句宣称没有证据）")
+              sys.exit(1)
+          receipt = next((ln.strip() for ln in img_log.read_text(encoding="utf-8").splitlines()
+                          if ln.strip().startswith("SELFTEST SUMMARY")), "")
+          if not receipt:
+              print("::error::回执里没有 SELFTEST SUMMARY 行 ⇒ 那条判据没跑到，不发正文")
+              sys.exit(1)
           notes = "\n".join([
               "本 Release 的**工件与正文均由 CI 产出**（打 tag 即出包，无人工二次编辑）：正文取自仓内 `CHANGELOG.md` 的对应小节，可离线复算。",
               "",
@@ -397,7 +426,7 @@ jobs:
               "",
               "```bash",
               f"docker run --rm -p 8000:8000 ghcr.io/{owner}/doctor-ai-dx:{tag}",
-              f"# 镜像内自证（套件清单单一源，6 套全跑）：",
+              f"# 镜像内自证（发布时真跑过的回执，非推算）：{receipt}",
               f"docker run --rm --entrypoint python ghcr.io/{owner}/doctor-ai-dx:{tag} selftest.py",
               "```",
               "",
