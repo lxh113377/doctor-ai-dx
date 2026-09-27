@@ -147,6 +147,41 @@ def permissions_block(text: str) -> str:
     return "\n".join(out)
 
 
+def summarize_ecosystems(prs: list[dict[str, Any]]) -> list[tuple[str, int, int]]:
+    """按生态给出 dependabot PR 的「已合并／被关闭未合并」计数（advisory，不参与判定）。
+
+    为什么要这条读数（第四十五轮一手实测）：本仓 dependabot PR 累计 17 张，**只有 2 张被合并**，
+    其余 15 张被关闭——按生态看是 `github-actions 5/5 弃`、`pip 5/5 弃`、`npm 2 合 5 弃`。
+    前两者是**结构性**的：pip 升级的唯一通道是 `uv pip compile` 重算锁（lock_guard 硬对账），
+    而 dependabot 只改 requirements.txt；actions 侧我方把 `uses:` 钉到 commit SHA（r18），
+    它提的是 tag 版本号——合了反而破坏供应链钉版。
+    ⇒ "配置了三个生态"与"三个生态都在产出可用升级"不是一回事。这条读数每轮打印，
+    让"哪个生态在制造噪音"不必等我某次想起来才看见；**它只报告，不改变判定与退出码**。
+    """
+    buckets: dict[str, list[int]] = {}
+    for pr in prs:
+        title = str(pr.get("title") or "")
+        low = title.lower()
+        if "actions/" in low:
+            eco = "github-actions"
+        elif "requirement from" in low or "in /backend" in low:
+            eco = "pip"
+        else:
+            eco = "npm"
+        merged = bool(pr.get("merged_at"))
+        b = buckets.setdefault(eco, [0, 0])
+        b[0 if merged else 1] += 1
+    return sorted((eco, m, d) for eco, (m, d) in buckets.items())
+
+
+def fetch_all_states(repo_slug: str, tok: str) -> list[dict[str, Any]] | None:
+    """取 dependabot 的全部 PR（含已关闭）只为算生态读数；取不到返回 None，调用侧 fail-open。"""
+    data = gh_get(f"/repos/{repo_slug}/pulls?state=all&per_page=100", tok)
+    if not isinstance(data, list):
+        return None
+    return [p for p in data if isinstance(p, dict) and str((p.get("user") or {}).get("login")) == "dependabot[bot]"]
+
+
 def check_workflow_pairing(workflow_text: str) -> tuple[bool, str]:
     """配对判据（第四十五轮）：本脚本**要读的 API** ⇄ **工作流声明的权限**，加上"有没有会真触发的通路"。
 
@@ -165,6 +200,18 @@ def check_workflow_pairing(workflow_text: str) -> tuple[bool, str]:
 
 def run_selftest() -> int:
     now = datetime(2026, 9, 26, 12, 0, tzinfo=UTC)
+    sample: list[dict[str, Any]] = [
+        {"title": "chore(deps): update fastapi requirement from >=0.128 to >=0.130", "merged_at": None},
+        {"title": "chore(deps): bump actions/checkout from 4 to 7", "merged_at": None},
+        {"title": "chore(deps-dev): bump wrangler from 4.135.0 to 4.136.1", "merged_at": "2026-09-26T00:00:00Z"},
+        {"title": "chore(deps): bump react from 19.2.8 to 19.3.0 in /frontend", "merged_at": None}]
+    got_stats = {e: (m, d) for e, m, d in summarize_ecosystems(sample)}
+    eco_ok = (got_stats.get("pip") == (0, 1) and got_stats.get("github-actions") == (0, 1)
+              and got_stats.get("npm") == (1, 1))
+    print(f"{'ok  ' if eco_ok else 'BAD '} :: 生态读数分组（pip/actions 各算成零合并、npm 有合并）-> {got_stats}")
+    zero_ok = summarize_ecosystems([]) == []
+    print(f"{'ok  ' if zero_ok else 'BAD '} :: 零输入：一张 PR 都没有 ⇒ 读数必须空集（不编出行来）"
+          f" -> {summarize_ecosystems([])}")
     cfg = {"max_age_days": 14, "marker": "dep-triage:v1"}
     cases = [
         ("新 PR + 有标记 ⇒ 全绿", [_pr(1, 3, True, now)], 0),
@@ -205,7 +252,9 @@ def run_selftest() -> int:
     print(f"{'ok  ' if neg_ok else 'BAD '} :: 反例三向（缺权限红／缺通路红／只有 cron 红）"
           f"-> 缺权限={not neg_perm} 缺通路={not neg_trig} 只有 cron={not both[0]}")
     passed += 1 if neg_ok else 0
-    total = len(cases) + 3
+    passed += 1 if eco_ok else 0
+    passed += 1 if zero_ok else 0
+    total = len(cases) + 5
     print(f"[GATE:dep-triage-selftest-{'pass' if passed == total else 'fail'}] {passed}/{total}")
     return 0 if passed == total else 1
 
@@ -234,6 +283,22 @@ def main() -> int:
           + ("（零 PR 也如实报数：本判据不因『没活干』而假绿，也不因『没活干』而假红）" if not pending else ""))
     for pr in pending:
         print(f"  #{pr['number']} base={pr['base']} {pr['title'][:60]}")
+    # 生态产出读数（第四十五轮，advisory：只报告，不改变上面的判定与退出码；取不到即 fail-open）
+    try:
+        allp = fetch_all_states(str(args.repo), tok)
+    except Exception as bad:  # noqa: BLE001 - 读数不得把判据本身弄崩
+        allp = None
+        print(f"UNVERIFIED :: 生态读数取数异常（不影响判定）：{type(bad).__name__} {bad}")
+    if allp is None:
+        print("UNVERIFIED :: 生态读数取不到全部 PR ⇒ 如实报不可判（不拿『没查到』当『没有』）")
+    elif not allp:
+        print("ADVISORY :: dependabot 历史上没有一张 PR（如实报数，不猜原因）")
+    else:
+        for eco, merged_n, discarded_n in summarize_ecosystems(allp):
+            clash = merged_n == 0 and discarded_n >= 3
+            print(f"ADVISORY :: 生态 {eco}：已合并={merged_n} 关闭未合并={discarded_n}"
+                  + ("｜结构性冲突：该生态的升级通道与 dependabot 的 PR 形态不兼容（见 summarize_ecosystems 注释）"
+                     if clash else ""))
     failed = [n for n, ok, _ in rows if not ok]
     print(f"[GATE:dep-triage-{'pass' if not failed else 'fail'}] {len(rows) - len(failed)}/{len(rows)} 项通过")
     return 1 if failed else 0

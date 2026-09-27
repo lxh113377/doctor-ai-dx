@@ -38,6 +38,14 @@
   枚举声明 cron 的作业 ⇄ ci.yml 里被新鲜度巡检覆盖的作业，差集非空即红，`--selftest` 7→10 项。
   **上线当轮就再抓两条**：`dep-audit.yml`（43 条 run）与 `codeql.yml`（117 条）在册排班却无人巡检，
   且它们的 run 全部来自 push 触发 ⇒ 补两条巡检步后 `--patrol` 5/5——"跑得勤"与"排班活着"是两件事。
+- **dependabot 产出侧的结构性冲突读数（advisory，`dep_triage.py`）**：实测本仓 dependabot PR 累计 17 张，
+  **只有 2 张被合并**，15 张关闭未合并；按生态看 `github-actions 5/5 弃`、`pip 5/5 弃`、`npm 2 合 5 弃`。
+  前两个是**结构性**的——pip 升级唯一通道是 `uv pip compile` 重算锁（lock_guard 硬对账），dependabot 只改
+  `requirements.txt`；actions 侧我方把 `uses:` 钉到 commit SHA，它提的是 tag 版本号（合了反而破坏供应链钉版）。
+  ⇒ 本版把这个读数做成每轮可见的 `ADVISORY ::` 行（零合并且弃≥3 时点名"结构性冲突"），
+  **只报告不改变判定与退出码**，取不到即 fail-open；是否据此收窄 dependabot 的生态配置**判为未决 #143**
+  （移除生态会牵动 dependency graph / 安全通告，本仓未实测该耦合 ⇒ 不在自动轮里凭猜动手）。
+  自证 8→10 项（分组腿＋零输入腿）。
 - **台账断言对账守卫 `scripts/ledger_claim_guard.py`（新，freeze_check 第 15 检）**：Step0 一手实测抓到
   `memory/07-next-steps.md` 第 9 行「框架升级批 vite 6→8 ＋ plugin-react 4→6」是挂了**二十二手**的**假欠账**——
   `58ef355`（第二十三轮）就成对升完，盘上现算 vite 8.3.1／plugin-react 6.1.1，open PR=0。代价不是"多一行字"，
