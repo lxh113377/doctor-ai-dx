@@ -25,11 +25,11 @@
 
 这三条不是风格偏好，是**医疗安全叙事**，改任何一条都要停下来：
 
-1. **红旗规则层独立于 LLM**：命中结果不可被模型覆盖（`functions/lib/rules.js` ↔ `app/rules.py`）。
+1. **红旗规则层独立于 LLM**：命中结果不可被模型覆盖（`frontend/functions/lib/rules.js` ↔ `backend/app/rules.py`）。
 2. **全界面常驻「AI 辅助参考 · 医生终审」**：不得出现"替代医生"类表述（E2E 有负向断言）。
 3. **只用脱敏合成病例**：禁止接入真实患者数据；知识条目只收录公开指南的标题与要点摘要。
 
-对外错误文案只能出现医生可理解的话，不展示堆栈与内部阈值（`docs/ERRORS.md` + `tests/error_parity_guard.mjs`）。
+对外错误文案只能出现医生可理解的话，不展示堆栈与内部阈值（`docs/ERRORS.md` + `frontend/tests/error_parity_guard.mjs`）。
 
 ## 3. 该跑哪些命令
 

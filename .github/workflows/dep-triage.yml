@@ -1,6 +1,6 @@
 name: Dependabot triage
 
-# 第二十三轮对标落地：`.github/dependabot.yml` 三个生态都开了，但产出侧无人消费——本轮开跑时仓里
+# 第二十三轮对标落地：`.github/dependabot.yml` 三个生态都开了，但产出侧无人消费——第四十五轮开跑时仓里
 # 正挂着三张 9/24 起没人动过的 PR（#12/#19/#20）。OpenEMR 用 `dependabot-auto-merge.yml` 把
 # 过门禁的依赖 PR 自动合并；我方刻意不自动合并（三条产品红线 + 8s 单模型硬超时 + 交付包逐字节对账，
 # major 升版必须过 Playwright 双视口与 bundle/fhir 判据——#12/#20 的实测结论正是「单张不可构建、

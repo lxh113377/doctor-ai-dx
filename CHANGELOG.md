@@ -5,6 +5,30 @@
 
 ## [Unreleased]
 
+## [1.45.0] - 2026-09-27
+
+第四十八轮开源对标收口。轴＝**文档里的路径引用是给别人点开的坐标，不是给自己看的装饰**。三条产品红线零触碰。
+
+- **新常驻判据 `scripts/docs_path_guard.py`**：耐久面（`AGENTS.md`/`README.md`/`CONTRIBUTING.md`/`docs/*.md`）里
+  反引号包着的 path 形引用必须**从仓根解析得到**。立判据当天实测：**195 条引用里 66 条打不开**——
+  64 条是按模块根短写（`fixtures/type_floor.json` 真身 `frontend/tests/fixtures/type_floor.json`、
+  `lib/observe.js` 在 `frontend/functions/lib/`、`routers/api.py` 在 `backend/app/routers/`），
+  已全部改写为仓根相对；改写以"逐行剥掉反引号段后与原文 50/50 完全相同"自证**没动一个字的散文**。
+- **两条仓外引用被消灭的方式是"搬进来"而不是"改成不提"**：`sweep_semantic_weights.mjs`（产出
+  「54 组权重网格中 0 组严格优于 bm25、9 组与 bm25 逐位等值」这条写进 `docs/EVAL_CARD.md` 与
+  `docs/ARCHITECTURE.md` 的结论的脚本）此前只活在未发布的工作区私有面里 ⇒ 评审无法复算自己读到的数字
+  （红线：未回链的量化事实不得进入方案/答辩）。搬进 `scripts/` 后本机复跑，读数与文档逐字相符：
+  `泛化候选 0 组｜等值 9 组｜劣化 45/54（最大 ΔMRR −0.252）`。根仓那份同时 `git rm`——两份实现＝下一个 #149。
+- **`round_wording_guard` 扩面到 `.github/workflows/*.yml`**：workflow 注释同样写"本轮实测 87"这类相对自称，
+  轮次一翻就查不到指代。扩面前实测 3 个文件 8 处，全部换成绝对锚点（第四十/四十一/四十二/四十四/四十五轮、
+  v1.18.1/v1.19.0/v1.32.0）。射程由 9 面 → **16 面**；钩子 `files:` 由 selftest 当场逼着同步
+  （本仓第四次逮住"扩面没扩钩子"，判据这次没靠人记）。
+- **判据自身的两条自证**：`docs_path_guard --selftest` **12/12**，含专属输入面「裸文件名被斜杠规则排除」
+  （这条是被变异 M2 逼出来的：加判据前 M2 打不红＝规则无人守）、零输入判 EMPTY、钩子射程缺失判红；
+  变异三向 M1 `resolve()` 恒真 ⇒ 9/11 rc=1、M2 放行无斜杠 token ⇒ 10/12 rc=1、M3 钩子解析写坏 ⇒ 10/12 rc=1。
+- **一条自踩记录（写进 CHANGELOG 而不是删掉）**：`--json` 模式第一版把 `[GATE:…]` 也打到 stdout，
+  消费方 `json.loads` 当场炸 `Extra data`——正是本仓立过的"诊断污染 JSON 通道"形态，改法＝判据行走 stderr。
+
 守卫侧一条补丁（不进版本发布，`live_freshness_guard.py` 只在 CI 与手跑里出场；版本面仍 1.44.0）：
 
 - **`schedule_since()` 在浅克隆里会把"真停摆"读成"未到期"** —— CI 的 `actions/checkout` 默认 `depth=1`，

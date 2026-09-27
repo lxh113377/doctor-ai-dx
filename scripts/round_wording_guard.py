@@ -29,6 +29,10 @@ import tempfile
 from pathlib import Path
 
 FACES = ["AGENTS.md", "README.md", "CONTRIBUTING.md", "SECURITY.md"]
+# 第四十八轮扩面：`.github/workflows/*.yml` 的注释也是耐久说明书（评审与下一个会话都会读），
+# 里面同样写着"本轮实测 87""本轮脚本扩面而钩子没扩"这类相对自称——轮次一翻就查不到指代。
+# 一手计数：扩面前 workflows 里 3 个文件共 8 处（ci.yml 3／dep-triage.yml 1／release.yml 4）。
+WF_GLOB = ".github/workflows/*.yml"
 # 第四十四轮扩面：docs/*.md 纳入射程（29 行相对轮次词已用 blame→first-tag 换成版本锚点）。
 # CHANGELOG.md 仍排除：它每个小节自带 `## [x.y.z]` 绝对锚点，句中指代可由所在小节消歧；
 # 把它的历史叙述改写等于伪造叙述者当时的视角（该理由同时记在台账 #135）。
@@ -46,9 +50,20 @@ def scan_text(text: str) -> list[tuple[int, str]]:
     return out
 
 
+def all_faces(root: Path) -> list[str]:
+    """射程的唯一枚举器：入口四面 + `docs/*.md` + `.github/workflows/*.yml`。
+
+    只写这一处（不是 check 与钩子对账各写一份）是故意的：两把尺各自枚举迟早算出两个分母，
+    而"钩子覆盖没覆盖"这条判据恰恰要求两边共用同一个面（#149 同一事实只许一处判）。
+    """
+    out = list(FACES)
+    for glob in (DOC_GLOB, WF_GLOB):
+        out.extend(sorted(str(x.relative_to(root)).replace("\\", "/") for x in root.glob(glob)))
+    return out
+
+
 def check(root: Path, verbose: bool) -> int:
-    faces = list(FACES) + sorted(str(x.relative_to(root)).replace("\\", "/")
-                                 for x in root.glob(DOC_GLOB))
+    faces = all_faces(root)
     hits = 0
     scanned = 0
     empty_faces = []
@@ -104,9 +119,7 @@ def hook_uncovered_faces(root: Path, files_re: str | None = None) -> list[str]:
             return []          # 没有 files: ＝全量触发，覆盖一切
         files_re = m.group(1).strip()
     pat = re.compile(files_re)
-    faces = list(FACES) + sorted(str(p.relative_to(root)).replace("\\", "/")
-                                 for p in root.glob(DOC_GLOB))
-    return [f for f in faces if not pat.search(f)]
+    return [f for f in all_faces(root) if not pat.search(f)]
 
 
 def selftest(root: Path) -> int:

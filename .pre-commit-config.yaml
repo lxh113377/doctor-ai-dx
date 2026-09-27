@@ -148,4 +148,15 @@ repos:
         entry: python scripts/round_wording_guard.py --quiet
         language: system
         pass_filenames: false
+        # 第四十八轮扩面：workflows 注释也进射程 ⇒ files: 必须同步跟上面（本仓第四次靠 selftest 当场逮住"扩面没扩钩子"）
+        files: ^(AGENTS|README|CONTRIBUTING|SECURITY)\.md$|^docs/[^/]+\.md$|^\.github/workflows/[^/]+\.yml$
+      # 第四十八轮：耐久面里反引号包着的"路径引用"必须能从**仓根**解析得到（评审/agent 照着点开要打得开）。
+      # 一手实测：立判据当天扫出 195 条 path 形引用里 66 条打不开——64 条是"按模块根短写"（`fixtures/x.json`
+      # 实为 `frontend/tests/fixtures/x.json`），2 条指向**不随本仓发布**的工作区私有脚本（已把该脚本搬进本仓）。
+      # `files:` 与本脚本自己的取数面由 `--selftest` 里的一条判据钉在一起（r44 同族第三次复发的教训：扩面忘改钩子＝钩子永远 Skipped）。
+      - id: docs-path-guard
+        name: 耐久面路径引用可从仓根解析（禁"按模块根短写"与仓外引用）
+        entry: python scripts/docs_path_guard.py
+        language: system
+        pass_filenames: false
         files: ^(AGENTS|README|CONTRIBUTING|SECURITY)\.md$|^docs/[^/]+\.md$

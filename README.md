@@ -124,7 +124,7 @@ curl http://127.0.0.1:8000/health
 > `dx?` 为前端已生成的诊断结果，workup/report 复用它以消除冗余 LLM 串行调用；**红旗一律由后端规则重算，不信任前端**。
 > 机器可读契约：[`docs/openapi.json`](docs/openapi.json)（OpenAPI 3.0.3，与实现对账由 `npm run test:api` 守卫；集成方/AI Agent 可直接消费）。
 > **HIS 集成**：`/api/dx` 响应含 `data.fhir`——FHIR R4 light Bundle（Patient/Encounter/Condition/Observation/DiagnosticReport），双端逐字节一致、零时钟字段；`icd` 未映射的条目只出 `text` 不编造标准编码；本导出为**只读派生视图**，不改变红旗判定与引用白名单。详见 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) §9。
-> 版本真值：`backend/app/version.py` == `functions/lib/version.js` == `package.json` == `docs/openapi.json` == 最新 tag，由 `npm run test:version` 五方对账强制（升版本三处同改 + `python scripts/gen_openapi.py` 同步契约版本）。
+> 版本真值：`backend/app/version.py` == `frontend/functions/lib/version.js` == `package.json` == `docs/openapi.json` == 最新 tag，由 `npm run test:version` 五方对账强制（升版本三处同改 + `python scripts/gen_openapi.py` 同步契约版本）。
 > 契约基线于 2026-09-24 完成 E2E 复核，两端（Functions / FastAPI）同步实现；公开仓门禁见 `frontend/tests/`，完整线上评测脚本已收进本仓（见下一节的 eval:live），原始报告不入库。
 
 ## 边界与已知局限（Limitations）
@@ -135,7 +135,7 @@ curl http://127.0.0.1:8000/health
 > unvalidated heuristics）。不写不等于不存在，只等于由别人来发现。
 
 1. **红旗规则层是关键词＋否定前缀的确定性匹配，不是临床 NLP。** 13 条单线索规则＋4 条组合规则
-   （`functions/lib/rules.js`），否定处理是启发式（命中点前 4 字查 `无/没有/未/否认…`），
+   （`frontend/functions/lib/rules.js`），否定处理是启发式（命中点前 4 字查 `无/没有/未/否认…`），
    且刻意**不含**裸 `不`/`排除`/`不支持`——`不能排除心前区闷痛` 若被当阴性就是漏报。
    它既可能漏（同义表述未收进关键词表），也可能误（新关键词与既有否定式回答产生新组合）。
    常驻判据：否定守卫全表探针 `npm run test:negation`（232 条用例由规则表自动派生，双向拦截）。
@@ -148,7 +148,7 @@ curl http://127.0.0.1:8000/health
    （这是刻意设计：宁可拦住也不放行一张陈旧表）。**该权重与 `bge_onnx_engine.py` 不随本仓库发布**，
    所以在没有它们的环境里，扩库当前是**做不了**而不是不好做——复现证据：
    `python scripts/build_semantic_neighbors.py` → `FAIL: 未找到 bge_onnx_engine.py（不产出半成品表）` exit 1。
-   缺病种清单由 `tests/fixtures/dx_gold.json` 的 `kb_gap` 字段机器给出（现 5 条）。
+   缺病种清单由 `frontend/tests/fixtures/dx_gold.json` 的 `kb_gap` 字段机器给出（现 5 条）。
 4. **断网可用，但离线只到「规则档」，不是「模型档」。** 无密钥时全链路零外呼（常驻判据
    `frontend/tests/live_path_guard.mjs`：`calls.length === 0` 且 `mode === rule-fallback`，第二十五轮（v1.23.1）复跑通过），
    知识库/检索/红旗/FHIR/SOAP 全在包内，所以断网仍能出完整五步结果——但结论来自确定性规则模板。
@@ -163,7 +163,7 @@ curl http://127.0.0.1:8000/health
 7. **维护者 2 人**，bus factor≈1；无 CI 分钟额度之外的自建基础设施。
 8. **未取得任何医疗器械注册、HIPAA/GDPR 或等保合规认定**；本项目定位是教学/竞赛原型，
    不得用于临床部署（授权条款见 `LICENSE`）。
-9. **引擎会弃权，但弃权的判据是词面强度，不是临床可答性。** 证据不足或输入超出常见病多发病范围时， 返回 `abstain=true` + `scope_status`，只出一张「信息不足，建议补充问诊」卡且不再给鉴别诊断 （红旗规则层命中时一律不弃权，这条有常驻判据）。阈值 `ABSTAIN_T=48.491` 由 `tests/ood_probe.mjs` 在当前语料上实测取中点得到，代价如实写在 `docs/EVAL_CARD.md` §2b： 31 例中 3 例走弃权，其中 1 例（普通上感）属**过度弃权**。已知局限：BM25 词频随重复增长， 同一句无关输入重复多次可越过阈值——所以本能力的主张只到「对单次域外输入弃权」。
+9. **引擎会弃权，但弃权的判据是词面强度，不是临床可答性。** 证据不足或输入超出常见病多发病范围时， 返回 `abstain=true` + `scope_status`，只出一张「信息不足，建议补充问诊」卡且不再给鉴别诊断 （红旗规则层命中时一律不弃权，这条有常驻判据）。阈值 `ABSTAIN_T=48.491` 由 `frontend/tests/ood_probe.mjs` 在当前语料上实测取中点得到，代价如实写在 `docs/EVAL_CARD.md` §2b： 31 例中 3 例走弃权，其中 1 例（普通上感）属**过度弃权**。已知局限：BM25 词频随重复增长， 同一句无关输入重复多次可越过阈值——所以本能力的主张只到「对单次域外输入弃权」。
 10. **不解读影像/报告单、不给剂量、不面向动物。** 这三条写在仓内 `data/scope_rules.json`，每条附「为什么不做」的理由；命中即返回 `scope_status=out-of-scope` 并只出「信息不足/超出范围」卡，不再编鉴别诊断，但红旗规则层照常输出（详见 `docs/EVAL_CARD.md` §2c）。
 
 ## 安全定位（评审叙事）

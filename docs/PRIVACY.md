@@ -16,14 +16,14 @@
 | 服务端会话 | 无。接口 stateless，问诊历史由前端随请求携带 | `backend/app/models.py` `IntakeAskRequest.history`（注释「由前端随请求携带（stateless）」）、`frontend/functions/api/[[route]].js` 各 `body.history` 透传 |
 | 数据库 / 文件写 | 无。全仓无 DB 驱动、无文件系统写入（门禁扫描判定） | `npm run test:privacy` 断言持久化原语计数为 0 |
 | 客户端存储 | 无。不使用 localStorage / sessionStorage / IndexedDB / Cookie | 同上，由门禁扫描 `frontend/src` 全量源码 |
-| 日志 | 只落归因最小集：`req / path / method / ms / kind / msg`；**不写请求体、不写堆栈** | `frontend/functions/api/[[route]].js` 的 `logEvent("error", …)` 字段集与注释；`lib/observe.js` ↔ `app/observe.py` |
+| 日志 | 只落归因最小集：`req / path / method / ms / kind / msg`；**不写请求体、不写堆栈** | `frontend/functions/api/[[route]].js` 的 `logEvent("error", …)` 字段集与注释；`frontend/functions/lib/observe.js` ↔ `backend/app/observe.py` |
 | 日志保留期 | 由运行平台决定：日志只写 stdout，本项目不额外留存、不接第三方日志后端（Sentry/Langfuse/OTLP 均未接入，需外部账号与密钥） | `docs/EVAL_CARD.md` §3「日志留存与集中化」 |
 
 ## 3. 数据会流向谁（唯一出站面）
 
 | 目的地 | 内容 | 传输 | 约束 |
 |---|---|---|---|
-| LLM 推理服务（默认 DeepSeek 兼容端点，可经 `DEEPSEEK_BASE_URL` 换供应商） | 抽取后的临床状态（患者姓名/年龄/性别/主诉、问诊转录文本、症状槽位、红旗列表）+ 检索到的知识库摘要 | HTTPS POST `/chat/completions` | 单次硬超时 8s（`functions/lib/engine.js` `AbortSignal.timeout(8000)`）；密钥仅从环境变量读取，绝不写入代码、响应或日志 |
+| LLM 推理服务（默认 DeepSeek 兼容端点，可经 `DEEPSEEK_BASE_URL` 换供应商） | 抽取后的临床状态（患者姓名/年龄/性别/主诉、问诊转录文本、症状槽位、红旗列表）+ 检索到的知识库摘要 | HTTPS POST `/chat/completions` | 单次硬超时 8s（`frontend/functions/lib/engine.js` `AbortSignal.timeout(8000)`）；密钥仅从环境变量读取，绝不写入代码、响应或日志 |
 
 > 换供应商 = 换数据接收方。**接入新模型供应商前必须先完成该供应商的数据处理协议与留存政策评审**，此项无自动化判据可 substitute，属人工/法务环节。
 
@@ -32,7 +32,7 @@
 ## 4. 主动做的最小化与脱敏
 
 1. **日志字段白名单**：只落上述 6 个键，请求体与堆栈一律不落（代码内有显式注释）。
-2. **出站前脱敏**（`lib/observe.js` ↔ `app/observe.py`，双端模式表由门禁逐条比对，实测 7/7 用例输出逐字相同）：
+2. **出站前脱敏**（`frontend/functions/lib/observe.js` ↔ `backend/app/observe.py`，双端模式表由门禁逐条比对，实测 7/7 用例输出逐字相同）：
    - 密钥形态：`sk-…`、`Bearer …`、以及环境里真实 Key 的字面量 → `[已脱敏]`
    - 内部结构：`file://…`、盘符/常见根路径、`at fn (…)` 栈帧 → `[内部路径]`
    - **患者可识别信息（v1.11.0 新增）**：中国大陆手机号 11 位形态、18 位身份证号形态 → `[已脱敏]`
@@ -44,8 +44,8 @@
 ## 5. 演示与评测数据
 
 - 界面演示仅 3 例**合成病例**；评测集 31 例与检索集 50/20 例均为合成或口语化改写，**不含任何真实患者数据**（项目红线）。
-- FHIR 导出对每位患者强制打 `syntheticCase = true` 扩展（`functions/lib/fhir.js`），供下游系统区分演示数据与真实数据。
-- 知识库语料仅引用公开临床路径/指南/共识的**标题与要点摘要**，不含未授权全文（`functions/lib/knowledge.js` 头注释；回链域名由 `kb_guard` 离线白名单 + `link_health` 联网核验双重守门）。
+- FHIR 导出对每位患者强制打 `syntheticCase = true` 扩展（`frontend/functions/lib/fhir.js`），供下游系统区分演示数据与真实数据。
+- 知识库语料仅引用公开临床路径/指南/共识的**标题与要点摘要**，不含未授权全文（`frontend/functions/lib/knowledge.js` 头注释；回链域名由 `kb_guard` 离线白名单 + `link_health` 联网核验双重守门）。
 
 ## 6. 明确未提供（试点前必须补齐，不得据此声明用于真实患者）
 

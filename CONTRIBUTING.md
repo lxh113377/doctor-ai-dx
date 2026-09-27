@@ -15,11 +15,11 @@
 
 | 权威源（改这里） | 镜像（必须同步） | 同步方式 |
 |---|---|---|
-| `data/knowledge.json`（权威） | `functions/lib/knowledge.js` + `backend/app/knowledge.py`（两份生成物） | 跑 `npm --prefix frontend run kb:export`（即 `scripts/export_knowledge.mjs`）生成；`kb:check` 只核不写。**两端都禁手改数据**，改数值只改 JSON |
-| `data/red_flag_rules.json`（**红旗表权威**：13 条 DANGER + 4 条 COMBO + 否定词表 + 阳性例外词 + 血压阈值与脏读值域） | `functions/lib/red_flag_rules.js` + `backend/app/red_flag_rules.py`（两份都是生成物） | 跑 `npm --prefix frontend run redflags:export` 生成；`redflags:export -- --check` 逐字节核漂移；「权威 == JS == Py」三方全等由 `tests/red_flag_table_guard.mjs` 把守，形状合法性由**两端导入期校验**把守（表坏＝拒绝载入，无降级模式）。第三十一轮 #89 起改一条红旗只需动这个 JSON |
-| `functions/lib/engine.js` | `backend/app/services/engine.py` | 人工同步 + `contract_parity.mjs` 守门 |
-| `functions/lib/rag.js` / `rules.js` / `retriever.js` | `backend/app/rag.py` / `rules.py` / `retriever.py` | 人工同步 + 双端测试守门 |
-| `functions/lib/observe.js` | `backend/app/observe.py` | 人工同步（取整/脱敏规则必须两端一致） |
+| `data/knowledge.json`（权威） | `frontend/functions/lib/knowledge.js` + `backend/app/knowledge.py`（两份生成物） | 跑 `npm --prefix frontend run kb:export`（即 `scripts/export_knowledge.mjs`）生成；`kb:check` 只核不写。**两端都禁手改数据**，改数值只改 JSON |
+| `data/red_flag_rules.json`（**红旗表权威**：13 条 DANGER + 4 条 COMBO + 否定词表 + 阳性例外词 + 血压阈值与脏读值域） | `frontend/functions/lib/red_flag_rules.js` + `backend/app/red_flag_rules.py`（两份都是生成物） | 跑 `npm --prefix frontend run redflags:export` 生成；`redflags:export -- --check` 逐字节核漂移；「权威 == JS == Py」三方全等由 `frontend/tests/red_flag_table_guard.mjs` 把守，形状合法性由**两端导入期校验**把守（表坏＝拒绝载入，无降级模式）。第三十一轮 #89 起改一条红旗只需动这个 JSON |
+| `frontend/functions/lib/engine.js` | `backend/app/services/engine.py` | 人工同步 + `contract_parity.mjs` 守门 |
+| `frontend/functions/lib/rag.js` / `rules.js` / `retriever.js` | `backend/app/rag.py` / `rules.py` / `retriever.py` | 人工同步 + 双端测试守门 |
+| `frontend/functions/lib/observe.js` | `backend/app/observe.py` | 人工同步（取整/脱敏规则必须两端一致） |
 
 **改双端代码的镜像端测试要求（第三十一轮 #79）**：凡改动 `functions/lib/*.js` 且 `backend/app/*.py` 有对应镜像实现，
 **同轮必须补 `backend/tests/` 里的原生用例**。`*_guard.mjs` 里用 subprocess 调 Python 打印结果的那种**不算**——
@@ -63,7 +63,7 @@ python scripts/verify.py --suite gate
 
 端到端回归的维护约定（v1.15.0 起）：E2E 刻意**不进** `npm test`（那条链被 c8 整体包裹算覆盖率，混入浏览器进程会污染口径，与 lint 同理，见 `frontend/lint.mjs` 头注）。
 它是"三条红线在真实浏览器渲染结果"这一层的唯一常驻证据——改视图、改文案、改样式时，五步链路断言与双视口溢出断言必须同步更新；
-新增页面请一并纳入 `e2e/app.spec.mjs` 的"五步全页面"循环（漏掉一页＝把最可能溢出的一半留在盲区，第十七轮（v1.15.0）实测就差点这么干）。
+新增页面请一并纳入 `frontend/e2e/app.spec.mjs` 的"五步全页面"循环（漏掉一页＝把最可能溢出的一半留在盲区，第十七轮（v1.15.0）实测就差点这么干）。
 
 静态检查与类型门禁的维护约定（v1.12.0 / v1.13.0 起）：
 
@@ -72,7 +72,7 @@ python scripts/verify.py --suite gate
 - 新增/关闭规则须写**为什么**（现有两处关闭：`require-await` 会误判 fetch 桩与同形 async 签名；
   ruff 不选 `BLE001`/`RUF100` 的理由见 `仓根 ruff.toml` 头注）。禁止用 `// eslint-disable` 批量压告警凑绿。
 - 关闭规则不等于关闭问题：判据本身要能被反例证明"会红"（注入违例文件跑 `npm run lint` 应 rc=1）。
-- 类型门禁**零豁免**：`mypy.ini` 不允许出现 per-module `disable_error_code`；确需豁免必须在 `fixtures/type_floor.json` 写明理由并附实测。告警太多时的正确做法是修生成物/生成器（第十五轮 26 条里 19 条即如此），而不是调低阈值。
+- 类型门禁**零豁免**：`mypy.ini` 不允许出现 per-module `disable_error_code`；确需豁免必须在 `frontend/tests/fixtures/type_floor.json` 写明理由并附实测。告警太多时的正确做法是修生成物/生成器（第十五轮 26 条里 19 条即如此），而不是调低阈值。
 
 ## 三条不能碰的红线
 
@@ -113,7 +113,7 @@ python scripts/verify.py --suite gate
 - **错误码与对外文案口径（第二十二轮起）**：改 `frontend/functions/lib/limits.js` 里任一 `*_MESSAGE` 常量或状态码，必须同步 `docs/ERRORS.md` 与 `docs/openapi.json`（后者由 `npm run test:api` 双向核对：文档码集合 == 契约声明、文案逐字等于常量）。新增 POST 路由时还要在 `scripts/gen_error_matrix.py` 的 `ROUTES` 里登记并重生成矩阵（`python scripts/gen_error_matrix.py`），否则 `error_parity_guard` 的覆盖面判据会指名它没被测。
 - **环境变量口径**：新增任何 `os.getenv("X")` / `env?.X` 读取，必须同步写进 `backend/.env.example`，
   否则 `npm run test:env` 判红（反向也一样：示例里留一个代码不读的键同样判红）。
-- **版本真值链（升版本必做四步）**：① 同改 `backend/app/version.py` + `functions/lib/version.js` + `frontend/package.json` 三处 → ② `python scripts/gen_openapi.py`（外科同步契约版本，禁手改/全量重写 `docs/openapi.json`）→ ③ `npm run test:version` 五方对账绿 → ④ 打 tag `vX.Y.Z`。`/api/health` 的 `version` 字段即以此链为源。
+- **版本真值链（升版本必做四步）**：① 同改 `backend/app/version.py` + `frontend/functions/lib/version.js` + `frontend/package.json` 三处 → ② `python scripts/gen_openapi.py`（外科同步契约版本，禁手改/全量重写 `docs/openapi.json`）→ ③ `npm run test:version` 五方对账绿 → ④ 打 tag `vX.Y.Z`。`/api/health` 的 `version` 字段即以此链为源。
   - ④ **必须是附注 tag**（`git tag -a vX.Y.Z -m "…"`）：`git push --follow-tags` **只推附注 tag**，轻量 tag 会静默留在本机——实测这样"推送成功"后 `git ls-remote --tags` 查不到当次那个 tag，且 `release.yml`（tag 触发）根本没被唤起。发布后自查两行：`git ls-remote --tags origin refs/tags/vX.Y.Z` 有输出、`gh run list --workflow "Release artifacts (tag)"` 有该 tag 的 run。
   - 本机复现 CI 出包（跨环境逐字节一致，实测 SHA256 全等）：`TZ=UTC0 git -c core.autocrlf=false archive --format=zip --mtime=$(git log -1 --format=%ct <tag>) -o out.zip <tag>`，再用 `python scripts/release_repro_check.py --ref <tag> --against out.zip` 判定。行尾与时区两个成因的来龙去脉见 `docs/ARCHITECTURE.md` 门禁表同名行。
 - **后端测试套件清单**：唯一源是 `backend/tests/suite.json`；执行一律走 `python backend/selftest.py`（`--coverage` 供覆盖率链）。**不要在 CI/compose/package.json 里再抄一份清单**——`scripts/suite_guard.py` 会把漏挂与回潮都判红（第十八轮真实踩过：新增 `test_limits.py` 后镜像 selftest 与 coverage:py 各抄的旧清单都没挂上）。

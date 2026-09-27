@@ -34,31 +34,31 @@
 
 | 语义 | 权威（JS） | 镜像（Py） | 对账门禁 |
 |---|---|---|---|
-| 知识数据**本体**（语料/同义词/症状映射/检索加权词） | **`data/knowledge.json`（权威）** → 生成 `functions/lib/knowledge.js`（rag/engine/fhir/retriever 消费它） | 同一权威生成 `backend/app/knowledge.py` | **第三十二轮 #92 起表本体外置**（收台账 #55 的最后一块）：`npm run kb:export` 单向生成、`kb:check` 逐字节核漂移；`npm run test:kb`＝权威==JS==Py 三方全等 ＋ 生成器复算 ＋ 逐条 schema/孤儿/死线索/溯源棘轮 ＋ **死权重零豁免**（加权词若在语料正文一次都不出现则永远加不了分；第三十二轮基线 8、第三十三轮逐个改到 **0** 并取消豁免）
+| 知识数据**本体**（语料/同义词/症状映射/检索加权词） | **`data/knowledge.json`（权威）** → 生成 `frontend/functions/lib/knowledge.js`（rag/engine/fhir/retriever 消费它） | 同一权威生成 `backend/app/knowledge.py` | **第三十二轮 #92 起表本体外置**（收台账 #55 的最后一块）：`npm run kb:export` 单向生成、`kb:check` 逐字节核漂移；`npm run test:kb`＝权威==JS==Py 三方全等 ＋ 生成器复算 ＋ 逐条 schema/孤儿/死线索/溯源棘轮 ＋ **死权重零豁免**（加权词若在语料正文一次都不出现则永远加不了分；第三十二轮基线 8、第三十三轮逐个改到 **0** 并取消豁免）
 ＋ **语料缺口名册**（同义词规范词在整库正文零命中的清单，基线 6 只降不升、逐条点名——"补条目"那半边债务的可见化）
 ＋ **口语侧桥**（`reachableFlagTerms` 断言口语查询能桥到指南侧加权词，带零命中反向对照）＋ **常驻变异自证**（改权威／手改生成物／加死词／塞未声明键四形各一条，逐条必须点名且跑完按字节复原） |
-| BM25 检索 | `functions/lib/rag.js` | `app/rag.py` | `npm run test:retrieval-parity`（50 例双档） |
-| 红旗规则 | `functions/lib/rules.js` | `app/rules.py` | `npm run test:contract`（31 例逐字段，容差 0.002）+ **双端逐字同表的 6 条探针**（数值血压/组合线索/脏读值域/去重/空输入；一端实现漂移即该端判红，实测两端各自可拦） |
-| 红旗规则表**本体**＋载入即校验 | **`data/red_flag_rules.json`（权威）** → 生成 `functions/lib/red_flag_rules.js`（`rules.js` 消费它） | 同一权威生成 `backend/app/red_flag_rules.py`，`app/rules.py` 只留判定逻辑 | **第三十一轮 #89 起表本体外置**：`npm run redflags:export` 单向生成、`-- --check` 逐字节核漂移；`npm run test:table` 37 项＝权威==JS==Py **三方**全等（两张规则表＋否定词表＋阳性例外词＋血压阈值与脏读值域，逐字段含顺序）＋ 同一份变异夹具 `fixtures/red_flag_mutations.json` 两端各施一遍、逐条必须拒且点名同一不变量 ＋ 12 类不变量覆盖面 ＋ advice 过裸子串红线（禁用词单一源 `fixtures/red_line_phrases.json`）＋ 文档内表条数须为派生真值 ＋ 镜像端由 `backend/tests/test_red_flag_rules.py` **原生** 32 项覆盖（含直接驱动导入期 raise） |
-| 引擎链路 | `functions/lib/engine.js` | `app/services/engine.py` | 同上 + `backend/tests/smoke_engine.py` |
+| BM25 检索 | `frontend/functions/lib/rag.js` | `backend/app/rag.py` | `npm run test:retrieval-parity`（50 例双档） |
+| 红旗规则 | `frontend/functions/lib/rules.js` | `backend/app/rules.py` | `npm run test:contract`（31 例逐字段，容差 0.002）+ **双端逐字同表的 6 条探针**（数值血压/组合线索/脏读值域/去重/空输入；一端实现漂移即该端判红，实测两端各自可拦） |
+| 红旗规则表**本体**＋载入即校验 | **`data/red_flag_rules.json`（权威）** → 生成 `frontend/functions/lib/red_flag_rules.js`（`rules.js` 消费它） | 同一权威生成 `backend/app/red_flag_rules.py`，`backend/app/rules.py` 只留判定逻辑 | **第三十一轮 #89 起表本体外置**：`npm run redflags:export` 单向生成、`-- --check` 逐字节核漂移；`npm run test:table` 37 项＝权威==JS==Py **三方**全等（两张规则表＋否定词表＋阳性例外词＋血压阈值与脏读值域，逐字段含顺序）＋ 同一份变异夹具 `frontend/tests/fixtures/red_flag_mutations.json` 两端各施一遍、逐条必须拒且点名同一不变量 ＋ 12 类不变量覆盖面 ＋ advice 过裸子串红线（禁用词单一源 `frontend/tests/fixtures/red_line_phrases.json`）＋ 文档内表条数须为派生真值 ＋ 镜像端由 `backend/tests/test_red_flag_rules.py` **原生** 32 项覆盖（含直接驱动导入期 raise） |
+| 引擎链路 | `frontend/functions/lib/engine.js` | `backend/app/services/engine.py` | 同上 + `backend/tests/smoke_engine.py` |
 | 追问 live 分支与续问上限 | `engine.js` 的 `nextIntakeQuestion`/`llmFollowup` | `engine.py` 同名函数 | `live_path_guard.mjs` 第 11 段（6 条）↔ `test_live_path.py` 第 8/8b 段（9 条）逐条对位；上限前移后断言「超限轮零外呼」|
-| 路由错误体契约 | `functions/api/[[route]].js` 的 `fail()` → `{code,message}` | `app/main.py` 的 `StarletteHTTPException` 处理器 | `route_guard`（权威面基准）+ `test_api_observe`（镜像面 13 项 404 断言）。第十四轮实测：镜像此前吐 FastAPI 默认 `{"detail":…}`，两端不同形且无任何判据覆盖 |
+| 路由错误体契约 | `frontend/functions/api/[[route]].js` 的 `fail()` → `{code,message}` | `backend/app/main.py` 的 `StarletteHTTPException` 处理器 | `route_guard`（权威面基准）+ `test_api_observe`（镜像面 13 项 404 断言）。第十四轮实测：镜像此前吐 FastAPI 默认 `{"detail":…}`，两端不同形且无任何判据覆盖 |
 | 取整规则 | `Math.round(x*10^n)/10^n` | `round_half_up()`（Py 内置为 half-even，会差末位） | `test:contract` |
 | 症状探针清单 | 由 `SYMPTOM_TO_KB` 派生 | 同 | `test:kb`「探针单一源」两项 |
-| 版本号 | `functions/lib/version.js` | `app/version.py` | `npm run test:version` 五方对账 |
+| 版本号 | `frontend/functions/lib/version.js` | `backend/app/version.py` | `npm run test:version` 五方对账 |
 
 ## 3. 检索层（实测参数）
 
 - 分词：中文逐字 + 相邻二元组归一；查询小写、截断 500 字。
-- **标点与符号不入索引**（v1.24.0）：`tokenize` 先剔除 Unicode `\p{P}\p{S}` 与空白再切 n-gram。原因实测在 `CHANGELOG` 1.24.0——「，」曾以 df=54 成为检索词、罕见单字（如「来源」的「来」，df=1）拿到最高 IDF，一次偶然匹配即可让无关条目跃居榜首；双端同口径（`functions/lib/rag.js` ↔ `app/rag.py`），由 `retriever_parity` 的带标点查询 + 标点无关性双向断言锁定。
+- **标点与符号不入索引**（v1.24.0）：`tokenize` 先剔除 Unicode `\p{P}\p{S}` 与空白再切 n-gram。原因实测在 `CHANGELOG` 1.24.0——「，」曾以 df=54 成为检索词、罕见单字（如「来源」的「来」，df=1）拿到最高 IDF，一次偶然匹配即可让无关条目跃居榜首；双端同口径（`frontend/functions/lib/rag.js` ↔ `backend/app/rag.py`），由 `retriever_parity` 的带标点查询 + 标点无关性双向断言锁定。
 - BM25：`K1=1.5`、`B=0.75`；`top_k` 钳制 1..10；稳定排序（分数降序 + 原文档序）。
-- **查询重复不改变结果这条性质当前不成立**（实测读数见 `tests/register_probe.mjs`，第三十四轮）：打分按查询 token 逐个累加，重复即翻倍，而红旗加权固定 `+2/词` 不跟着缩放 ⇒ bm25 有 4/37 配对例重复后 recall@5 变（含危急 2 例，`ret-27` 0.5→0）。第三十五轮归因改判：主因是**同义词扩展通道不随重复缩放**（归因分解实测 4/4 例牵动只靠扩展得分的条目），不是加权被稀释；把加权改成随查询质量缩放后 4 例读数一位没动、70 例指标也不动，已回滚。已实测否决"查询 token 去重"这一朴素治法（破 6 条逐用例锁、MRR 跌破地板，见 `PITFALLS.md` H7）；正解是把加权改成随查询词权缩放的相对量，另立台账 #102。
+- **查询重复不改变结果这条性质当前不成立**（实测读数见 `frontend/tests/register_probe.mjs`，第三十四轮）：打分按查询 token 逐个累加，重复即翻倍，而红旗加权固定 `+2/词` 不跟着缩放 ⇒ bm25 有 4/37 配对例重复后 recall@5 变（含危急 2 例，`ret-27` 0.5→0）。第三十五轮归因改判：主因是**同义词扩展通道不随重复缩放**（归因分解实测 4/4 例牵动只靠扩展得分的条目），不是加权被稀释；把加权改成随查询质量缩放后 4 例读数一位没动、70 例指标也不动，已回滚。已实测否决"查询 token 去重"这一朴素治法（破 6 条逐用例锁、MRR 跌破地板，见 `PITFALLS.md` H7）；正解是把加权改成随查询词权缩放的相对量，另立台账 #102。
 - 语域落差（同 gold、只换同义词组内词形）：bm25 Δrecall@5 0／ΔMRR 0.018018；hybrid 0.013513／0.004054；semantic 0／0.002252。配对 37/50 由 `retrieval_cases.json` + `SYNONYMS` 运行时现算，零新增标注。
 - 同义词扩展：34 组；症状→证据映射 73 键；红旗加权词 32 个（命中每条 +2；词形取**指南侧**写法，口语侧输入由同义词表桥接，见 `PITFALLS.md` H5）。
-- 知识库：60 条 / 20 病种域（按 `scope` 首段去重），ICD-10 映射 55 条（余 5 条显式 `null` 待临床复核）。条数与域名数由 `tests/docs_link_guard.mjs` 现算对账，禁手抄。
+- 知识库：60 条 / 20 病种域（按 `scope` 首段去重），ICD-10 映射 55 条（余 5 条显式 `null` 待临床复核）。条数与域名数由 `frontend/tests/docs_link_guard.mjs` 现算对账，禁手抄。
 - 检索器可切换（注册表三档）：默认 `bm25`；`hybrid`（BM25+概念通道加权 RRF）与 `semantic`（BM25+语义近邻通道）均为 **opt-in**。
 - `semantic` 档（v1.9.0 起）：条目↔条目余弦邻接表由 `scripts/build_semantic_neighbors.py` 在**构建期**用本地 BAAI/bge-small-zh-v1.5（512 维，权重 sha256 记录在产物头）蒸馏，运行时**零模型/零网络/零向量服务**，纯查表且双端同源（`semantic_neighbors.js` ↔ `semantic_neighbors.py`）。
-  **实测无增益，故不作默认**：54 组权重网格（`work/sweep_semantic_weights.mjs`）在 20 例留出集上「严格优于 bm25」的候选 = **0 组**，9 组与 bm25 逐位等值（通道惰性），45 组劣化（ΔMRR 最差 −0.328）；根因是该通道只做重排名次、无法对**查询**编码，而同类开源项目为此统一外挂 Milvus/Chroma/FAISS/TEI。条件触发路线亦不可解：漏检例 top1 分 14.39/17.65 与命中例最低 12.41 区间重叠（R236 补注③：改机制而非调参）。保留为语料扩容（55→200+）后的复测位，与 `adjacencyChannel`（标定权重 0）同一处置惯例。
+  **实测无增益，故不作默认**：54 组权重网格（`scripts/sweep_semantic_weights.mjs`）在 20 例留出集上「严格优于 bm25」的候选 = **0 组**，9 组与 bm25 逐位等值（通道惰性），45 组劣化（ΔMRR 最差 −0.328）；根因是该通道只做重排名次、无法对**查询**编码，而同类开源项目为此统一外挂 Milvus/Chroma/FAISS/TEI。条件触发路线亦不可解：漏检例 top1 分 14.39/17.65 与命中例最低 12.41 区间重叠（R236 补注③：改机制而非调参）。保留为语料扩容（55→200+）后的复测位，与 `adjacencyChannel`（标定权重 0）同一处置惯例。
 - 溯源棘轮：未回链条目上限 32、深链下限 0，只准变好（`kb_guard` 强制）。
 
 ## 4. LLM 接入与降级
@@ -97,12 +97,12 @@
 |---|---|---|
 | 前端二十六件套 | `cd frontend && npm test` | smoke 57（含红旗规则分支边界与双端同表探针 12 条对账）· engine 31 · retrieval 50 例双档地板 · retriever parity 3 档 × 64 例（含 4 条重复查询专打 #102 缩放分支，＋**加权分量双端同源比对**）· register 语域配对（#99 第三十七轮升阻断：掉 recall 配对 ≤0）· repetition 77 配对（top-5/top-4 名次不变＋分数 2× 地板，变异体实测 42/22 判红）· semantic 22（含 7 组反例 + 语料指纹防陈旧）· **live_path 43（注入 fetch 桩验三条红线，零网络）** · 双端契约 31:31 · fhir 45（含 6 组反例 + 分支补测）· kb 17 · route 25（含可观测性兜底分支与 404 双端契约）· api 契约 6 端点 · privacy 59 · **env 6（配置契约：代码读的环境变量 ↔ .env.example 双向对账）** · vitest 7 · version 五方 |
 | 静态检查（第十四轮补，对标同类 3/5 有 linter、我方此前为零） | `cd frontend && npm run lint:js`（ESLint 9 flat config，`--max-warnings=0`）与 `npm run lint:py`（ruff 0.16.5，规则集钉在 `仓根 ruff.toml`） | 首跑共 60 项真实告警，逐条处置：删死导入/死类、`eqeqeq`、修 `no-useless-escape`；**并抓出 privacy_guard 三条遥测判据里的 `\b` 被v1.13.0 那轮 Python 写文件转义成裸 `0x08` 退格符 = 永不匹配的死判据**（聚合反例当时仍判绿，故补「判据逐条自证」）。react JSX 需 `react/jsx-uses-vars`，否则在用的组件被误报未使用（实测 1941 假阳性）。规则集显式钉文件而非依赖默认：实测 ruff 0.16 默认 select 与旧版不同，不钉即换版本=换判据 |
-| 入站滥用护栏（第十九轮补，对标 ragflow `client_max_body_size`）| `cd frontend && npm run test:limits` + `python backend/tests/test_limits.py` | 单一源 `tests/fixtures/request_limits.json`（body 64KiB / history 64 条 / 单条 2000 字 / dx 64KiB）三处逐字段全等（fixture↔`functions/lib/limits.js`↔`app/limits.py`）。行为：越界 413、坏 JSON 400（此前 `catch { return {} }` 静默接受并继续消耗引擎与 8s LLM 窗口）；Py 侧在 `models.py` 契约层拦（进引擎前，不付 token）+ `main.py` 中间件先看 Content-Length + 专用 handler 出 413；**4xx 不得记 error 级日志**（防滥用流量淹没真故障）；文案不得含内部阈值；余量按实测峰值 488B/5 条取 128x（门禁现场重算，上限小于真实峰值即判红）。JS 33 项 + Py 22 项，反例 rc=1 |
+| 入站滥用护栏（第十九轮补，对标 ragflow `client_max_body_size`）| `cd frontend && npm run test:limits` + `python backend/tests/test_limits.py` | 单一源 `frontend/tests/fixtures/request_limits.json`（body 64KiB / history 64 条 / 单条 2000 字 / dx 64KiB）三处逐字段全等（fixture↔`frontend/functions/lib/limits.js`↔`backend/app/limits.py`）。行为：越界 413、坏 JSON 400（此前 `catch { return {} }` 静默接受并继续消耗引擎与 8s LLM 窗口）；Py 侧在 `models.py` 契约层拦（进引擎前，不付 token）+ `main.py` 中间件先看 Content-Length + 专用 handler 出 413；**4xx 不得记 error 级日志**（防滥用流量淹没真故障）；文案不得含内部阈值；余量按实测峰值 488B/5 条取 128x（门禁现场重算，上限小于真实峰值即判红）。JS 33 项 + Py 22 项，反例 rc=1 |
 | 分支保护↔作业图（第十九轮补，对标 OpenEMR `All Checks Passed`）| `python scripts/branch_guard.py [--remote]` | 实测缺口：`ci.yml` 有 4 个阻断作业而仓库 `required_status_checks` 只有 2 项 ⇒ 卫生/浏览器回归判据**可被绕过**。治本＝新增 `all-checks-passed` 聚合 job（needs 全部阻断作业 + `if: always()`）并把保护改指该聚合项，以后新增 job 只要挂进 needs 就自动被强制。**边界如实登记**：`enforce_admins=false`（本项目的部署通道就是直推 main，关掉它会把发布一起锁死），所以聚合检查管住的是 **PR 合入**这条路；直推路径的兜底是"推送后 CI 必须全绿 + 出包前 `release.yml` 再跑一遍全部门禁"，不是"任何东西都推不进去"。五条判据：聚合 job 存在／needs ⊇ 阻断作业集／`if: always()` 在场（否则前置红时聚合不跑，required check 永挂"等待中"＝永久卡死）／ci.yml 真的调用本脚本／deploy.needs 全覆盖；`--remote` 另核线上真实 contexts（读不到打印 SKIP，不静默判绿）。四组反例实测 rc=1 |
 | 端到端浏览器回归（第十七轮补，对标 OpenEMR `Acceptance test (docker)`；我方此前 E2E 只在本机人工跑过） | `cd frontend && npm run build && npx playwright test`（CI 里另跑 `npx playwright install --with-deps chromium`） | 跑**生产构建 + Pages Functions 本地运行时**（不是 vite dev 代理到 8000 的那条假路径）；不设 Key 必走 rule-fallback ⇒ 零网络零密钥、结果确定。5 条用例＝三张脱敏病例卡与常驻红线条款、红线负向（全站不得出现「替代医生」）、五步链路（红旗区块 + 不可被模型覆盖声明 + 降级标注 + 引用可见 + 检查建议三组 + SOAP 四段与免责）、**1440 与 390 双视口 × 五步全页面**零横向溢出、零控制台异常。两组反例实测 rc=1：红线文案改一字（终审→复核）即判红；注入 `.app { width: 120vw }` 报 `首屏: scrollWidth=468 > clientWidth=390` |
-| 类型门禁（第十五轮补，对标 OpenEMR phpstan level 10 + baseline-diff） | `cd frontend && npm run typecheck`（= `python scripts/type_gate.py`） | `mypy.ini` 严格档 `check_untyped_defs=True`，范围 `backend/app` + `scripts`（23 文件 0 error）；阈值单一源 `fixtures/type_floor.json`。刻意**不开基线豁免层**：首跑 26 条里 19 条是生成物未标注的推断噪声（正解是标注生成器），真缺陷 7 条全修 ⇒ 直接钉 0。门禁还额外核对「实跑检查文件数 ≥22」（mypy 静默空跑也会报成功）与「devDep 是否钉 mypy 版本」；四组反例实测 rc=1/2 （阈值下限抬高／注入 str 当下标／去掉钉版行／阈值文件缺失） |
+| 类型门禁（第十五轮补，对标 OpenEMR phpstan level 10 + baseline-diff） | `cd frontend && npm run typecheck`（= `python scripts/type_gate.py`） | `mypy.ini` 严格档 `check_untyped_defs=True`，范围 `backend/app` + `scripts`（23 文件 0 error）；阈值单一源 `frontend/tests/fixtures/type_floor.json`。刻意**不开基线豁免层**：首跑 26 条里 19 条是生成物未标注的推断噪声（正解是标注生成器），真缺陷 7 条全修 ⇒ 直接钉 0。门禁还额外核对「实跑检查文件数 ≥22」（mypy 静默空跑也会报成功）与「devDep 是否钉 mypy 版本」；四组反例实测 rc=1/2 （阈值下限抬高／注入 str 当下标／去掉钉版行／阈值文件缺失） |
 | 覆盖率地板（JS） | `cd frontend && npm run coverage:js` | c8 12.0.0 包住整条 npm test（套件只跑一次）→ `coverage_floor_guard.mjs` **按模块级地板对账（rules/engine/fhir/rag/retriever/knowledge + 全局）；三条硬判据：输入非空证明、模块级地板、地板清单与产物改名对账；反例实测 3 组（summary 缺失／地板抬高／模块改名）均判红。刻意不接 Codecov 等外部服务（与零外部件架构一致） |
-| 覆盖率地板（Py） | `cd frontend && npm run coverage:py`（CI 同命令） | coverage.py 7.16.0 + `backend/.coveragerc`（**第十四轮起 `branch = True`**，口径由「仅语句」改为「语句+分支弧」）。判据 = `scripts/coverage_gate.py`，阈值单一源 = `fixtures/coverage_floor.json` 的 `py_total_fail_under` + `py_modules`（9 个模块级地板）；此前 85 硬编码在 ci.yml 与 package.json 两处、JSON 里的数字无人读，属「清单与判据两套数」，v1.12.0 那轮收敛为单一源。实测 90.53%（旧语句口径 87%→新口径下同批测试 91%）；反例实测：喂假地板（模块改名 + 抬到 99%）两条均判红 rc=1。dev 依赖走 `requirements-dev.txt`，实测**不进运行时镜像**（容器内 `import coverage` 报 ImportError） |
+| 覆盖率地板（Py） | `cd frontend && npm run coverage:py`（CI 同命令） | coverage.py 7.16.0 + `backend/.coveragerc`（**第十四轮起 `branch = True`**，口径由「仅语句」改为「语句+分支弧」）。判据 = `scripts/coverage_gate.py`，阈值单一源 = `frontend/tests/fixtures/coverage_floor.json` 的 `py_total_fail_under` + `py_modules`（9 个模块级地板）；此前 85 硬编码在 ci.yml 与 package.json 两处、JSON 里的数字无人读，属「清单与判据两套数」，v1.12.0 那轮收敛为单一源。实测 90.53%（旧语句口径 87%→新口径下同批测试 91%）；反例实测：喂假地板（模块改名 + 抬到 99%）两条均判红 rc=1。dev 依赖走 `requirements-dev.txt`，实测**不进运行时镜像**（容器内 `import coverage` 报 ImportError） |
 | 构建体积 | `npm run build && npm run test:bundle` | 主 chunk gzip ≤77500B / assets 合计 ≤86500B（地板线，防膨胀也防假瘦身） |
 | 后端 | `smoke_engine` / `test_api_observe` / `test_fhir` / `test_live_path` / `test_retriever_channels` | 规则降级 25（含与 JS 逐字同表的 6 条红旗探针）· 可观测与错误契约 46（含路由级 404/200/慢请求 warn，以及 #42 补的「4xx 双端可观测性对称」四判据）· FHIR 17 · **live 路径红线 25**（桩 httpx 零网络）· **检索通道 25**（三档纯函数与 RRF 语义） |
 | 容器（从零启动自证） | `docker compose up -d` + `docker compose run --rm selftest` | 镜像构建成功 + HEALTHCHECK `healthy` + 镜像内 **25/40/16/25/25 五套** exit 0（源码树级检查在容器内显式 SKIP，不计通过也不计失败；coverage 等 dev 件实测不在镜像内） |
@@ -125,7 +125,7 @@
 
 ## 8. 扩展点与边界
 
-- 加一条知识：只改 `data/knowledge.json`（权威）一处 → `npm run kb:export` 生成两端 → `test:kb` 会拦 schema/孤儿/溯源/死权重违规，`kb:check` 拦「改了 JSON 忘了导出」。改前不必动任何 `.js`/`.py`：`functions/lib/knowledge.js` 与 `app/knowledge.py` 现在都是生成物。
+- 加一条知识：只改 `data/knowledge.json`（权威）一处 → `npm run kb:export` 生成两端 → `test:kb` 会拦 schema/孤儿/溯源/死权重违规，`kb:check` 拦「改了 JSON 忘了导出」。改前不必动任何 `.js`/`.py`：`frontend/functions/lib/knowledge.js` 与 `backend/app/knowledge.py` 现在都是生成物。
 - 补一条回链：先实测该 URL 可达（`npm run test:links` 或 curl 200）→ 把域名加进 `kb_guard.mjs` 的 `VERIFIED_HOSTS` → 再写进条目；**未核验域名会被离线白名单直接拦下**（2026-09-25 实测教训：16 条 url 指向 DNS 不存在的域，属假回链）。
 - 遇到"站点活着但拒绝自动化访问"（412/403/429 等）：**浏览器人工核实可达后**，往 `link_health.mjs` 的 `BLOCKED_REGISTRY` 加一行 `host: {status, since, note}`（note 写清实测依据与日期）。未登记的被拦源门禁判红；不要用"调高计数基线"来消警——那正是v1.15.0 那轮拆掉旧判据的原因（一处噪声会永久掩盖后面的噪声）。
 - 加一条红旗：只改 `data/red_flag_rules.json`（权威）一处 → `npm run redflags:export` 生成两端 → 载入即校验会先拒掉重名/裸单字/越界 severity/过短 advice，再跑 `test:contract` 兜底。**不必也不准手改** `rules.js`/`rules.py` 里的表体。
@@ -139,7 +139,7 @@
 
 | 面 | 口径（实测） |
 |---|---|
-| 实现 | `functions/lib/fhir.js`（权威）↔ `backend/app/services/fhir.py`（镜像），纯函数、零网络、零 LLM |
+| 实现 | `frontend/functions/lib/fhir.js`（权威）↔ `backend/app/services/fhir.py`（镜像），纯函数、零网络、零 LLM |
 | 资源组合 | Bundle(`collection`) = Patient + Encounter + Condition(疑似/鉴别) + Observation(症状/红旗/引用) + DiagnosticReport |
 | 插入点 | `buildDiagnosis` 末端（确定性校验与红旗兜底**之后**）→ 只读派生视图，红旗层与引用白名单零触碰 |
 | 术语绑定 | 只用 HL7 已发布 CodeSystem 的 code：`condition-clinical#active`、`condition-ver-status#unconfirmed`、`condition-category#encounter-diagnosis\|problem-list-item`、`v3-ActCode#AMB`、`administrative-gender`、`bundle-type#collection`、`observation-status#final`、`diagnostic-report-status#final\|partial`；本地语义走本仓命名空间 `…#fhir-light/code`（仅 `red-flag`/`citation` 两值） |

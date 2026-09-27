@@ -13,7 +13,7 @@
 | `404` | 病例 id 不存在，或路径未匹配 | `unknown case: {id}` ／ `not found: {path}` | 双端同名异常 `UnknownCase`（`engine.js` 带 `status=404`、`engine.py` 由路由层翻译）；路径未匹配由路由直接回 | 视为调用方参数错误，不重试 |
 | `413` | 入站边界超限（body 64 KiB／history 64 条／单条 2000 字） | `请求内容超出可处理范围，请精简问诊记录后重试` | `TOO_LARGE_MESSAGE` / `TOO_LARGE_PUBLIC_MESSAGE` | 截断或分页后重试；阈值单一源见 `frontend/tests/fixtures/request_limits.json` |
 | `422` | JSON 合法但结构不合契约（`history` 非数组、元素非对象、`content`/`role` 非字符串、`dx` 非对象） | `请求参数不完整，请刷新后重试（故障编号 {id}）` | `BAD_SHAPE_MESSAGE` / `BAD_SHAPE_PUBLIC_MESSAGE` | 修参数后重试；带编号来咨询可直接定位日志 |
-| `500` | 未预期异常（**只留给真故障**，任何客户端可修正的错误都不落在这一档） | `服务暂时不可用，请稍后重试（故障编号 {id}）` | `main.py` / `functions/api/[[route]].js` 兜底 | 带 `X-Request-Id` 退避重试（指数退避，最多 2 次） |
+| `500` | 未预期异常（**只留给真故障**，任何客户端可修正的错误都不落在这一档） | `服务暂时不可用，请稍后重试（故障编号 {id}）` | `main.py` / `frontend/functions/api/[[route]].js` 兜底 | 带 `X-Request-Id` 退避重试（指数退避，最多 2 次） |
 
 ## 三条通用约定
 
@@ -24,7 +24,7 @@
 2. **双端一致**：本表由 `frontend/tests/error_parity_guard.mjs` 按「POST 路由 × 入站违规类型」的
    **枚举矩阵**（当前 4×9+2＝38 条用例）逐条比对 期望 ↔ Functions(JS) ↔ FastAPI(Py) 三方，
    状态码与剥掉故障编号后的文案都要全等。用例由 `scripts/gen_error_matrix.py` 生成，
-   手改 `fixtures/error_parity.json` 会因漂移判红。
+   手改 `frontend/tests/fixtures/error_parity.json` 会因漂移判红。
 3. **安全叙事不受错误路径影响**：即使返回 4xx/5xx，红旗规则层结论、引用白名单与
    「AI 辅助参考 · 医生终审」文案都不会被改写（错误响应只是拒绝，不产出诊断）。
 
