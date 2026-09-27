@@ -5,6 +5,57 @@
 
 ## [Unreleased]
 
+## [1.41.0] - 2026-09-27
+
+第四十四轮开源对标收口。本轮轴＝**可观测性的可失败性**——"证据到底由谁在什么时候生产"。三条产品红线零触碰。
+
+- **一手发现：本仓所有 `schedule` 触发从未生效**。取证两条独立通路一致：
+  `gh api repos/…/actions/runs?event=schedule` ⇒ `total_count=0`；
+  per-workflow 端点 `…/actions/workflows/{live-smoke|link-health|dep-triage}.yml/runs` ⇒ 各自 `total_count=0`；
+  而 `push`／`workflow_dispatch` 均有 run（最近 300 条里只有 ci/codeql/dep-audit/dependabot/release）。
+  四条 YAML 的 `on.schedule` 形状经 `yaml.safe_load` 逐条核对**完全合法**（cron 与列表结构都对），
+  所以这不是写错缩进，是平台侧从未触发。后果比"少跑几次"严重：
+  **第二十三轮立的那批"线上仍然可用"判据（镜像可拉、Pages 未漂移、回链可达、评测新鲜）
+  全部只存在于这些从未执行过的作业里**——在册、无人执行、且此前没有任何东西会发现。
+- **正解（不删判据，也不假装已修平台）**：
+  ① `live-smoke.yml` 与 `link-health.yml` 各加一条**实测会触发**的通路
+     `on.workflow_run: workflows: ["CI - build & deploy"], types: [completed], branches: [main]`，
+     cron 保留（哪天平台恢复触发就自动生效），并加 `concurrency` 组避免排队重复烧 runner 分钟；
+  ② `online-eval` 作业把评测报告发布成 **artifact `eval-report-live`**（`if-no-files-found: error`），
+     让"最新一次真实评测"跨 run 可见；
+  ③ 新增 `scripts/live_freshness_guard.py`：以「目标 workflow 最近一次 conclusion=success 的时间戳」为分母判过期，
+     **四态分离**——raw 为空 ⇒ FAIL（从未触发）、raw 非空但过滤后为空 ⇒ UNVERIFIED（取数面不符，不猜）、
+     取不到 ⇒ UNVERIFIED（不记绿也不记红）、超期 ⇒ FAIL；`--selftest 7/7` 七条各绑专属输入面，
+     真实面首跑即 `FAIL … live-smoke.yml 一条 run 都没有`，红因与取证一致；
+  ④ ci.yml 加 `schedule-health` 作业跑该守卫，**刻意 `continue-on-error: true`**：
+     它是"给别人看的读数"而不是拦提交的闸（advisory 类新指标先量误报率再接线），
+     且读的是**别的** workflow 的历史——不自我引用（同族禁令：CI 里读"最新 run"会取到正在跑的自己）。
+- **`perf_gate.mjs` 的恒真条款如实登记**：它的「报告新鲜度 ≤14 天」唯一 CI 执行点在 `online-eval` 里，
+  而报告是同一次作业上一步刚生成的 ⇒ 该位置永远为真，防不到过期。头注已写明适用范围与
+  "新鲜度的可失败判据在守卫那边"（同一事实只许一处判）。
+- **覆盖率与评测读数进 CI 工件**（对标 `openemr` 的 `validate-codecov.yml`）：
+  `coverage-js`（`frontend/coverage/coverage-summary.json`）与 `coverage-py`（`backend/coverage-py.json`）
+  两个工件步，路径**全部本机实测取**——先按别家写法填 `coverage-final.json`/`coverage.xml`
+  会发现本仓根本没有这两个文件，`if-no-files-found: error` 会让该步恒红。
+- **#135 扩面兑现**：`round_wording_guard.py` 射程从 4 个入口面扩到 9 个耐久面（含 `docs/*.md`），
+  29 行相对轮次词由 `git blame HEAD -L` → `git tag --contains` 反查 first-tag 换成版本锚点
+  （v1.12.0／v1.13.0／v1.26.0／v1.33.0／v1.36.0／v1.38.0 等），改完 9 面零命中。
+  `CHANGELOG.md` 仍**在册排除**并写明理由：它每节自带 `## [x.y.z]` 绝对锚点，改写历史叙述等于伪造当时视角。
+- **本轮过程自纠（失败面同条登记）**：
+  ① 守卫初版把"从未跑过"和"取不到数据"折叠成同一个 UNVERIFIED ⇒ 会把真停摆读成没数据，拆成两态后
+     真实面立刻从 UNVERIFIED 变 FAIL；
+  ② 锚点脚本第一次 blame 打在**工作区**上：刚被自己改过的行没有提交 ⇒ 拿到全 0 sha、3 行落空，
+     改打 `HEAD` 后 29/29 可锚；
+  ③ 用 Python 脚本往 ci.yml 插步骤时，插入点选在 `python selftest.py --coverage` 之后，
+     落进了**下一个 job 的 steps**（YAML 仍然可解析！）⇒ 靠"断言步骤真在 backend-test 里"才发现并搬回，
+     教训：**改结构化配置文件后必须按语义回读（job→steps 归属），只验 YAML 能解析等于没验**；
+  ④ 单独跑 `coverage_gate.py` 得 84.47% < 地板 90%，先问红因再下结论：
+     那是 `.coverage` 只有局部数据；按正规序列复测 94.75% ⇒ PASS（判据没错，是我喂错输入）。
+- **回归**：`round_wording_guard --selftest 5/5` 且真实扫描 9 面零命中；
+  `live_freshness_guard --selftest 7/7`（真实面 FAIL rc=1）；`docker_context_guard --selftest 7/7`；
+  `verify.py --selftest 6/6`；`npm test` 全绿；`python backend/selftest.py` rc=0；
+  `ruff` All checks passed；覆盖率正规序列 94.75% ≥ 地板 90%。
+
 ## [1.40.0] - 2026-09-27
 
 第四十三轮开源对标收口。本轮轴＝**第二开发者上手面与构建上下文卫生**（对标取证 `gh api` 现取：

@@ -8,7 +8,20 @@ name: Delivered artifact smoke
 on:
   schedule:
     - cron: "30 4 * * *"   # 每天 12:30 UTC+8，与 dep-audit（周一）/link-health（周三）/dep-triage（周二）错开
+    # ⚠️ 第四十四轮实测：本仓 `event=schedule` 的 run **总数 = 0**（`gh api .../actions/runs?event=schedule`
+    #   与 per-workflow 端点 `.../workflows/live-smoke.yml/runs` 的 total_count 均为 0，
+    #   而 push / workflow_dispatch 正常）⇒ 只写 cron 等于把"线上仍然可用"的证据挂在一条没人走过的路上。
+    #   保留 cron（哪天平台恢复触发就自动生效），另加下面这条**实测会触发**的通路：main 的 CI 完成后巡检。
+  workflow_run:
+    workflows: ["CI - build & deploy"]
+    types: [completed]
+    branches: [main]
   workflow_dispatch: {}
+
+# 每次 main 的 CI 完成都会排一次巡检：并发起来会白烧 runner 分钟，故同名只留最新一条。
+concurrency:
+  group: live-smoke
+  cancel-in-progress: false
 
 permissions:
   contents: read
@@ -117,6 +130,15 @@ jobs:
         run: node scripts/live_eval.mjs
       - name: 性能地板线复核（刚产出的报告必须新鲜且达标；缺报告判 UNKNOWN 而非放行）
         run: node scripts/perf_gate.mjs
+      - name: 评测报告发布为工件（让"最新一次真实评测"跨 run 可核，而不是只在本次作业里恒真）
+        # perf_gate 的「新鲜度 ≤14 天」在本作业里永远为真——报告是上一步刚生成的。
+        # 真正能过期的证据必须留在**作业之外**：工件带 created_at，由 scripts/live_freshness_guard.py
+        # 在别的作业里回读，才谈得上"过期会红"。缺文件即判错（if-no-files-found: error）。
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: eval-report-live
+          path: .eval/eval_report_live.json
+          if-no-files-found: error
       - name: 把复现结果写进作业摘要（评审看的数字要能对到具体某次运行）
         if: always()
         run: |

@@ -3,7 +3,18 @@ name: Citation link health
 on:
   schedule:
     - cron: "0 2 * * 3"   # 每周三 10:00 UTC+8（与 dep-audit 错开）
+    # ⚠️ 第四十四轮实测：本仓 `event=schedule` 的 run 总数 = 0（三条排班作业 live-smoke /
+    #   link-health / dep-triage 的 per-workflow total_count 均为 0），cron 写了也没人执行 ⇒
+    #   回链健康度此前从未真跑过一次。保留 cron，另加实测会触发的通路（main 的 CI 完成后跑）。
+  workflow_run:
+    workflows: ["CI - build & deploy"]
+    types: [completed]
+    branches: [main]
   workflow_dispatch: {}
+
+concurrency:
+  group: link-health
+  cancel-in-progress: false
 
 # 第二十三轮对标（2026-09-26 实测）：peer phlox 4/4 工作流顶层显式 permissions、openemr 61/79 有；
 # 我方此前 1/5。不写这一块的默认值是"仓库设置说了算"，同一份 YAML 在不同仓库设置下拿到的权限不同，

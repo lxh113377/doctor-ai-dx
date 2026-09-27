@@ -29,6 +29,10 @@ import tempfile
 from pathlib import Path
 
 FACES = ["AGENTS.md", "README.md", "CONTRIBUTING.md", "SECURITY.md"]
+# 第四十四轮扩面：docs/*.md 纳入射程（29 行相对轮次词已用 blame→first-tag 换成版本锚点）。
+# CHANGELOG.md 仍排除：它每个小节自带 `## [x.y.z]` 绝对锚点，句中指代可由所在小节消歧；
+# 把它的历史叙述改写等于伪造叙述者当时的视角（该理由同时记在台账 #135）。
+DOC_GLOB = "docs/*.md"
 FORBIDDEN = re.compile(r"本轮|上一轮")
 
 
@@ -43,10 +47,12 @@ def scan_text(text: str) -> list[tuple[int, str]]:
 
 
 def check(root: Path, verbose: bool) -> int:
+    faces = list(FACES) + sorted(str(x.relative_to(root)).replace("\\", "/")
+                                 for x in root.glob(DOC_GLOB))
     hits = 0
     scanned = 0
     empty_faces = []
-    for name in FACES:
+    for name in faces:
         f = root / name
         if not f.exists():
             empty_faces.append(name)
@@ -65,14 +71,14 @@ def check(root: Path, verbose: bool) -> int:
         print("EMPTY :: 一个入口面都没读到 ⇒ 判据看不见输入，不许记绿")
         print("[GATE:round-wording-empty]")
         return 2
-    if len(FACES) - scanned > len(FACES) // 2:
+    if len(faces) - scanned > len(faces) // 2:
         print(f"EMPTY :: 入口面读到 {scanned}/{len(FACES)}，过半缺失＝取数面坏了（{', '.join(empty_faces)}）")
         print("[GATE:round-wording-empty]")
         return 2
     if hits:
         print(f"[GATE:round-wording-fail] {hits} 处（改法＝换绝对锚点：第 N 轮 / v号 / 日期，而不是删判据）")
         return 1
-    print(f"[GATE:round-wording-pass] {scanned} 个入口面零命中")
+    print(f"[GATE:round-wording-pass] {scanned} 个耐久面零命中")
     return 0
 
 

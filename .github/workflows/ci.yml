@@ -48,6 +48,16 @@ jobs:
       - name: Test + coverage floor ratchet (JS)
         # c8 包住整条 npm test（套件只跑一次），随后按模块级地板对账；刻意不接 Codecov 等外部服务
         run: npm run coverage:js
+      - name: 覆盖率读数发布为工件（JS）
+        # 第四十四轮对标：peer `openemr/openemr` 有 `validate-codecov.yml`；我方此前只上传 dist，
+        # 评审看到的是「地板数字」而看不到「这次实测多少」。路径与产物名按本机实测：
+        # c8 产出 frontend/coverage/coverage-summary.json（不是 coverage-final.json）。
+        # 缺文件即判错（if-no-files-found: error）——零输入不记绿。
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: coverage-js
+          path: frontend/coverage/coverage-summary.json
+          if-no-files-found: error
       - name: Build (production)
         run: npm run build
       - name: OpenAPI drift check (derived spec vs backend)
@@ -216,6 +226,17 @@ jobs:
           python selftest.py --coverage
           python ../scripts/coverage_gate.py --quiet
 
+      - name: 覆盖率读数发布为工件（Py）
+        # 产物名同样实测取：scripts/coverage_gate.py 的 --json-out 默认落 backend/coverage-py.json
+        # （本机实测 136,718B；`coverage.xml` 在本仓并不存在，照抄别家写法会让本步恒红）。
+        # 另记一次本机误读：单独跑 coverage_gate 得 84.47% < 地板 90%，先问红因再下结论——
+        # 那是 .coverage 只有局部数据所致；按正规序列（rm -f .coverage → selftest --coverage → gate）
+        # 复测为 94.75% ⇒ PASS。判据没坏，是我喂错了输入。
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: coverage-py
+          path: backend/coverage-py.json
+          if-no-files-found: error
   # 聚合 required check（对标 OpenEMR 的 `All Checks Passed`）。
   # 为什么需要它：仓库的 required_status_checks 是**手工维护的字符串列表**，而 ci.yml 的 job 会随轮次增加——
   # 实测两者已脱节（4 个阻断作业 vs 2 项 required checks），结果新加的 e2e/文本卫生判据可被绕过。
@@ -289,3 +310,44 @@ jobs:
           done
           echo "::error::线上 health.version=$GOT 与仓内 $EXPECT 不一致：部署未生效或被回滚（禁止把「作业绿」当「已上线」）"
           exit 1
+
+  # 排班健康度巡检（第四十四轮）：本仓三条 schedule 作业实测从未触发（event=schedule 全仓 0 条），
+  # 所以"线上仍然可用/评测新鲜"这类证据必须有**外部可见性**，否则判据只在自家庭院里转。
+  # 本 job 刻意 continue-on-error：它是"给别人看的读数"，不是拦提交的闸（advisory 类新指标先量误报率再接线）；
+  # 也不读自己所在 workflow 的历史（同族禁令：判据取到"正在跑的自己"会永久自判红），读的是 live-smoke/link-health。
+  schedule-health:
+    name: 排班与评测新鲜度巡检（非阻断，读远端 run 历史）
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    needs: all-checks-passed
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - name: 判据自证（离线，不联网也必须跑成）
+        run: python scripts/live_freshness_guard.py --selftest
+      - name: live-smoke（线上巡检＋评测复现）最近是否真跑过
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set +e
+          python scripts/live_freshness_guard.py --workflow live-smoke.yml --max-age-days 3 | tee /tmp/sh1.txt
+          rc=$?
+          # 先赋值再 echo：命令替换里塞全角标点会被 shellcheck 判解析失败（本机探针当场抓住，
+          # 这是该形态第三次，前两次都进了 CI 才发现）。
+          verdict="$(grep -Eo 'PASS|FAIL|UNVERIFIED' /tmp/sh1.txt | tail -1)"
+          firstline="$(sed -n '1p' /tmp/sh1.txt)"
+          {
+            echo '### 排班健康度巡检'
+            echo
+            echo "- live-smoke 判定: $verdict"
+            echo "  $firstline"
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit "$rc"
+      - name: link-health（回链可达性）最近是否真跑过
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python scripts/live_freshness_guard.py --workflow link-health.yml --max-age-days 10
