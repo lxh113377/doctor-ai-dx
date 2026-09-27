@@ -30,6 +30,7 @@ async function post(path, body) {
 }
 
 let structPass = 0, citePass = 0, modeLive = 0, modeFallback = 0, flagOk = 0, flagTotal = 0, abstainCount = 0
+const modeByCase = {}
 const failures = []
 
 for (const c of suite.cases) {
@@ -41,6 +42,7 @@ for (const c of suite.cases) {
   const d = r.data
   if (!d) { errs.push("无响应"); failures.push({ id: c.id, errs }); continue }
   if (d.mode === "live") modeLive++; else if (d.mode === "rule-fallback") modeFallback++
+  modeByCase[c.id] = { mode: String(d.mode), abstain: d.abstain === true }
   if (d.abstain === true) {
     // 线上第三态（#52）：弃权是另一种合法形状，但必须"只出弃权卡 + 红旗字段在场"，
     // 且同样计入"红旗不得被弃权吞掉"的检查——否则线上把弃权当成功掩盖漏报。
@@ -84,6 +86,8 @@ const report = {
   abstain_cases: `${abstainCount}/${n}`,
   citation_valid: `${citePass}/${n}`,
   mode_distribution: { live: modeLive, rule_fallback: modeFallback },
+  mode_by_case: modeByCase,
+  unexpected_fallback: Object.values(modeByCase).filter((x) => x.mode !== 'live' && !x.abstain).length,
   red_flag_recall_live: `${flagOk}/${flagTotal}`,
   p95_within_10s: pct(lat, 0.95) <= 10000,
   failures,
@@ -100,6 +104,16 @@ console.log(JSON.stringify(report, null, 2))
 const gate = []
 if (report.failures.length) gate.push(`失败用例 ${report.failures.length}`)
 if (!report.p95_within_10s) gate.push(`dx P95 ${report.dx_latency_ms.p95}ms > 10000ms`)
+// 第四十六轮补的下限判据，且**装在 CI 真正跑的那一份里**：
+// 上一轮我把同名判据加进了参赛工作区的副本（iCAN…/03-评测/live_eval.mjs），而 `npm run eval:live`
+// 指向的是本文件 ⇒ 10:35Z 的 live=6/25 与 10:44Z 的 live=0/31 在 CI 侧全都报绿。
+// 同一事实两处实现，改错那一半等于没改（台账 #149）。
+// 只钉 live === 0 这条无阈值可辩的下限：回落里混着设计内弃权（域外/信息不足用规则答是正确行为），
+// 占比阈值等 unexpected_fallback 攒够基线再定；本轮先把按例读数记进报告并由作业发成工件。
+if (modeLive === 0) gate.push('线上大模型通道一次都没走通（live=0、rule_fallback=' + modeFallback
+  + '、非设计内回落=' + report.unexpected_fallback + '）⇒ 本报告不得作为 EVAL_CARD 头条数字来源')
+console.log('通道读数: live=' + modeLive + ' rule_fallback=' + modeFallback + ' abstain=' + abstainCount
+  + ' 非设计内回落=' + report.unexpected_fallback + '/' + n + '（占比阈值待定，先攒基线）')
 if (report.structure_pass !== `${n}/${n}`) gate.push(`结构 ${report.structure_pass}`)
 if (report.citation_valid !== `${n}/${n}`) gate.push(`引用 ${report.citation_valid}`)
 if (report.red_flag_recall_live !== `${flagTotal}/${flagTotal}`) gate.push(`红旗 ${report.red_flag_recall_live}`)

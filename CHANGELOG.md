@@ -5,6 +5,34 @@
 
 ## [Unreleased]
 
+## [1.43.0] - 2026-09-27
+
+第四十六轮开源对标收口。本轮轴＝**同一事实只许一处判：改了判据，必须改到"被执行的那一份"**。三条产品红线零触碰。
+
+- **一手发现（台账 #149）：`live_eval` 有两份实现，我上轮把判据加错了那一半。**
+  CI 的 online-eval 作业跑 `npm run eval:live` → `scripts/live_eval.mjs`（本仓，权威面），
+  而第 45 轮的下限判据 `modeLive === 0` 加在参赛工作区副本 `iCAN…/03-评测/live_eval.mjs`（93 行 vs 本文件 110 行，
+  自第二十四轮起分叉）。后果被本轮两次实测坐实：10:35Z 工件 `live=6/rule_fallback=25` 与 10:44Z `live=0/31`
+  在 CI 侧一律 `PERF GATE ALL PASS`——**通道全死的评测报告照样被当成质量读数发出来**。
+- **正解**：下限判据装进权威面（`live === 0 ⇒ LIVE GATE FAIL`，消息直接写明"本报告不得作为 EVAL_CARD 头条数字来源"），
+  并按例记 `mode_by_case`＋`unexpected_fallback`（回落里刨掉设计内弃权才是异常量）。本轮真实面读数：
+  `live=0 rule_fallback=31 abstain=3 非设计内回落=28/31` ⇒ 占比阈值等基线攒够再定，**不先拍数字**。
+  工作区那份改成**薄委托层**（spawnSync 调权威脚本＋把报告复制回参赛目录，找不到权威脚本 ⇒ rc=2 且不自编判定），
+  彻底消掉第二套实现。
+- **对标取证（本轮轴外的对照，结论是"不引入"）**：`CITATION.cff`／`.zenodo.json`／`AUTHORS`／`docs/REPRODUCE.md`
+  在五仓（我方＋`openemr/openemr`＋`infiniflow/ragflow`＋`bloodworks-io/phlox`＋`cqframework/clinical_quality_language`）
+  在场率均为 **0/5** ⇒ 不为"看起来像学术工件"而新增；`CITATION.cff` 还会引入第 6 个版本面（须先接进
+  `version_guard` 五方对账，否则它就是下一个漂移源），判为登记不做（#150）。
+- **安全面实测（#148，待老大在 GitHub 侧开）**：`gh api repos/…` 的 `security_and_analysis` 显示
+  `dependabot_security_updates: disabled`、`vulnerability_alerts: null`，而 `secret_scanning: enabled` ＋
+  `secret_scanning_push_protection: enabled`。即**我方配了三个 dependabot 生态却完全没有安全通告**，
+  唯一漏洞信号是 `dep-audit.yml`（pip-audit／npm audit）。这条同时把第 45 轮的 #143 疑问回答掉一半：
+  移除生态不会"丢失安全通告"——安全通告本来就是关着的。
+- **dependabot 配置的结构性冲突（#143 续）**：`package-ecosystem: pip / directory: /backend` 与
+  "锁由 `uv pip compile` 重算、`lock_guard` 硬对账"的通道不兼容；`github-actions` 生态与
+  "commit SHA 钉版"不兼容。本轮仍不改配置（改动的正确形态是"关 PR 提交通道、保留漏洞通告"，
+  而那要先开 #148，顺序反了就两头都没有）。
+
 ## [1.42.0] - 2026-09-27
 
 第四十五轮开源对标收口。本轮轴＝**在册 ≠ 在跑，在跑 ≠ 跑得通；台账 ≠ 事实**。三条产品红线零触碰。
