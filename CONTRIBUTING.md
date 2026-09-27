@@ -50,9 +50,9 @@ CI 会跑同样的东西；`main` 分支保护要求 `build-and-test` 与 `backe
 **克隆后必须跑一次 `pre-commit install`**（第三十三轮 #95 收口）。`.pre-commit-config.yaml` 自 v1.6.1 就在仓里，
 但那是**本机钩子配置**，不是 CI 步骤——实测 v1.29.0 之前本机 `.git/hooks/pre-commit` 并不存在、`core.hooksPath` 未设，
 于是它是「配置在册、无人执行」。第三十三轮（v1.30.0）的处置是**二选一里选了「写进文档」这一项**：不在 CI 另挂一份 `pre-commit run --all-files`，
-理由是那 16 个钩与上面 `npm test` / `lint` / `typecheck` 同源判据、只是换条链重跑，会把 CI 时长翻倍而不增加任何覆盖面。
+理由是那 17 个钩与上面 `npm test` / `lint` / `typecheck` 同源判据、只是换条链重跑，会把 CI 时长翻倍而不增加任何覆盖面。
 判据的覆盖面因此是：CI 守全部阻断项，`pre-commit` 只把同一批判据前移到提交前 30 秒。装好后用 `pre-commit run --all-files` 验一次，
-应为 16 个钩全跑（没装的人不会有任何提示——这就是本段存在的意义）。
+应为 17 个钩全跑（没装的人不会有任何提示——这就是本段存在的意义）。
 
 一条命令跑完本机全部验证面（步骤清单唯一源 = `scripts/verify.py`，文档不再各抄一份命令序列）：
 
