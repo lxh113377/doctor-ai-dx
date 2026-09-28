@@ -48,6 +48,13 @@ jobs:
       - name: Test + coverage floor ratchet (JS)
         # c8 包住整条 npm test（套件只跑一次），随后按模块级地板对账；刻意不接 Codecov 等外部服务
         run: npm run coverage:js
+      - name: 离线评测复算（零依赖，EVAL_CARD 头条数字的仓内复现路径）
+        # 第七十二轮：本件 r70 搬进本仓后一直未入库，且缺工作区 runner 的「弃权改判」那一半
+        # （v1.25.0 起 ev-09／ev-24／ev-25 恒判失败，实测 28/31）⇒ 直接入库＝往公开仓放一把会自我判红的尺。
+        # 第七十二轮补齐后与工作区那份**判定面逐项相等**（31/31、引用 31/31、降级 31/31、红旗 27/27、弃权 3 例同场景）；
+        # 用例集哈希按设计不等（本面读的是声明式镜像 fixture，`_meta` 文案不同），详见 runner 内那条不变量注释。
+        # 再进阻断链：不进链就只是又一份"手跑才生效"的账（#129／#133 同族）。零依赖、离线、确定性（无 Key ⇒ rule-fallback）。
+        run: npm run eval:offline
       - name: 覆盖率读数发布为工件（JS）
         # 第四十四轮对标：peer `openemr/openemr` 有 `validate-codecov.yml`；我方此前只上传 dist，
         # 评审看到的是「地板数字」而看不到「这次实测多少」。路径与产物名按本机实测：

@@ -62,6 +62,7 @@
     "redflags:export": "node ../scripts/export_red_flags.mjs",
     "redflags:check": "node ../scripts/export_red_flags.mjs --check",
     "eval:live": "node ../scripts/live_eval.mjs",
+    "eval:offline": "node ../scripts/run_eval.mjs",
     "perf:gate": "node ../scripts/perf_gate.mjs",
     "test:negation": "node tests/negation_probe.mjs",
     "probe:ood": "node tests/ood_probe.mjs",
