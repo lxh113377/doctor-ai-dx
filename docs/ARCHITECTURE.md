@@ -10,11 +10,11 @@
                 ├─① 临床状态抽取 extractState        engine.js:48 / engine.py
                 │     症状·体征·缺项·红旗线索
 ② BM25 证据检索  rag.js / rag.py ──────────────────►  evidence[] (kb-001..060)
-③ LLM 结构化生成  llmDiagnosis  engine.js:266 / llm.py
-④ 确定性校验     validateDiagnosis  engine.js:187   ← 引用白名单 + 结构完整性
+③ LLM 结构化生成  llmDiagnosis  engine.js:276 / llm.py
+④ 确定性校验     validateDiagnosis  engine.js:197   ← 引用白名单 + 结构完整性
 ⑤ 红旗规则兜底   rules.js / rules.py（13 关键词 + 4 组合 + 血压阈值）
-⑥ 失败安全降级   ruleDiagnosis  engine.js:246        ← LLM 不可用时仍可出结论；`fallback_reason` 给人读、`fallback_cause` 给机器归因（闭集枚举，单一源 tests/fixtures/llm_fallback_causes.json）
-⑦ 弃权/范围外判定 matchScopeRule + answerability  engine.js:163 / rules.py / rag.py
+⑥ 失败安全降级   ruleDiagnosis  engine.js:256        ← LLM 不可用时仍可出结论；`fallback_reason` 给人读、`fallback_cause` 给机器归因（闭集枚举，单一源 tests/fixtures/llm_fallback_causes.json）
+⑦ 弃权/范围外判定 matchScopeRule + answerability  engine.js:173 / rules.py / rag.py
       ← 先判「该不该我做」(权威数据 data/scope_rules.json，逐条带理由) 再判「证据够不够」；
         红旗命中一律不弃权，范围命中也不清空红旗
                 └─► dx → workup → report（红旗一律服务端重算，不信前端）
@@ -104,7 +104,7 @@
 | 覆盖率地板（JS） | `cd frontend && npm run coverage:js` | c8 12.0.0 包住整条 npm test（套件只跑一次）→ `coverage_floor_guard.mjs` **按模块级地板对账（rules/engine/fhir/rag/retriever/knowledge + 全局）；三条硬判据：输入非空证明、模块级地板、地板清单与产物改名对账；反例实测 3 组（summary 缺失／地板抬高／模块改名）均判红。刻意不接 Codecov 等外部服务（与零外部件架构一致） |
 | 覆盖率地板（Py） | `cd frontend && npm run coverage:py`（CI 同命令） | coverage.py 7.16.0 + `backend/.coveragerc`（**第十四轮起 `branch = True`**，口径由「仅语句」改为「语句+分支弧」）。判据 = `scripts/coverage_gate.py`，阈值单一源 = `frontend/tests/fixtures/coverage_floor.json` 的 `py_total_fail_under` + `py_modules`（9 个模块级地板）；此前 85 硬编码在 ci.yml 与 package.json 两处、JSON 里的数字无人读，属「清单与判据两套数」，v1.12.0 那轮收敛为单一源。实测 90.53%（旧语句口径 87%→新口径下同批测试 91%）；反例实测：喂假地板（模块改名 + 抬到 99%）两条均判红 rc=1。dev 依赖走 `requirements-dev.txt`，实测**不进运行时镜像**（容器内 `import coverage` 报 ImportError） |
 | 构建体积 | `npm run build && npm run test:bundle` | 主 chunk gzip ≤77500B / assets 合计 ≤86500B（地板线，防膨胀也防假瘦身） |
-| 后端 | `smoke_engine` / `test_api_observe` / `test_fhir` / `test_live_path` / `test_retriever_channels` | 规则降级 25（含与 JS 逐字同表的 6 条红旗探针）· 可观测与错误契约 46（含路由级 404/200/慢请求 warn，以及 #42 补的「4xx 双端可观测性对称」四判据）· FHIR 17 · **live 路径红线 62（含 fallback_cause／finish_reason／畸形输出对账）**（桩 httpx 零网络）· **检索通道 25**（三档纯函数与 RRF 语义） |
+| 后端 | `smoke_engine` / `test_api_observe` / `test_fhir` / `test_live_path` / `test_retriever_channels` | 规则降级 25（含与 JS 逐字同表的 6 条红旗探针）· 可观测与错误契约 46（含路由级 404/200/慢请求 warn，以及 #42 补的「4xx 双端可观测性对称」四判据）· FHIR 17 · **live 路径红线 72（含 fallback_cause／finish_reason／畸形输出／追问三态对账）**（桩 httpx 零网络）· **检索通道 25**（三档纯函数与 RRF 语义） |
 | 容器（从零启动自证） | `docker compose up -d` + `docker compose run --rm selftest` | 镜像构建成功 + HEALTHCHECK `healthy` + 镜像内 **25/40/16/25/25 五套** exit 0（源码树级检查在容器内显式 SKIP，不计通过也不计失败；coverage 等 dev 件实测不在镜像内） |
 | 一键演示链（第三十八轮 #44） | `python scripts/demo_smoke.py [--pair-only] [--wired] [--selftest]` | 评审拿到仓库跑的**第一条命令**本身是被测对象：腿 1 要求 `start-demo.sh` 与 `start-demo.ps1` 按 10 个键**两侧同时命中**、端口从两侧现取后逐字全等（首跑即抓到 `.ps1` 少了 `--no-audit --no-fund` 的真实漂移）；腿 1b `--wired` 核对本判据真挂在 CI 与出包预检两条链上（写了不接＝没写）；腿 2 直接 `bash start-demo.sh` 起服务，就绪后复用 `live_smoke` 的同一组红线断言（不写第二套口径），并复验拆除后端口释放。本机实测：5.5s 就绪、红旗命中、引用 5 条全在白名单、`mode=rule-fallback`、FHIR entry=22、16 项全绿；`--selftest` 16/16（端口漂移／单侧缺失／读空／只接一条链／降级自夸／日志归因各类反例均实测两侧） |
 | live 分支浏览器级回归（第四十轮 #24） | `cd frontend && npm run test:e2e-live` | 打**已部署的线上站**（`LIVE_BASE` 可覆盖），Playwright 三条：① `/api/health` 的 version == 仓内单一源（防「测的是一个旧快照站」）；② 红线常驻＋全站负向（无「替代医生」类表述）＋零控制台 error；③ live 五步链路结构骨架齐全（疑似/鉴别/引用/三组检查建议/SOAP 四段/免责）。**判据纪律**：不断言任何结论文本——live 走 DeepSeek，同输入两次输出不同是常态，断言措辞＝测模型心情。落点＝`live-smoke.yml` 每日作业（retries=1 吸收公网抖动，断言本身不放水）；刻意不进 `npm test`/`ci.yml`（那两条链必须零网络零密钥才给得确定结论） |

@@ -5,6 +5,13 @@
 
 ## [Unreleased]
 
+- **问诊追问三态诚实化（第六十七轮，#188）**：一手＝2026-09-28T08:31Z 线上实测，live 通道全回落时第 6 轮追问回的仍是
+  「问诊信息已足够……」，而同一时刻 /api/dx 报 `LLM 超时/输出非法` ⇒ **模型没判断过"够不够"，话却是"已足够"**。
+  现拆三态：`intake-done`（仅模型明确 done，唯一可说"已足够"）／`intake-cap`（补充 3 轮用完，陈述采集边界）／
+  `intake-unavailable`（模型失败，陈述通道不可用并带 `fallback_cause`）。收敛行为与 done:true 流程**不变**，只把话改诚实。
+  词表＋三句文案＋禁说短语单一源 `frontend/tests/fixtures/intake_sources.json`，JS/Py 各自回表并断言两面文案逐字节相等；
+  反例实测：把失败态文案换成"已足够"后 JS 4 条腿红、Py 5 条腿红（恢复后各自全绿）。
+
 - **镜像面畸形输入 500 修复（第六十六轮，#187）**：一手实跑同一份 `{"essential":"不是数组"}` 与 `{"primary":["心电图"]}`，
   JS 权威面判 `schema` 正常降级，**Py 镜像面抛 `AttributeError: str object has no attribute get`**（dx 与 report 两处出口同炸）。
   镜像面正是医院自托管部署跑的那一面 ⇒ 畸形模型回答在那里是 500，不是降级。现按 JS 形状权威补齐 `_as_list`／非对象条目兜底，

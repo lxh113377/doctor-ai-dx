@@ -238,6 +238,53 @@ const qCap = await nextIntakeQuestion("c1", [...FULL5, ...Array.from({ length: 3
 check("追问硬上限 3 轮生效（超出即收敛，不再外呼）",
   qCap.done === true && qCap.mode === "rule" && calls.length === 0, `calls=${calls.length} mode=${qCap.mode}`)
 
+// 11b) 追问三态诚实对账（#188，第六十七轮）：一手＝2026-09-28T08:31Z 线上 live 全回落时第 6 轮回的仍是
+// 「问诊信息已足够」，而同一时刻 /api/dx 报 `LLM 超时/输出非法` ⇒ 模型没判断过"够不够"，话却是"已足够"。
+// 期望值（词表＋三句文案＋禁说短语）单一源＝tests/fixtures/intake_sources.json，Py 侧读同一份。
+const INTAKE_FIX = JSON.parse(readFileSync(new URL("./fixtures/intake_sources.json", import.meta.url), "utf8"))
+const { INTAKE_DONE_REPLY, INTAKE_CAP_REPLY, INTAKE_UNAVAILABLE_REPLY } = await import("../functions/lib/data.js")
+const claimsEnough = (s) => INTAKE_FIX.claim_phrases.some((p) => String(s || "").includes(p))
+const seenSources = new Set()
+check("追问文案单一源⇄fixture 逐字节相等（两面各回同一份表，防两端一起错）",
+  INTAKE_DONE_REPLY === INTAKE_FIX.replies.model_done
+  && INTAKE_CAP_REPLY === INTAKE_FIX.replies.cap_reached
+  && INTAKE_UNAVAILABLE_REPLY === INTAKE_FIX.replies.model_unavailable,
+  `done=${INTAKE_DONE_REPLY === INTAKE_FIX.replies.model_done}·cap=${INTAKE_CAP_REPLY === INTAKE_FIX.replies.cap_reached}·unav=${INTAKE_UNAVAILABLE_REPLY === INTAKE_FIX.replies.model_unavailable}`)
+stubFetch(() => okJson(VALID_DX))
+const qScripted = await nextIntakeQuestion("c1", [{ role: "user", content: "胸痛" }], ENV)
+seenSources.add(qScripted.source)
+check(`三态·脚本本题未答完 → ${INTAKE_FIX.vocabulary.scripted}（不得提前收敛）`,
+  qScripted.source === INTAKE_FIX.vocabulary.scripted && qScripted.done === false, String(qScripted.source))
+seenSources.add(qLive.source); seenSources.add(qDone.source); seenSources.add(qCap.source)
+check("三态·模型 done → 唯一允许说『已足够』的出口",
+  qDone.source === INTAKE_FIX.vocabulary.model_done && claimsEnough(qDone.reply) && qDone.fallback_cause === "",
+  `${qDone.source}/${String(qDone.reply).slice(0, 16)}`)
+check("三态·达上限 → intake-cap 且不得出现『已足够』",
+  qCap.source === INTAKE_FIX.vocabulary.cap_reached && !claimsEnough(qCap.reply) && qCap.done === true,
+  `${qCap.source}/${JSON.stringify(String(qCap.reply).slice(0, 20))}`)
+for (const [label, handler, wantCause] of [
+  ["HTTP 500", () => httpErr(500), "http_500"],
+  ["网络失败", () => { const e = new TypeError("fetch failed"); throw e }, "net_error"],
+  ["空 question", () => okJson({ question: "", done: false }), "schema"],
+]) {
+  stubFetch(handler)
+  const h = await nextIntakeQuestion("c1", FULL5, ENV)
+  seenSources.add(h.source)
+  check(`三态·模型失败(${label}) → intake-unavailable＋cause=${wantCause}＋不得说『已足够』`,
+    h.source === INTAKE_FIX.vocabulary.model_unavailable && h.fallback_cause === wantCause
+    && !claimsEnough(h.reply) && h.done === true,
+    `${h.source}/${h.fallback_cause}/${JSON.stringify(String(h.reply).slice(0, 14))}`)
+}
+stubFetch(() => { throw new Error("无 Key 也外呼了") })
+const hNoKey = await nextIntakeQuestion("c1", FULL5, {})
+seenSources.add(hNoKey.source)
+check("三态·无 Key → intake-unavailable＋cause=no_key＋零外呼",
+  hNoKey.fallback_cause === "no_key" && hNoKey.source === INTAKE_FIX.vocabulary.model_unavailable && calls.length === 0,
+  `${hNoKey.source}/${hNoKey.fallback_cause}/calls=${calls.length}`)
+const missVocab = Object.entries(INTAKE_FIX.vocabulary).filter(([, v]) => !seenSources.has(v)).map(([k]) => k)
+check(`词表五值全部由本面产出过（实得 ${seenSources.size} 种，缺 ${missVocab.length}）`,
+  missVocab.length === 0, missVocab.join(","))
+
 globalThis.fetch = REAL_FETCH
 console.log(`\nLIVE PATH SUMMARY: 分支用例=${fallbackCases.length} 组 · 实际外呼拦截=0 · fetch 调用记录=${calls.length}`)
 console.log(`RESULT: ${pass} pass / ${fail} fail`)

@@ -4,7 +4,7 @@
 // 红线：红旗规则结果优先且不可被模型覆盖；非法 evidence_id 直接拒绝
 // mode 取值：live（LLM 生成）/ rule-fallback（规则降级，明确标注）
 // ============================================================
-import { CASES, INTAKE_DONE_REPLY } from "./data.js"
+import { CASES, INTAKE_DONE_REPLY, INTAKE_CAP_REPLY, INTAKE_UNAVAILABLE_REPLY } from "./data.js"
 import { scanFlags, scanFlagDetails, matchScopeRule } from "./rules.js"
 import { hasEvidence, evidenceForSymptoms, answerability } from "./rag.js"
 import { getRetriever } from "./retriever.js"
@@ -104,17 +104,26 @@ export async function nextIntakeQuestion(caseId, history = [], env = {}) {
   // LLM 续问硬上限 3 轮，防不收敛。**上限必须在调用前判**：
   // 实测原实现是"先外呼、后判上限、再丢弃"，超限那一轮仍产生一次完整请求（白花 8s 超时窗口与 token）。
   if (idx >= c.answers.length + 3) {
-    return { reply: INTAKE_DONE_REPLY, source: "intake-done", chips: [], done: true, state, mode: "rule" }
+    // 「轮次用完」≠「信息已足够」：前者是我们的采集边界，后者是对病情的判断。
+    return { reply: INTAKE_CAP_REPLY, source: "intake-cap", chips: [], done: true, state, mode: "rule", fallback_cause: "" }
   }
-  const live = await llmFollowup(history, c, env)
+  const followSink = { cause: "" }
+  const live = await llmFollowup(history, c, env, followSink)
   if (live && live.question) {
-    return { reply: live.question, question: live.question, source: "intake-question-llm", chips: live.chips || [], done: false, state, mode: "live" }
+    return { reply: live.question, question: live.question, source: "intake-question-llm", chips: live.chips || [], done: false, state, mode: "live", fallback_cause: "" }
   }
-  return { reply: INTAKE_DONE_REPLY, source: "intake-done", chips: [], done: true, state, mode: "rule" }
+  if (live && live.done) {
+    // 只有模型自己判定"足够"，才允许说那句"已足够"（期望值单一源 tests/fixtures/intake_sources.json）。
+    return { reply: INTAKE_DONE_REPLY, source: "intake-done", chips: [], done: true, state, mode: "rule", fallback_cause: "" }
+  }
+  return {
+    reply: INTAKE_UNAVAILABLE_REPLY, source: "intake-unavailable", chips: [], done: true, state, mode: "rule",
+    fallback_cause: envKey(env) ? (followSink.cause || "unknown") : "no_key",
+  }
 }
 
-async function llmFollowup(history, c, env) {
-  if (!envKey(env)) return null
+async function llmFollowup(history, c, env, sink) {
+  if (!envKey(env)) { noteCause(sink, "no_key"); return null }
   const transcript = (history || []).slice(-8).map((m) => (m && m.role === "user" ? `医生: ${String(m.content ?? "")}` : `助手: ${String(m?.content ?? "")}`)).join("\n")
   const ctx = `患者：${c.name} ${c.age}岁 ${c.gender}，主诉：${c.chief}\n已有问诊记录：\n${transcript}`
   try {
@@ -123,9 +132,10 @@ async function llmFollowup(history, c, env) {
       { role: "user", content: `${ctx}\n\n若还需补充追问，输出 JSON {"question":"...","chips":["..."],"done":false}；信息已足够则输出 {"done":true}。中文。` },
     ], true, env)
     const data = JSON.parse(raw)
-    if (data.done || !data.question) return null
+    if (data.done === true) return { done: true }
+    if (!data.question) { noteCause(sink, "schema"); return null }
     return data
-  } catch { return null }
+  } catch (e) { noteError(sink, e); return null }
 }
 
 // ---------- 辅助诊断：检索先行 → LLM 生成 → 校验 → 红旗兜底 ----------

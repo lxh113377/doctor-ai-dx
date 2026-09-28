@@ -90,18 +90,25 @@ def next_intake_question(case_id: str, history: list[dict] | None = None) -> dic
     # LLM 续问硬上限 3 轮，防不收敛。上限必须在调用前判（与 engine.js 同步修复：
     # 原实现"先外呼、后判上限、再丢弃"，超限那一轮仍产生一次完整请求）。
     if idx >= len(c["answers"]) + 3:
-        return {"reply": mock.INTAKE_DONE_REPLY, "source": "intake-done", "chips": [], "done": True,
-                "state": state, "mode": "rule"}
-    live = _llm_followup(history, c)
+        # 「轮次用完」≠「信息已足够」（与 engine.js 同步：期望值 tests/fixtures/intake_sources.json）
+        return {"reply": mock.INTAKE_CAP_REPLY, "source": "intake-cap", "chips": [], "done": True,
+                "state": state, "mode": "rule", "fallback_cause": ""}
+    sink = {"cause": ""}
+    live = _llm_followup(history, c, sink)
     if live and live.get("question"):
         return {"reply": live["question"], "question": live["question"], "source": "intake-question-llm",
-                "chips": live.get("chips", []), "done": False, "state": state, "mode": "live"}
-    return {"reply": mock.INTAKE_DONE_REPLY, "source": "intake-done", "chips": [], "done": True,
-            "state": state, "mode": "rule"}
+                "chips": live.get("chips", []), "done": False, "state": state, "mode": "live", "fallback_cause": ""}
+    if live and live.get("done"):
+        return {"reply": mock.INTAKE_DONE_REPLY, "source": "intake-done", "chips": [], "done": True,
+                "state": state, "mode": "rule", "fallback_cause": ""}
+    return {"reply": mock.INTAKE_UNAVAILABLE_REPLY, "source": "intake-unavailable", "chips": [], "done": True,
+            "state": state, "mode": "rule",
+            "fallback_cause": _fallback_cause(sink)}
 
 
-def _llm_followup(history: list[dict], c: dict) -> dict | None:
+def _llm_followup(history: list[dict], c: dict, sink: dict | None = None) -> dict | None:
     if not llm_available():
+        _note_cause(sink, "no_key")
         return None
     transcript = "\n".join(
         (f"医生: {m.get('content','')}" if m.get("role") == "user" else f"助手: {m.get('content','')}")
@@ -113,10 +120,18 @@ def _llm_followup(history: list[dict], c: dict) -> dict | None:
             {"role": "system", "content": llm_svc.SYSTEM_BASE},
             {"role": "user", "content": f"{ctx}\n\n若还需补充追问，输出 JSON {{\"question\":\"...\",\"chips\":[\"...\"],\"done\":false}}；信息已足够则输出 {{\"done\":true}}。中文。"},
         ])
-        if data.get("done") or not data.get("question"):
+        if data.get("done") is True:
+            # 模型明确判定足够——这是唯一可以说"已足够"的出口（#188）
+            return {"done": True}
+        if not data.get("question"):
+            _note_cause(sink, "schema")
             return None
         return data
+    except llm_svc.LLMUnavailable as e:
+        _note_cause(sink, _cause_of(e))
+        return None
     except Exception:
+        _note_cause(sink, "unknown")
         return None
 
 

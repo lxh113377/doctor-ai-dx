@@ -1,0 +1,21 @@
+{
+  "_source": "问诊追问（/api/intake/ask）出口语义的期望值单一源。JS 权威面 `frontend/functions/lib/data.js` 与 Py 镜像面 `backend/app/mock.py` 各自内联同一组 reply 文案（两侧运行期都读不到本文件），因此两面必须各自回本表对账：JS 由 tests/live_path_guard.mjs 断言，Py 由 tests/test_live_path.py 断言，并含**跨面文案逐字节相等**一条。",
+  "_why": "第六十七轮一手：2026-09-28T08:31Z 线上实测——live 通道全回落时，第 6 轮追问回的是『问诊信息已足够……』。而同一时刻 /api/dx 报 `LLM 超时/输出非法`。⇒ 模型没判断过\"够不够\"，话却是\"已足够\"：这是对外科结论的**假收敛**，属医疗叙事缺陷不是文案偏好。",
+  "_vocabulary_rule": "source 三态互斥：只有模型明确 done 才允许出现『已足够』；达上限＝陈述事实（轮次用完）；模型失败＝陈述事实（通道不可用）＋带 fallback_cause。",
+  "vocabulary": {
+    "scripted": "intake-question",
+    "llm_question": "intake-question-llm",
+    "model_done": "intake-done",
+    "cap_reached": "intake-cap",
+    "model_unavailable": "intake-unavailable"
+  },
+  "claim_phrases": ["已足够", "信息足够"],
+  "claim_allowed_in": ["intake-done"],
+  "replies": {
+    "model_done": "问诊信息已足够。以下是我为您梳理的分析结论——进入辅助诊断环节。",
+    "cap_reached": "追问轮次已用完（补充 3 轮），现按已采集信息进入辅助诊断环节；如需补充可在问诊记录中自行追加。",
+    "model_unavailable": "本轮未能向大模型发起追问（通道不可用），现按已采集信息进入辅助诊断环节；结果已标注降级，请医生复核。"
+  },
+  "cause_required_in": { "intake-unavailable": true, "intake-cap": false, "intake-done": false },
+  "flow_unchanged": "三态一律 done:true 且继续进入辅助诊断——本轮只把话改诚实，不动收敛行为（动行为＝改产品流程，另案 #188b）"
+}

@@ -14,7 +14,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import httpx  # noqa: E402
-from app import rag  # noqa: E402
+from app import mock, rag  # noqa: E402
 from app.config import get_settings  # noqa: E402
 from app.services import engine  # noqa: E402
 from app.services import llm as llm_svc  # noqa: E402
@@ -253,7 +253,72 @@ try:
     check("追问 HTTP 500 → 异常被兜住并收敛（不影响接口 200 可用性）",
           q_err["done"] is True and q_err["mode"] == "rule", str({k: q_err.get(k) for k in ("mode", "done")}))
 
-    # 8b) 续问硬上限：答完脚本题后最多再问 3 轮；第十五轮实测把上限从"调用后"前移到"调用前"
+    # 8c) 追问三态诚实对账（#188，第六十七轮）：与 JS 侧读同一份 fixture。
+    #     一手＝线上 live 全回落时第 6 轮回的是「问诊信息已足够」，而 /api/dx 同一时刻报 `LLM 超时/输出非法`。
+    INTAKE_FIX = json.loads((Path(__file__).resolve().parents[2] / "frontend" / "tests"
+                             / "fixtures" / "intake_sources.json").read_text(encoding="utf-8"))
+
+    def claims_enough(s):
+        return any(p in str(s or "") for p in INTAKE_FIX["claim_phrases"])
+
+    seen_src = set()
+    R = INTAKE_FIX["replies"]
+    eq_done = mock.INTAKE_DONE_REPLY == R["model_done"]
+    eq_cap = mock.INTAKE_CAP_REPLY == R["cap_reached"]
+    eq_unav = mock.INTAKE_UNAVAILABLE_REPLY == R["model_unavailable"]
+    check("追问文案单一源⇄fixture 逐字节相等（镜像面回同一份表，防两端一起错）",
+          eq_done and eq_cap and eq_unav,
+          f"done={eq_done}&cap={eq_cap}&unav={eq_unav}")
+    use_stub(lambda u, p: FakeResp(200, content_of(VALID_DX)))
+    q_scr = engine.next_intake_question("c1", [{"role": "user", "content": "胸痛"}])
+    seen_src.add(q_scr["source"])
+    check(f'三态·脚本本题未答完 → {INTAKE_FIX["vocabulary"]["scripted"]}（不得提前收敛）',
+          q_scr["source"] == INTAKE_FIX["vocabulary"]["scripted"] and q_scr["done"] is False, str(q_scr["source"]))
+    seen_src.add(q_live["source"])
+    use_stub(lambda u, p: FakeResp(200, content_of({"done": True})))
+    q_d = engine.next_intake_question("c1", FULL5)
+    seen_src.add(q_d["source"])
+    check("三态·模型 done → 唯一允许说『已足够』的出口",
+          q_d["source"] == INTAKE_FIX["vocabulary"]["model_done"] and claims_enough(q_d["reply"])
+          and q_d.get("fallback_cause") == "", f'{q_d["source"]}/{q_d["reply"][:16]}')
+
+    def boom(u, p):
+        raise AssertionError("上限这一轮不该外呼")
+
+    use_stub(boom)
+    q_c = engine.next_intake_question("c1", FULL5 + [{"role": "user", "content": x} for x in ("补充1", "补充2", "补充3")])
+    seen_src.add(q_c["source"])
+    check("三态·达上限 → intake-cap 且不得出现『已足够』＋零外呼",
+          q_c["source"] == INTAKE_FIX["vocabulary"]["cap_reached"] and not claims_enough(q_c["reply"])
+          and q_c["done"] is True and not calls, f'{q_c["source"]}/{q_c["reply"][:20]}/calls={len(calls)}')
+    for label, handler, want in (
+        ("HTTP 500", lambda u, p: FakeResp(500, None), "http_500"),
+        ("连接失败", lambda u, p: (_ for _ in ()).throw(httpx.ConnectError("down")), "net_error"),
+        ("读超时", lambda u, p: (_ for _ in ()).throw(httpx.ReadTimeout("slow")), "timeout"),
+        ("空 question", lambda u, p: FakeResp(200, content_of({"question": "", "done": False})), "schema"),
+    ):
+        use_stub(handler)
+        h = engine.next_intake_question("c1", FULL5)
+        seen_src.add(h["source"])
+        check(f"三态·模型失败({label}) → intake-unavailable＋cause={want}＋不得说『已足够』",
+              h["source"] == INTAKE_FIX["vocabulary"]["model_unavailable"] and h.get("fallback_cause") == want
+              and not claims_enough(h["reply"]) and h["done"] is True,
+              f'{h["source"]}/{h.get("fallback_cause")}/{h["reply"][:14]}')
+    os.environ.pop("DEEPSEEK_API_KEY", None)
+    get_settings.cache_clear()
+    use_stub(lambda u, p: (_ for _ in ()).throw(AssertionError("无 Key 也外呼了")))
+    h_nk = engine.next_intake_question("c1", FULL5)
+    seen_src.add(h_nk["source"])
+    check("三态·无 Key → intake-unavailable＋cause=no_key＋零外呼",
+          h_nk["source"] == INTAKE_FIX["vocabulary"]["model_unavailable"] and h_nk.get("fallback_cause") == "no_key"
+          and not calls, f'{h_nk["source"]}/{h_nk.get("fallback_cause")}/calls={len(calls)}')
+    os.environ["DEEPSEEK_API_KEY"] = "sk-placeholder-not-a-real-key"
+    get_settings.cache_clear()
+    miss_v = [k for k, v in INTAKE_FIX["vocabulary"].items() if v not in seen_src]
+    check(f"词表五值全部由本面产出过（实得 {len(seen_src)} 种，缺 {len(miss_v)}）",
+          not miss_v, ",".join(miss_v))
+
+
     use_stub(lambda u, p: FakeResp(200, content_of({"question": "继续追问？", "chips": [], "done": False})))
     over = FULL5 + [{"role": "user", "content": f"补充{k + 1}"} for k in range(3)]
     q_cap = engine.next_intake_question("c1", over)
