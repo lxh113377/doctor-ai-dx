@@ -164,6 +164,36 @@ const repSchema = await buildReport("c1", CHEST_PAIN, ENV, null)
 check("report 缺 soap → fallback_cause=schema", repSchema.mode === "rule-fallback" && repSchema.fallback_cause === CAUSE_FIX.injected.report_missing_soap,
   `${repSchema.mode}/${JSON.stringify(repSchema.fallback_cause)}`)
 
+// 11) 畸形输出双面对账（#187）：一手实跑发现同一份 {"essential":"不是数组"} 在 JS 判 schema 降级、
+// 在 Py **抛 AttributeError: 'str' object has no attribute 'get'** ⇒ 期望值落 fixture，两面各自回表。
+const SHAPE_FIX = JSON.parse(readFileSync(new URL("./fixtures/malformed_shapes.json", import.meta.url), "utf8"))
+check("畸形对账有输入（fixture 至少 5 例，读空＝判据失效不许记绿）", SHAPE_FIX.cases.length >= 5, `实得 ${SHAPE_FIX.cases.length} 例`)
+for (const cs of SHAPE_FIX.cases) {
+  stubFetch(() => okJson(cs.payload))
+  let shOut
+  try {
+    shOut = cs.face === "dx" ? await buildDiagnosis("c1", CHEST_PAIN, ENV) : await buildWorkup("c1", CHEST_PAIN, ENV, null)
+  } catch (e) {
+    check(`畸形·${cs.id} → 权威面不得抛（抛出＝把畸形回答当故障而不是降级）`, false, `${e.name}: ${String(e.message).slice(0, 60)}`)
+    continue
+  }
+  const bits = []
+  if (shOut.mode !== cs.expect_mode) bits.push(`mode=${shOut.mode}≠${cs.expect_mode}`)
+  if (cs.expect_cause && shOut.fallback_cause !== cs.expect_cause) bits.push(`cause=${JSON.stringify(shOut.fallback_cause)}≠${cs.expect_cause}`)
+  if (cs.expect_name0 && shOut.primary?.[0]?.name !== cs.expect_name0) bits.push(`primary0=${JSON.stringify(shOut.primary?.[0]?.name)}`)
+  if (cs.expect_ev0_nonempty && !(shOut.primary?.[0]?.evidence_ids || []).length) bits.push("primary0 引用被清空（应回填检索证据）")
+  if (cs.face === "workup") {
+    for (const k of ["essential", "suggested", "optional"]) {
+      const arr = shOut[k]
+      if (!Array.isArray(arr) || !arr.length) { bits.push(`${k} 组为空或非数组`); continue }
+      for (const it of arr) if (typeof it !== "object" || it === null || Array.isArray(it)) bits.push(`${k} 混入非对象条目`)
+    }
+  }
+  if (cs.face === "dx" && (shOut.flags || []).length === 0) bits.push("红旗被畸形输入削弱（红线）")
+  if (cs.face === "workup" && (shOut.evidence_ids || []) === undefined) bits.push("workup 缺 evidence_ids 键")
+  check(`畸形·${cs.id} → 与 fixture 期望一致且不崩`, bits.length === 0, bits.join("；"))
+}
+
 // 10) 系统提示词必须携带红线约束（防有人改 prompt 把红线删掉）
 stubFetch(() => okJson(VALID_DX))
 await buildDiagnosis("c1", CHEST_PAIN, ENV)

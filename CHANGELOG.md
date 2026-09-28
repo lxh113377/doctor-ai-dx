@@ -5,6 +5,12 @@
 
 ## [Unreleased]
 
+- **镜像面畸形输入 500 修复（第六十六轮，#187）**：一手实跑同一份 `{"essential":"不是数组"}` 与 `{"primary":["心电图"]}`，
+  JS 权威面判 `schema` 正常降级，**Py 镜像面抛 `AttributeError: str object has no attribute get`**（dx 与 report 两处出口同炸）。
+  镜像面正是医院自托管部署跑的那一面 ⇒ 畸形模型回答在那里是 500，不是降级。现按 JS 形状权威补齐 `_as_list`／非对象条目兜底，
+  并把 workup 判定从「真值」改成「非空数组」（与 JS `hasAny` 同语义）；期望值落 `frontend/tests/fixtures/malformed_shapes.json`，
+  两面各自回表（JS 5 例＋Py 5 例）。改前红＝同轮实跑记录，改后 npm 26 件套 rc=0／后端 selftest 9/9／mypy＋ruff 0 错。
+
 第六十五轮开源对标落地。轴＝**降级要能被归因，被过滤的输出不能当成功**。三条产品红线零触碰。
 
 - **新增 `fallback_cause`（dx/workup/report 三面）**：原先四类失败（无 Key／超时／HTTP 非 200／输出非法）

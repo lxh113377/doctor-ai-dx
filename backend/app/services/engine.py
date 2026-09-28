@@ -170,15 +170,23 @@ def build_diagnosis(case_id: str, history: list[dict] | None = None) -> dict:
     return out
 
 
+def _as_list(x: object) -> list:
+    """形状守卫（#187）：LLM 把数组写成字符串时，`"abc"[:4]` 会切出字符再 `.get` ⇒ 镜像面直接 AttributeError 500，
+    而 JS 权威面对同一输入是正常降级。期望形状以 JS 侧 validateDiagnosis/validateWorkup 为准，两侧同源对账
+    （fixtures/malformed_shapes.json）。"""
+    return x if isinstance(x, list) else []
+
+
 def _validate_diagnosis(dx: dict, allowed_ids: list[str]) -> dict:
     def ok(eid):
         return isinstance(eid, str) and rag.has_evidence(eid)
 
     def fix(arr):
-        return [x for x in (arr or []) if ok(x)]
+        return [x for x in _as_list(arr) if ok(x)]
 
     primary = []
-    for p in (dx.get("primary") or [])[:4]:
+    for raw in _as_list(dx.get("primary"))[:4]:
+        p = raw if isinstance(raw, dict) else {}
         ev = fix(p.get("evidence_ids"))
         if not ev:
             ev = allowed_ids[:2]
@@ -186,7 +194,7 @@ def _validate_diagnosis(dx: dict, allowed_ids: list[str]) -> dict:
             "name": str(p.get("name") or "未命名诊断")[:60],
             "prob": p.get("prob") if p.get("prob") in ("高优先级", "需鉴别", "低可能") else "需鉴别",
             "strength": p.get("strength") if p.get("strength") in ("high", "mid", "low") else "mid",
-            "reasons": [str(r)[:80] for r in (p.get("reasons") or [])[:4]],
+            "reasons": [s for s in (str(r)[:80] for r in _as_list(p.get("reasons"))[:4]) if s],
             "evidence_ids": ev,
             "refs": [rag.kb_title(i) for i in ev],
         })
@@ -195,8 +203,10 @@ def _validate_diagnosis(dx: dict, allowed_ids: list[str]) -> dict:
         dx["primary"] = [{"name": "信息不足，建议补充问诊", "prob": "需鉴别", "strength": "low",
                           "reasons": ["现有线索不足以形成鉴别诊断"], "evidence_ids": [], "refs": []}]
 
-    diff = [{"name": str(d.get("name") or "")[:60], "note": str(d.get("note") or "")[:120],
-             "evidence_ids": fix(d.get("evidence_ids"))} for d in (dx.get("differential") or [])[:6]]
+    diff = [{"name": str((d if isinstance(d, dict) else {}).get("name") or "")[:60],
+             "note": str((d if isinstance(d, dict) else {}).get("note") or "")[:120],
+             "evidence_ids": fix((d if isinstance(d, dict) else {}).get("evidence_ids"))}
+            for d in _as_list(dx.get("differential"))[:6]]
     dx["differential"] = diff
     if len(diff) < 2 and len(allowed_ids) >= 2:
         used = {i for d in diff for i in d["evidence_ids"]}
@@ -343,13 +353,16 @@ def build_workup(case_id: str, history: list[dict] | None = None, provided_dx: d
 
 
 def _validate_workup(w: dict) -> dict:
+    src = w if isinstance(w, dict) else {}
+    out = {}
     for key in ("essential", "suggested", "optional"):
-        w[key] = [{"item": str(it.get("item") or "")[:80], "why": str(it.get("why") or "")[:100],
-                   "evidence_ids": [i for i in (it.get("evidence_ids") or []) if rag.has_evidence(i)]}
-                  for it in (w.get(key) or [])[:6]]
-        if not w[key]:
-            w[key] = [{"item": "请医生结合完整临床资料决定", "why": "当前信息不足以给出该组明确建议", "evidence_ids": []}]
-    return w
+        items = []
+        for raw in _as_list(src.get(key))[:6]:
+            it = raw if isinstance(raw, dict) else {}
+            items.append({"item": str(it.get("item") or "")[:80], "why": str(it.get("why") or "")[:100],
+                          "evidence_ids": [i for i in _as_list(it.get("evidence_ids")) if rag.has_evidence(i)]})
+        out[key] = items or [{"item": "请医生结合完整临床资料决定", "why": "当前信息不足以给出该组明确建议", "evidence_ids": []}]
+    return out
 
 
 def _rule_workup(state: dict, dx: dict) -> dict:
@@ -381,7 +394,9 @@ def _llm_workup(state: dict, dx: dict, evidence: list[dict], sink: dict | None =
             {"role": "system", "content": llm_svc.SYSTEM_BASE},
             {"role": "user", "content": prompt},
         ])
-        if not (d.get("essential") or d.get("suggested") or d.get("optional")):
+        def has_any(a):
+            return isinstance(a, list) and len(a) > 0
+        if not (has_any(d.get("essential")) or has_any(d.get("suggested")) or has_any(d.get("optional"))):
             _note_cause(sink, "schema")
             return None
         return d

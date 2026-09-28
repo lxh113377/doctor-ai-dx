@@ -1,0 +1,73 @@
+{
+  "_source": "畸形 LLM 输出的双面对账期望值单一源（#187，2026-09-28 第六十六轮）。JS 权威面 frontend/tests/live_path_guard.mjs 与 Py 镜像面 backend/tests/test_live_path.py 都从本文件取期望值——只比\"两端互相等\"不够，两边一起错就永远绿（同 error_parity.json / llm_fallback_causes.json 的口径）。",
+  "_why_first_hand": "本轮实测一手：同一份 {\"essential\":\"不是数组\"} 喂进去，JS 侧判 schema 正常降级，**Py 侧抛 AttributeError: 'str' object has no attribute 'get'**（dx/report 两处出口同炸）。镜像面是医院自托管跑的那一面，畸形回答在那里变成 500 而不是降级。",
+  "_shape_authority": "兜底形状以 JS 侧 validateDiagnosis/validateWorkup 为权威（`未命名诊断`／`请医生结合完整临床资料决定`），Py 向 JS 对齐，不是反过来。",
+  "cases": [
+    {
+      "id": "primary_string_array",
+      "face": "dx",
+      "payload": {
+        "primary": [
+          "心电图"
+        ],
+        "differential": [],
+        "faq": []
+      },
+      "expect_mode": "live",
+      "expect_name0": "未命名诊断",
+      "expect_ev0_nonempty": true
+    },
+    {
+      "id": "evidence_ids_as_string",
+      "face": "dx",
+      "payload": {
+        "primary": [
+          {
+            "name": "ACS",
+            "evidence_ids": "kb-001"
+          },
+          {
+            "name": "气胸",
+            "evidence_ids": []
+          }
+        ],
+        "differential": [],
+        "faq": []
+      },
+      "expect_mode": "live",
+      "expect_name0": "ACS",
+      "expect_ev0_nonempty": true
+    },
+    {
+      "id": "dx_string_payload",
+      "face": "dx",
+      "payload": "整段回答不是对象",
+      "expect_mode": "rule-fallback",
+      "expect_cause": "bad_json",
+      "_why": "两面同归 bad_json：JS 的 okJson 把裸串原样当 content，JSON.parse 抛 SyntaxError；Py chat_json 同抛 ValueError⇒cause 一致才算对账"
+    },
+    {
+      "id": "workup_string_group",
+      "face": "workup",
+      "payload": {
+        "essential": "不是数组",
+        "suggested": null,
+        "optional": []
+      },
+      "expect_mode": "rule-fallback",
+      "expect_cause": "schema"
+    },
+    {
+      "id": "workup_items_are_strings",
+      "face": "workup",
+      "payload": {
+        "essential": [
+          "心电图"
+        ],
+        "suggested": [],
+        "optional": []
+      },
+      "expect_mode": "live"
+    }
+  ]
+}

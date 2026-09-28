@@ -173,6 +173,42 @@ try:
     check("finish_reason 缺失仍算 live（不误伤不发该字段的网关）",
           outNoFr["mode"] == "live" and outNoFr.get("fallback_cause") == "", f'{outNoFr["mode"]}/{outNoFr.get("fallback_cause")!r}')
 
+    # 5c) 畸形输出双面对账（#187）：与 JS 权威面读同一份 fixture。一手：这批形状里有两例
+    #     在改前的镜像面 **抛 AttributeError**（'str' object has no attribute 'get'），而权威面正常降级。
+    SHAPE_FIX = json.loads((Path(__file__).resolve().parents[2] / "frontend" / "tests"
+                            / "fixtures" / "malformed_shapes.json").read_text(encoding="utf-8"))
+    check("畸形对账有输入（fixture 至少 5 例，读空＝判据失效不许记绿）",
+          len(SHAPE_FIX["cases"]) >= 5, f'实得 {len(SHAPE_FIX["cases"])} 例')
+    for cs in SHAPE_FIX["cases"]:
+        use_stub(lambda u, p, c=cs["payload"]: FakeResp(200, content_of(c)))
+        try:
+            out = (engine.build_diagnosis("c1", HISTORY) if cs["face"] == "dx"
+                   else engine.build_workup("c1", HISTORY))
+        except Exception as e:
+            check(f"畸形·{cs['id']} → 镜像面不得抛（抛出＝医院自托管把畸形回答变成 500）",
+                  False, f"{type(e).__name__}: {str(e)[:60]}")
+            continue
+        bits = []
+        if out.get("mode") != cs["expect_mode"]:
+            bits.append(f'mode={out.get("mode")}≠{cs["expect_mode"]}')
+        if cs.get("expect_cause") and out.get("fallback_cause") != cs["expect_cause"]:
+            bits.append(f'cause={out.get("fallback_cause")!r}≠{cs["expect_cause"]}')
+        if cs.get("expect_name0") and (out.get("primary") or [{}])[0].get("name") != cs["expect_name0"]:
+            bits.append(f'primary0={(out.get("primary") or [{}])[0].get("name")!r}')
+        if cs.get("expect_ev0_nonempty") and not (out.get("primary") or [{}])[0].get("evidence_ids"):
+            bits.append("primary0 引用被清空（应回填检索证据）")
+        if cs["face"] == "workup":
+            for k in ("essential", "suggested", "optional"):
+                arr = out.get(k)
+                if not isinstance(arr, list) or not arr:
+                    bits.append(f"{k} 组为空或非数组")
+                    continue
+                if any(not isinstance(it, dict) for it in arr):
+                    bits.append(f"{k} 混入非对象条目")
+        if cs["face"] == "dx" and not out.get("flags"):
+            bits.append("红旗被畸形输入削弱（红线）")
+        check(f"畸形·{cs['id']} → 与 fixture 期望一致且不崩", not bits, "；".join(bits))
+
     # 6) 无 Key 零外呼
     use_stub(lambda u, p: (_ for _ in ()).throw(AssertionError("无 Key 也发起了调用")))
     os.environ.pop("DEEPSEEK_API_KEY", None)
