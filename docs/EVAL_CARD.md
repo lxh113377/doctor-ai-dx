@@ -1,7 +1,7 @@
 # 评测卡 · 安全卡（EVAL CARD）
 
 > 版本锚点：v1.6.0（main）｜ 更新日期：2026-09-24 ｜ 维护口径：任何评测/规则/知识库变更后须重跑门禁并更新本页（v1.4/1.5 期间锚点漏更，2026-09-24 round7 实测补正）
-> **第七十轮自纠（2026-09-29）**：上一行的「更新日期」本身就是**同一事实的第二份手抄拷贝**——本页正文当日已有 09-25/09-26 的行，头部却仍停 09-24。此后**线上读数不再由人手抄**：现役行由 `node tests/eval_card_guard.mjs --write` 从 `.eval/eval_report_live.json` 单向生成（形态取自 peer `pre-commit` 的标记区替换）；头部日期只在改版时手工动，正文读数以标记区为准。
+> **第七十轮自纠（2026-09-29）**：上一行的「更新日期」本身就是**同一事实的第二份手抄拷贝**——本页正文当日已有 09-25/09-26 的行，头部却仍停 09-24。此后**线上读数不再由人手抄**：现役行由 `node tests/eval_card_guard.mjs --write` 从当日线上评测报告单向生成（形态取自 peer `pre-commit` 的标记区替换；该报告面不入库，故本页不写它的路径——写出来评审在检出里点不开，第七十二轮由 CI 判据 `docs_path_guard` 当场抓出）；头部日期只在改版时手工动，正文读数以标记区为准。
 > 本页回答三件事：**系统能看什么病、以什么证据看、不能证明什么**。供评审、医生用户与集成方独立核验。
 
 ## 1. 定位与安全声明（红线）
@@ -40,7 +40,7 @@
 | 可观测性 | 每请求 `X-Request-Id`；错误结构化日志（无堆栈/路径/密钥，出站前脱敏）；>8s 慢请求告警 | `frontend/functions/lib/observe.js` ↔ `backend/app/observe.py`；route_guard 25 项 + 后端 test_api_observe 40 项 + live 路径 43/37 项（含追问 live 分支与「超限轮零外呼」）（含无 crypto 回退、warn/info 两级日志、空入参、慢请求 warn 与 404 契约）。日志未接集中式后端（见 §3） |
 | 降级行为 | 无 Key / 超时 / 非法 JSON → `rule-fallback` 且带 `fallback_reason` | 31/31 降级标注通过；错误态只显示医生可理解文案 + 故障编号 |
 <!-- >>> eval-card-live v1 (由 tests/eval_card_guard.mjs 单向生成，禁手改) >>> -->
-| 线上链路读数（**现役**·本行由脚本从报告生成，手改必被判红） | live **0/31** ｜ rule-fallback **31/31** ｜ 红旗 **14/14** ｜ P95 1717ms（≤10s 达标） ｜ 结构 **31/31** ｜ 引用 **31/31** ｜ 弃权 **3/31** ｜ 非设计内回落 **28/31** | 取数 `.eval/eval_report_live.json`（date=2026-09-28T16:13:49.399Z, base=https://doctor-ai-dx.pages.dev）；生产方 `npm run eval:live` 与 `.github/workflows/live-smoke.yml` online-eval 同一套。**P95 只在同 mode 内可比**：本行是 回落主导链路读数，禁止与另一 mode 的历史行横比。降级归因**线上不可见**：`fallback_cause_field_cases`=0，线上跑的仍是未带该字段的已发版本（属未到期，不是回归） |
+| 线上链路读数（**现役**·本行由脚本从报告生成，手改必被判红） | live **0/31** ｜ rule-fallback **31/31** ｜ 红旗 **14/14** ｜ P95 1717ms（≤10s 达标） ｜ 结构 **31/31** ｜ 引用 **31/31** ｜ 弃权 **3/31** ｜ 非设计内回落 **28/31** | 取数=当日线上评测报告（date=2026-09-28T16:13:49.399Z, base=https://doctor-ai-dx.pages.dev）；该面不入库（干净检出里没有它，缺席时判据记 UNVERIFIED 不记绿），生产方 `npm run eval:live` 与 `.github/workflows/live-smoke.yml` online-eval 同一套。**P95 只在同 mode 内可比**：本行是 回落主导链路读数，禁止与另一 mode 的历史行横比。降级归因**线上不可见**：`fallback_cause_field_cases`=0，线上跑的仍是未带该字段的已发版本（属未到期，不是回归） |
 <!-- <<< eval-card-live v1 <<< -->
 
 ## 2b. 弃权 / 范围外第三态（第二十八轮，台账 #52）

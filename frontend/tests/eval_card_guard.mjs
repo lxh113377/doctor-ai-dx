@@ -82,8 +82,8 @@ export function renderRegion(r) {
     + `P95 ${lat.p95 == null ? "无读数" : `${lat.p95}ms`}${r.p95_within_10s ? "（≤10s 达标）" : "（超 10s 约束）"} ｜ `
     + `结构 **${String(r.structure_pass)}** ｜ 引用 **${String(r.citation_valid)}** ｜ 弃权 **${String(r.abstain_cases)}** ｜ `
     + `非设计内回落 **${String(r.unexpected_fallback)}/${total}**`
-  const cell3 = `取数 ${BT}.eval/eval_report_live.json${BT}（date=${r.date}, base=${String(r.base)}）；生产方 ${BT}npm run eval:live${BT} 与 `
-    + `${BT}.github/workflows/live-smoke.yml${BT} online-eval 同一套。**P95 只在同 mode 内可比**：本行是 ${d.live > 0 ? "live 主导" : "回落主导"}链路读数，`
+  const cell3 = `取数=当日线上评测报告（date=${r.date}, base=${String(r.base)}）；该面不入库（干净检出里没有它，缺席时判据记 UNVERIFIED 不记绿），`
+    + `生产方 ${BT}npm run eval:live${BT} 与 ${BT}.github/workflows/live-smoke.yml${BT} online-eval 同一套。**P95 只在同 mode 内可比**：本行是 ${d.live > 0 ? "live 主导" : "回落主导"}链路读数，`
     + `禁止与另一 mode 的历史行横比。${causeLine}`
   return [MARKER_START, `| ${cell1} | ${cell2} | ${cell3} |`, MARKER_END].join("\n")
 }
