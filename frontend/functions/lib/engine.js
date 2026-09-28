@@ -137,9 +137,15 @@ export async function buildDiagnosis(caseId, history = [], env = {}) {
   let out = null
   let mode = "rule-fallback"
   let fallbackReason = ""
-  const live = await llmDiagnosis(state, evidence, env)
+  const llmSink = { cause: "" }
+  const live = await llmDiagnosis(state, evidence, env, llmSink)
+  let fallbackCause = ""
   if (live) { out = live; mode = "live" }
-  else { out = ruleDiagnosis(state, evidence); fallbackReason = envKey(env) ? "LLM 超时/输出非法，已切换规则引擎" : "未配置 LLM Key，使用规则引擎" }
+  else {
+    out = ruleDiagnosis(state, evidence)
+    fallbackReason = envKey(env) ? "LLM 超时/输出非法，已切换规则引擎" : "未配置 LLM Key，使用规则引擎"
+    fallbackCause = envKey(env) ? (llmSink.cause || "unknown") : "no_key"
+  }
 
   // 确定性校验：非法 evidence_id 拒绝
   out = validateDiagnosis(out, evidenceIds)
@@ -148,6 +154,7 @@ export async function buildDiagnosis(caseId, history = [], env = {}) {
   out.flag_details = state.red_flag_details
   out.mode = mode
   out.fallback_reason = fallbackReason
+  out.fallback_cause = fallbackCause
   out.trace = { evidence_ids: evidenceIds, rounds: state.rounds, symptoms: state.symptoms }
   out.state = state
   // 能力级适用范围（#76）：先判"这件事该不该我做"，再判"证据够不够"。
@@ -256,8 +263,8 @@ function ruleDiagnosis(state, evidence) {
   }
 }
 
-async function llmDiagnosis(state, evidence, env) {
-  if (!envKey(env)) return null
+async function llmDiagnosis(state, evidence, env, sink) {
+  if (!envKey(env)) { noteCause(sink, "no_key"); return null }
   const evBlock = evidence.map((e) => `- [${e.id}] ${e.title}（${e.source} ${e.year}）：${e.text}`).join("\n")
   const flagBlock = state.red_flags.length ? `已检出红旗：${state.red_flags.join("；")}` : "未检出红旗"
   const prompt = `患者信息：${state.patient.name} ${state.patient.age}岁 ${state.patient.gender}
@@ -275,11 +282,11 @@ ${evBlock}
       { role: "user", content: prompt },
     ], true, env)
     const data = JSON.parse(raw)
-    if (!Array.isArray(data.primary) || !data.primary.length) return null
+    if (!Array.isArray(data.primary) || !data.primary.length) { noteCause(sink, "schema"); return null }
     data.evidence = evidence
     data.faq = Array.isArray(data.faq) ? data.faq.slice(0, 3) : []
     return data
-  } catch { return null }
+  } catch (e) { noteError(sink, e); return null }
 }
 
 // ---------- 检查建议 ----------
@@ -303,13 +310,19 @@ export async function buildWorkup(caseId, history = [], env = {}, providedDx = n
   const dx = await reuseOrBuild(state, history, env, providedDx)
   const firstName = dx.primary?.[0]?.name || ""
   const evidence = retriever.search(state.transcript + " " + firstName, 5)
-  let out = null, mode = "rule-fallback", fallbackReason = ""
-  const live = await llmWorkup(state, dx, evidence, env)
+  let out = null, mode = "rule-fallback", fallbackReason = "", fallbackCause = ""
+  const llmSink = { cause: "" }
+  const live = await llmWorkup(state, dx, evidence, env, llmSink)
   if (live) { out = live; mode = "live" }
-  else { out = ruleWorkup(state, dx); fallbackReason = envKey(env) ? "LLM 超时/输出非法，已切换规则引擎" : "未配置 LLM Key，使用规则引擎" }
+  else {
+    out = ruleWorkup(state, dx)
+    fallbackReason = envKey(env) ? "LLM 超时/输出非法，已切换规则引擎" : "未配置 LLM Key，使用规则引擎"
+    fallbackCause = envKey(env) ? (llmSink.cause || "unknown") : "no_key"
+  }
   out = validateWorkup(out)
   out.mode = mode
   out.fallback_reason = fallbackReason
+  out.fallback_cause = fallbackCause
   out.evidence_ids = evidence.map((e) => e.id)
   return out
 }
@@ -345,17 +358,17 @@ function ruleWorkup(state, dx) {
     optional: [base("专科评估或复查", "症状迁延时补充")] }
 }
 
-async function llmWorkup(state, dx, evidence, env) {
-  if (!envKey(env)) return null
+async function llmWorkup(state, dx, evidence, env, sink) {
+  if (!envKey(env)) { noteCause(sink, "no_key"); return null }
   const evBlock = evidence.map((e) => `- [${e.id}] ${e.title}`).join("\n")
   const prompt = `临床状态：${state.transcript}\n疑似诊断：${dx.primary.map((p) => p.name).join("；")}\n证据：\n${evBlock}\n\n输出严格 JSON：{"essential":[{"item":"...","why":"...","evidence_ids":["kb-xxx"]}],"suggested":[...],"optional":[...]}`
   try {
     const raw = await callLLM([{ role: "system", content: SYSTEM_BASE }, { role: "user", content: prompt }], true, env)
     const d = JSON.parse(raw)
     const hasAny = (a) => Array.isArray(a) && a.length > 0
-    if (!hasAny(d.essential) && !hasAny(d.suggested) && !hasAny(d.optional)) return null
+    if (!hasAny(d.essential) && !hasAny(d.suggested) && !hasAny(d.optional)) { noteCause(sink, "schema"); return null }
     return d
-  } catch { return null }
+  } catch (e) { noteError(sink, e); return null }
 }
 
 // ---------- SOAP 病历报告 ----------
@@ -364,8 +377,9 @@ export async function buildReport(caseId, history = [], env = {}, providedDx = n
   const dx = await reuseOrBuild(state, history, env, providedDx)
   const c = caseOf(caseId)
   const vitals = c.vitals.map((v) => `${v.key} ${v.value}`).join("，")
-  let out = null, mode = "rule-fallback", fallbackReason = ""
-  const live = await llmReport(state, dx, vitals, env)
+  let out = null, mode = "rule-fallback", fallbackReason = "", fallbackCause = ""
+  const llmSink = { cause: "" }
+  const live = await llmReport(state, dx, vitals, env, llmSink)
   if (live) { out = live; mode = "live" }
   else {
     out = {
@@ -379,23 +393,25 @@ export async function buildReport(caseId, history = [], env = {}, providedDx = n
       disclaimer: "本报告由 AI 辅助生成，仅作接诊参考。诊断与处置决策必须由具有执业资质的医生结合全部检查结果最终确定。",
     }
     fallbackReason = envKey(env) ? "LLM 超时/输出非法，已切换规则模板" : "未配置 LLM Key，使用规则模板"
+    fallbackCause = envKey(env) ? (llmSink.cause || "unknown") : "no_key"
   }
   out.mode = mode
   out.fallback_reason = fallbackReason
+  out.fallback_cause = fallbackCause
   out.evidence_ids = dx.trace?.evidence_ids || []
   return out
 }
 
-async function llmReport(state, dx, vitals, env) {
-  if (!envKey(env)) return null
+async function llmReport(state, dx, vitals, env, sink) {
+  if (!envKey(env)) { noteCause(sink, "no_key"); return null }
   const prompt = `临床状态：${state.transcript}\n生命体征：${vitals}\n疑似诊断：${dx.primary.map((p) => p.name).join("；")}\n红旗：${dx.flags.join("；") || "无"}\n\n输出严格 JSON：{"soap":{"subjective":"...","objective":"...","assessment":"...","plan":"..."},"conclusion":"...","disclaimer":"..."}`
   try {
     const raw = await callLLM([{ role: "system", content: SYSTEM_BASE }, { role: "user", content: prompt }], true, env)
     const d = JSON.parse(raw)
-    if (!d.soap || !d.soap.subjective) return null
+    if (!d.soap || !d.soap.subjective) { noteCause(sink, "schema"); return null }
     if (!d.disclaimer) d.disclaimer = "本报告由 AI 辅助生成，仅作接诊参考，最终诊断由执业医生确定。"
     return d
-  } catch { return null }
+  } catch (e) { noteError(sink, e); return null }
 }
 
 // ---------- LLM 通道 ----------
@@ -405,20 +421,87 @@ function envKey(env = {}) {
   return (env?.DEEPSEEK_API_KEY || "") || ""
 }
 
+// ---------- 降级原因归因（#146）----------
+// 为什么要有这一段：四类失败（无 Key／超时／HTTP 非 200／输出非法）原先全塌成同一个 `null`，
+// 外面只留一句「LLM 超时/输出非法」的合并文案 ⇒ 2026-09-28 实测线上 31/31 回落，**谁也说不清为什么**。
+// 口径：新增 `fallback_cause` 只回答「哪一类失败」，不回答「细节是什么」——
+//       堆栈、内部路径、上游响应体一律不进响应（红线：对外仍只给医生可理解文案，`fallback_reason` 不动）。
+export const LLM_FALLBACK_CAUSES = Object.freeze(["no_key", "timeout", "net_error", "empty", "bad_json", "schema",
+  "truncated", "content_filter", "finish_unrecognized", "unknown"])
+export const LLM_HTTP_CAUSE_PREFIX = "http_"
+
+function llmCauseOf(e) {
+  if (!e) return "unknown"
+  if (e.llmCause) return String(e.llmCause)
+  const name = String(e.name || "")
+  if (name === "TimeoutError" || name === "AbortError") return "timeout"
+  if (e instanceof SyntaxError) return "bad_json"
+  if (name === "TypeError") return "net_error"
+  return "unknown"
+}
+
+// 一次调用一个 sink（对象由调用方按请求创建）：绝不能挂模块级变量——
+// Workers isolate 跨请求复用，模块级状态会把上一请求的原因串进下一请求的读数。
+function noteCause(sink, cause) {
+  if (sink && !sink.cause) sink.cause = cause
+}
+function noteError(sink, e) {
+  noteCause(sink, llmCauseOf(e))
+}
+
 async function callLLM(messages, jsonMode = false, env = {}) {
   const key = envKey(env)
-  if (!key) throw new Error("no key")
+  if (!key) {
+    const e = new Error("no key")
+    e.llmCause = "no_key"
+    throw e
+  }
   const base = (env?.DEEPSEEK_BASE_URL || "https://api.deepseek.com/v1")
   const model = (env?.DEEPSEEK_MODEL || "deepseek-chat")
   const payload = { model, messages, temperature: 0.3 }
   if (jsonMode) payload.response_format = { type: "json_object" }
-  const resp = await fetch(`${base.replace(/\/$/, "")}/chat/completions`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
-    body: JSON.stringify(payload),
-    signal: AbortSignal.timeout(8000), // 单次模型硬超时 8s
-  })
-  if (!resp.ok) throw new Error(`llm http ${resp.status}`)
-  const data = await resp.json()
-  return data.choices[0].message.content
+  let resp
+  try {
+    resp = await fetch(`${base.replace(/\/$/, "")}/chat/completions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(8000), // 单次模型硬超时 8s
+    })
+  } catch (e) {
+    // 超时（TimeoutError）与网络/出口失败（TypeError）必须分开：把「通道不通」记成「模型太慢」，
+    // 后续就会去做加超时/换模型这类南辕北辙的修复。
+    e.llmCause = (e && (e.name === "TimeoutError" || e.name === "AbortError")) ? "timeout" : "net_error"
+    throw e
+  }
+  if (!resp.ok) {
+    const e = new Error(`llm http ${resp.status}`)
+    e.llmCause = LLM_HTTP_CAUSE_PREFIX + resp.status
+    throw e
+  }
+  let data
+  try {
+    data = await resp.json()
+  } catch (e) {
+    e.llmCause = "bad_json" // 上游返回非 JSON（网关 HTML 错误页等）
+    throw e
+  }
+  const choice = data?.choices?.[0]
+  // finish_reason 对账（对标 openai/openai-node src/core/error.ts：LengthFinishReasonError /
+  // ContentFilterFinishReasonError 各成一类，**不把被截断或被过滤的输出当正常回复**）。
+  // 本仓实测此前 0 处读取该字段 ⇒ 一条"看起来合法但被 content_filter 截断"的诊断 JSON 会被标成 live 发出去。
+  // 取向：允许 stop/tool_calls 与"字段缺失"（部分网关不发）；其余一律降级，未知值也降级并归 finish_unrecognized。
+  const fr = choice?.finish_reason
+  if (fr != null && fr !== "" && fr !== "stop" && fr !== "tool_calls") {
+    const e = new Error(`llm finish_reason ${fr}`)
+    e.llmCause = fr === "length" ? "truncated" : fr === "content_filter" ? "content_filter" : "finish_unrecognized"
+    throw e
+  }
+  const content = choice?.message?.content
+  if (typeof content !== "string" || !content.trim()) {
+    const e = new Error("llm empty content")
+    e.llmCause = "empty"
+    throw e
+  }
+  return content
 }

@@ -19,9 +19,24 @@ SYSTEM_BASE = (
 
 HARD_TIMEOUT_S = 8.0
 
+# 降级原因分类（#146，与 frontend/functions/lib/engine.js 的 LLM_FALLBACK_CAUSES 同表）。
+# 期望值单一源 = frontend/tests/fixtures/llm_fallback_causes.json，两侧各自断言对齐（防"两端一起错"）。
+# 只回答"哪一类失败"，不回答细节：堆栈／内部路径／上游响应体一律不进响应（红线：对外只给医生可理解文案）。
+LLM_FALLBACK_CAUSES = ("no_key", "timeout", "net_error", "empty", "bad_json", "schema",
+                       "truncated", "content_filter", "finish_unrecognized", "unknown")
+LLM_HTTP_CAUSE_PREFIX = "http_"
+# finish_reason 白名单（对标 openai/openai-node src/core/error.ts 的 Length/ContentFilter 两类错误）：
+# 允许 stop/tool_calls 与"字段缺失"（部分网关不发该字段），其余一律降级——被过滤或被截断的回答
+# 看起来像合法 JSON，当 live 发出去就是拿残缺内容给医生。
+LLM_FINISH_OK = ("stop", "tool_calls", "", None)
+
 
 class LLMUnavailable(Exception):
-    pass
+    """LLM 不可用。`cause_code` 是给降级层归因用的枚举，不进对外文案。"""
+
+    def __init__(self, message: str, cause_code: str = "unknown") -> None:
+        super().__init__(message)
+        self.cause_code = cause_code if cause_code in LLM_FALLBACK_CAUSES or cause_code.startswith(LLM_HTTP_CAUSE_PREFIX) else "unknown"
 
 
 class BaseProvider:
@@ -59,7 +74,7 @@ class OpenAICompatProvider(BaseProvider):
 
     def chat(self, messages: list[dict], json_mode: bool = False, temperature: float = 0.3) -> str:
         if not self.api_key:
-            raise LLMUnavailable(f"{self.name}: API Key 未配置")
+            raise LLMUnavailable(f"{self.name}: API Key 未配置", "no_key")
         payload = {"model": self.model, "messages": messages, "temperature": temperature}
         if json_mode:
             payload["response_format"] = {"type": "json_object"}
@@ -70,11 +85,32 @@ class OpenAICompatProvider(BaseProvider):
                 json=payload,
                 timeout=self.timeout,
             )
+        except httpx.TimeoutException:
+            # 超时与网络失败必须分家：把"出口不通"记成"模型太慢"，接下来的修复就会去抬超时，白抬。
+            raise LLMUnavailable("llm timeout", "timeout") from None
         except httpx.HTTPError as e:
-            raise LLMUnavailable(f"llm network error: {e}") from None
+            raise LLMUnavailable(f"llm network error: {type(e).__name__}", "net_error") from None
         if resp.status_code != 200:
-            raise LLMUnavailable(f"llm http {resp.status_code}")
-        return resp.json()["choices"][0]["message"]["content"]
+            raise LLMUnavailable(f"llm http {resp.status_code}", f"{LLM_HTTP_CAUSE_PREFIX}{resp.status_code}")
+        try:
+            data = resp.json()
+        except Exception:
+            raise LLMUnavailable("llm body not json", "bad_json") from None
+        try:
+            finish = data["choices"][0].get("finish_reason")
+        except (KeyError, IndexError, AttributeError, TypeError):
+            finish = None
+        if finish not in LLM_FINISH_OK:
+            code = "truncated" if finish == "length" else ("content_filter" if finish == "content_filter" else "finish_unrecognized")
+            raise LLMUnavailable(f"llm finish_reason {finish}", code)
+        content = None
+        try:
+            content = data["choices"][0]["message"]["content"]
+        except (KeyError, IndexError, TypeError):
+            raise LLMUnavailable("llm response missing content", "empty") from None
+        if not isinstance(content, str) or not content.strip():
+            raise LLMUnavailable("llm response missing content", "empty")
+        return content
 
 
 PROVIDERS: dict[str, type[BaseProvider]] = {
@@ -95,16 +131,19 @@ def get_provider(settings: dict | None = None) -> BaseProvider:
 
 
 def chat(messages: list[dict], json_mode: bool = False, temperature: float = 0.3) -> str:
-    """返回模型原始文本；无 Key / HTTP 错误 / 超时均抛 LLMUnavailable。"""
+    """返回模型原始文本；无 Key / 超时 / 网络 / HTTP 非 200 / 响应缺内容均抛 LLMUnavailable 并带 cause_code。"""
     if not llm_available():
-        raise LLMUnavailable("DeepSeek API Key 未配置")
+        raise LLMUnavailable("DeepSeek API Key 未配置", "no_key")
     return get_provider().chat(messages, json_mode=json_mode, temperature=temperature)
 
 
 def chat_json(messages: list[dict]) -> dict:
     """JSON 模式；解析失败抛 LLMUnavailable（由 engine 决定降级）。"""
     raw = chat(messages, json_mode=True)
-    data = json.loads(raw)
+    try:
+        data = json.loads(raw)
+    except (ValueError, TypeError):
+        raise LLMUnavailable("llm output not json", "bad_json") from None
     if not isinstance(data, dict):
-        raise LLMUnavailable("llm output not an object")
+        raise LLMUnavailable("llm output not an object", "schema")
     return data

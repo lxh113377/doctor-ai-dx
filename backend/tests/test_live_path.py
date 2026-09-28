@@ -21,6 +21,10 @@ from app.services import llm as llm_svc  # noqa: E402
 
 passed = failed = 0
 
+# 降级原因期望值单一源（#146）：与 JS 侧读的是同一个 fixture，两侧各自对账（防两端一起错）。
+CAUSE_FIX = json.loads((Path(__file__).resolve().parents[2] / "frontend" / "tests"
+                        / "fixtures" / "llm_fallback_causes.json").read_text(encoding="utf-8"))
+
 
 def check(name, condition, detail=""):
     global passed, failed
@@ -123,23 +127,51 @@ try:
     use_stub(lambda u, p: FakeResp(200, content_of(VALID_DX)))
     dx2 = engine.build_diagnosis("c2", [{"role": "user", "content": "鼻塞流涕两天，无发热"}])
     check("红线·无高危线索时不臆造红旗", len(dx2["flags"]) == 0, str(dx2["flags"]))
+    check("live 分支 fallback_cause 为空串（不谎报降级）",
+          dx2["mode"] == "live" and dx2.get("fallback_cause") == "", f'{dx2["mode"]}/{dx2.get("fallback_cause")!r}')
 
-    # 5) 降级路径逐条
+    # 5) 降级路径逐条（人读文案 + **可归因的原因类别**，期望值取 fixture）
     fallback_cases = [
-        ("非法 JSON 文本", lambda u, p: FakeResp(200, content_of("这不是JSON{{{"))),
-        ("primary 为空数组", lambda u, p: FakeResp(200, content_of({"primary": [], "differential": [], "faq": []}))),
-        ("HTTP 500", lambda u, p: FakeResp(500, None)),
-        ("HTTP 429 限流", lambda u, p: FakeResp(429, None)),
-        ("响应体缺 choices", lambda u, p: FakeResp(200, {})),
-        ("json() 抛异常", lambda u, p: FakeResp(200, None, raise_json=True)),
-        ("网络异常（等价超时/中断）", lambda u, p: (_ for _ in ()).throw(httpx.ConnectError("timeout"))),
+        ("bad_json_text", "非法 JSON 文本", lambda u, p: FakeResp(200, content_of("这不是JSON{{{"))),
+        ("empty_primary", "primary 为空数组", lambda u, p: FakeResp(200, content_of({"primary": [], "differential": [], "faq": []}))),
+        ("http_500", "HTTP 500", lambda u, p: FakeResp(500, None)),
+        ("http_429", "HTTP 429 限流", lambda u, p: FakeResp(429, None)),
+        ("missing_choices", "响应体缺 choices", lambda u, p: FakeResp(200, {})),
+        ("json_throws", "json() 抛异常", lambda u, p: FakeResp(200, None, raise_json=True)),
+        ("py_connect_error", "网络异常（连接失败）", lambda u, p: (_ for _ in ()).throw(httpx.ConnectError("boom"))),
+        ("py_timeout", "读超时", lambda u, p: (_ for _ in ()).throw(httpx.ReadTimeout("slow"))),
     ]
-    for name, handler in fallback_cases:
+    for case_id, name, handler in fallback_cases:
         use_stub(handler)
         out = engine.build_diagnosis("c1", HISTORY)
         check(f"降级·{name} → rule-fallback 且给原因",
               out["mode"] == "rule-fallback" and bool(out["fallback_reason"]), f'{out["mode"]}/{out["fallback_reason"]}')
         check(f"降级·{name} → 红旗不削弱", len(out["flags"]) > 0)
+        check(f"降级·{name} → fallback_cause={CAUSE_FIX['injected'][case_id]}",
+              out.get("fallback_cause") == CAUSE_FIX["injected"][case_id],
+              f'实得 {out.get("fallback_cause")!r}，期望 {CAUSE_FIX["injected"][case_id]!r}')
+    check("单一源对账·Py 侧原因枚举与 fixture 全等",
+          list(llm_svc.LLM_FALLBACK_CAUSES) == list(CAUSE_FIX["causes"]), str(llm_svc.LLM_FALLBACK_CAUSES))
+    check("单一源对账·HTTP 原因前缀与 fixture 一致",
+          llm_svc.LLM_HTTP_CAUSE_PREFIX == CAUSE_FIX["http_prefix"], llm_svc.LLM_HTTP_CAUSE_PREFIX)
+    check("超时与连接失败不得塌成同一个原因（#146 归因分家）",
+          CAUSE_FIX["injected"]["py_timeout"] != CAUSE_FIX["injected"]["py_connect_error"])
+
+    # 5b) finish_reason 对账（本轮对标实测缺口：本仓此前 0 处读取该字段）
+    def content_fr(obj, fr):
+        return {"choices": [{"message": {"content": json.dumps(obj, ensure_ascii=False)}, "finish_reason": fr}]}
+    for fr, key, why in (("content_filter", "finish_filtered", "被安全过滤"),
+                         ("length", "finish_length", "被截断"),
+                         ("refusal", "finish_junk", "网关新造的拒绝原因")):
+        use_stub(lambda u, p, fr=fr: FakeResp(200, content_fr(VALID_DX, fr)))
+        out = engine.build_diagnosis("c1", HISTORY)
+        check(f"finish_reason={fr} → 必须降级（{why}不得当 live 诊断发出）",
+              out["mode"] == "rule-fallback" and out.get("fallback_cause") == CAUSE_FIX["injected"][key]
+              and len(out["flags"]) > 0, f'{out["mode"]}/{out.get("fallback_cause")}')
+    use_stub(lambda u, p: FakeResp(200, {"choices": [{"message": {"content": json.dumps(VALID_DX, ensure_ascii=False)}}]}))
+    outNoFr = engine.build_diagnosis("c1", HISTORY)
+    check("finish_reason 缺失仍算 live（不误伤不发该字段的网关）",
+          outNoFr["mode"] == "live" and outNoFr.get("fallback_cause") == "", f'{outNoFr["mode"]}/{outNoFr.get("fallback_cause")!r}')
 
     # 6) 无 Key 零外呼
     use_stub(lambda u, p: (_ for _ in ()).throw(AssertionError("无 Key 也发起了调用")))
@@ -147,6 +179,8 @@ try:
     get_settings.cache_clear()
     out = engine.build_diagnosis("c1", HISTORY)
     check("无 Key 零外呼并降级", not calls and out["mode"] == "rule-fallback", f"calls={len(calls)}")
+    check("无 Key → fallback_cause=no_key（不与\"模型超时\"共句）",
+          out.get("fallback_cause") == CAUSE_FIX["injected"]["no_key"], f'{out.get("fallback_cause")!r}')
 
     # 7) 红线·报告缺 disclaimer 时注入医生终审默认文案
     os.environ["DEEPSEEK_API_KEY"] = "sk-placeholder-not-a-real-key"

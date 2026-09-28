@@ -5,6 +5,26 @@
 
 ## [Unreleased]
 
+第六十五轮开源对标落地。轴＝**降级要能被归因，被过滤的输出不能当成功**。三条产品红线零触碰。
+
+- **新增 `fallback_cause`（dx/workup/report 三面）**：原先四类失败（无 Key／超时／HTTP 非 200／输出非法）
+  全塌成 `null` + 一句「LLM 超时/输出非法」，2026-09-28 实测线上 31/31 回落却说不出原因（台账 #146）。
+  现为闭集枚举 `no_key/timeout/net_error/empty/bad_json/schema/truncated/content_filter/finish_unrecognized/unknown`
+  加 `http_<status>`；期望值单一源 `frontend/tests/fixtures/llm_fallback_causes.json`，JS 与 Py 两侧各自回该表对账。
+  人读文案 `fallback_reason` 保持不变（红线：对外只给医生可理解文案，新字段只到类别、不含堆栈与内部路径）。
+- **补 `finish_reason` 对账（本轮对标实测缺口）**：本仓此前 **0 处**读取该字段，于是一条
+  `finish_reason=content_filter` 或 `length`（被截断）的回答只要形似合法 JSON 就会被标成 **live** 发给医生。
+  现 `stop/tool_calls/字段缺失` 之外一律降级（未知值也降级），取 `openai/openai-node` 的 LengthFinishReasonError／
+  ContentFilterFinishReasonError 分类口径（实测 `src/core/error.ts` 198 行、18 个导出错误类）。
+- **超时与网络失败分家**：`httpx.TimeoutException` 与 `ConnectError`、`AbortError` 与 `TypeError` 不再同归一句
+  （把"出口不通"记成"模型太慢"，下一步就会去抬超时——白抬）。
+- **`scripts/perf_gate.mjs` 升级为 CI 执行的那一份**（台账 #169）：搬入 HEAD 分母、数值化比率、
+  「线上命名⇄实到链路」对账，并新增「降级原因可归因」维——三态：无回落＝不适用、
+  线上构建尚无该字段＝UNVERIFIED（不记绿也不判红）、有字段但归因不全＝FAIL。
+  参赛工作区 `work/perf_gate.mjs` 改为薄委托（同 #149 的 live_eval 收口方式），判据只住一处。
+- 套件读数（现算，非手抄）：`live_path_guard` 61 项、`test_live_path` 56 项，均含反向腿
+  （finish_reason 缺失仍算 live；live 分支 `fallback_cause` 必须为空串）。
+
 ## [1.45.0] - 2026-09-27
 
 第四十八轮开源对标收口。轴＝**文档里的路径引用是给别人点开的坐标，不是给自己看的装饰**。三条产品红线零触碰。

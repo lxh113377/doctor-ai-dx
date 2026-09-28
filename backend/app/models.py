@@ -94,6 +94,7 @@ class DxResult(BaseModel):
     evidence: list[EvidenceItem] = []
     mode: str = "rule-fallback"
     fallback_reason: str = ""
+    fallback_cause: str = ""
     abstain: bool = False  # 第三态（v1.25.0 #52）：证据不足/域外时不编鉴别诊断
     scope_status: str = "in-scope"  # in-scope | insufficient-information | out-of-scope
     top_evidence_score: float = 0.0  # 与 rag.ABSTAIN_T 比较，双端同值由 abstain_guard 对账
@@ -114,6 +115,7 @@ class Workup(BaseModel):
     optional: list[WorkupItem]
     mode: str = "rule-fallback"
     fallback_reason: str = ""
+    fallback_cause: str = ""
     evidence_ids: list[str] = []
 
 
@@ -130,4 +132,5 @@ class Report(BaseModel):
     disclaimer: str
     mode: str = "rule-fallback"
     fallback_reason: str = ""
+    fallback_cause: str = ""
     evidence_ids: list[str] = []

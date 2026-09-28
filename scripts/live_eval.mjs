@@ -42,7 +42,10 @@ for (const c of suite.cases) {
   const d = r.data
   if (!d) { errs.push("无响应"); failures.push({ id: c.id, errs }); continue }
   if (d.mode === "live") modeLive++; else if (d.mode === "rule-fallback") modeFallback++
-  modeByCase[c.id] = { mode: String(d.mode), abstain: d.abstain === true }
+  modeByCase[c.id] = { mode: String(d.mode), abstain: d.abstain === true, cause: String(d.fallback_cause ?? ""),
+    // 线上构建是否已携带该字段（发版前的旧构建根本没这个键）——判据据此分"不可归因"与"尚未上线"，
+    // 不把部署状态伪装成代码缺陷（同 freeze_check 的 UNVERIFIED 档）。
+    has_cause_field: Object.prototype.hasOwnProperty.call(d, "fallback_cause") }
   if (d.abstain === true) {
     // 线上第三态（#52）：弃权是另一种合法形状，但必须"只出弃权卡 + 红旗字段在场"，
     // 且同样计入"红旗不得被弃权吞掉"的检查——否则线上把弃权当成功掩盖漏报。
@@ -86,6 +89,19 @@ const report = {
   abstain_cases: `${abstainCount}/${n}`,
   citation_valid: `${citePass}/${n}`,
   mode_distribution: { live: modeLive, rule_fallback: modeFallback },
+  // 降级原因分布（#146）：只有"回落了多少例"而说不出"为什么回落"，运维就只能猜。
+  // 空原因一律记 unattributed —— 让"不可归因"本身成为一个会被门禁抓住的读数，而不是默认无害。
+  fallback_cause_distribution: Object.values(modeByCase)
+    .filter((x) => x.mode !== "live")
+    .reduce((acc, x) => {
+      const k = x.cause || "unattributed"
+      acc[k] = (acc[k] || 0) + 1
+      return acc
+    }, {}),
+  // 回落例里"响应确实带 fallback_cause 字段"的例数。线上构建早于该字段时此数为 0 ⇒
+  // 判据据此走 UNVERIFIED（尚未上线）而不是 FAIL（代码不可归因），也不得记 PASS。
+  fallback_cause_field_cases: Object.values(modeByCase).filter((x) => x.mode !== "live" && x.has_cause_field).length,
+  fallback_cases_total: Object.values(modeByCase).filter((x) => x.mode !== "live").length,
   mode_by_case: modeByCase,
   unexpected_fallback: Object.values(modeByCase).filter((x) => x.mode !== 'live' && !x.abstain).length,
   red_flag_recall_live: `${flagOk}/${flagTotal}`,

@@ -3,8 +3,12 @@
 // 根因是**无 Key 时所有测试只走 rule-fallback 分支**，而线上生产跑的是 live 分支。
 // 也就是说：三条产品红线在"模型参与生成"这条真实路径上，此前从未被任何自动化测试执行过。
 // 本套件用桩喂出 live 分支的各种输出形态（含恶意/畸形），逐条验证红线仍然成立。
-import { buildDiagnosis, buildReport, buildWorkup, nextIntakeQuestion } from "../functions/lib/engine.js"
+import { readFileSync } from "node:fs"
+import { buildDiagnosis, buildReport, buildWorkup, nextIntakeQuestion, LLM_FALLBACK_CAUSES, LLM_HTTP_CAUSE_PREFIX } from "../functions/lib/engine.js"
 import { KB_ID_SET } from "../functions/lib/knowledge.js"
+
+// 降级原因期望值单一源（#146）：JS 侧枚举与逐类注入的期望原因都在这个 fixture 里，Py 侧同一份对账。
+const CAUSE_FIX = JSON.parse(readFileSync(new URL("./fixtures/llm_fallback_causes.json", import.meta.url), "utf8"))
 
 let pass = 0
 let fail = 0
@@ -82,28 +86,66 @@ stubFetch(() => okJson(VALID_DX))
 dx = await buildDiagnosis("c2", [{ role: "user", content: "鼻塞流涕两天，无发热" }], ENV)
 check("红线·无高危线索时不臆造红旗", (dx.flags ?? ["__undefined__"]).length === 0, `flags=${JSON.stringify(dx.flags)}`)
 
-// 6) 降级路径逐条（每条都必须落到 rule-fallback 且给出原因）
+// 6) 降级路径逐条（每条都必须落到 rule-fallback、给出人读文案，**并给出可归因的原因类别**）
+check("单一源对账·JS 导出的原因枚举与 fixture 全等（防两端一起错）",
+  JSON.stringify(LLM_FALLBACK_CAUSES) === JSON.stringify(CAUSE_FIX.causes),
+  `js=${JSON.stringify(LLM_FALLBACK_CAUSES)} fixture=${JSON.stringify(CAUSE_FIX.causes)}`)
+check("单一源对账·HTTP 原因前缀与 fixture 一致", LLM_HTTP_CAUSE_PREFIX === CAUSE_FIX.http_prefix, LLM_HTTP_CAUSE_PREFIX)
 const fallbackCases = [
-  ["非法 JSON 文本", () => okJson("这不是JSON{{{")],
-  ["合法 JSON 但 primary 为空数组", () => okJson({ primary: [], differential: [], faq: [] })],
-  ["HTTP 500", () => httpErr(500)],
-  ["HTTP 429（限流）", () => httpErr(429)],
-  ["响应体缺 choices（schema 漂移）", () => ({ ok: true, status: 200, json: async () => ({}) })],
-  ["json() 抛异常", () => ({ ok: true, status: 200, json: async () => { throw new Error("bad body") } })],
-  ["fetch 直接 reject（等价于超时/网络中断后的表现）", () => { const e = new Error("The operation was aborted"); e.name = "AbortError"; throw e }],
+  ["bad_json_text", "非法 JSON 文本", () => okJson("这不是JSON{{{")],
+  ["empty_primary", "合法 JSON 但 primary 为空数组", () => okJson({ primary: [], differential: [], faq: [] })],
+  ["http_500", "HTTP 500", () => httpErr(500)],
+  ["http_429", "HTTP 429（限流）", () => httpErr(429)],
+  ["missing_choices", "响应体缺 choices（schema 漂移）", () => ({ ok: true, status: 200, json: async () => ({}) })],
+  ["json_throws", "json() 抛异常", () => ({ ok: true, status: 200, json: async () => { throw new Error("bad body") } })],
+  ["fetch_abort", "fetch 直接 reject（等价于超时/网络中断后的表现）", () => { const e = new Error("The operation was aborted"); e.name = "AbortError"; throw e }],
 ]
-for (const [name, handler] of fallbackCases) {
+for (const [id, name, handler] of fallbackCases) {
   stubFetch(handler)
   const out = await buildDiagnosis("c1", CHEST_PAIN, ENV)
   check(`降级·${name} → rule-fallback`, out.mode === "rule-fallback" && !!out.fallback_reason, `${out.mode}/${out.fallback_reason}`)
   check(`降级·${name} → 红旗仍成立（降级不削弱安全层）`, (out.flags ?? []).length > 0, `flags=${JSON.stringify(out.flags)}`)
   check(`降级·${name} → 仍产出 FHIR Bundle`, out.fhir?.resourceType === "Bundle" && out.fhir.entry.length >= 4)
+  // 归因维：文案是一句话，原因是闭集枚举。塌成一句「LLM 超时/输出非法」就是 #146 量不出原因的根因。
+  check(`降级·${name} → fallback_cause 归类正确`,
+    out.fallback_cause === CAUSE_FIX.injected[id],
+    `实得 ${JSON.stringify(out.fallback_cause)}，期望 ${JSON.stringify(CAUSE_FIX.injected[id])}（原因塌成一句=不可归因）`)
 }
+// 反例：超时与网络失败必须分家（两者原先都进同一个 catch）
+stubFetch(() => { const e = new TypeError("fetch failed"); throw e })
+check("降级·网络层 TypeError（出口不通）归为 net_error 而非 timeout",
+  (await buildDiagnosis("c1", CHEST_PAIN, ENV)).fallback_cause === CAUSE_FIX.injected.net_typeerror, "把通道不通记成模型太慢＝修复方向反")
+// live 分支不得带原因（带了就等于谎报降级）
+stubFetch(() => okJson(VALID_DX))
+const liveDx = await buildDiagnosis("c1", CHEST_PAIN, ENV)
+check("live 分支 fallback_cause 为空串（不谎报降级）", liveDx.mode === "live" && liveDx.fallback_cause === "", `${liveDx.mode}/${JSON.stringify(liveDx.fallback_cause)}`)
+// finish_reason 对账（本轮对标实测到的缺口：本仓此前 0 处读取该字段）
+const okJsonFr = (content, fr) => ({
+  ok: true, status: 200,
+  json: async () => ({ choices: [{ message: { content: JSON.stringify(content) }, finish_reason: fr }] }),
+})
+for (const [fr, key, why] of [
+  ["content_filter", "finish_filtered", "被安全过滤的回答不得当 live 诊断发出去"],
+  ["length", "finish_length", "被 max_tokens 截断的半句话不得当 live 诊断发出去"],
+  ["refusal", "finish_junk", "网关新造的拒绝原因不得静默算成功（未知值也降级）"],
+]) {
+  stubFetch(() => okJsonFr(VALID_DX, fr))
+  const out = await buildDiagnosis("c1", CHEST_PAIN, ENV)
+  check(`finish_reason=${fr} → 必须降级（${why}）`,
+    out.mode === "rule-fallback" && out.fallback_cause === CAUSE_FIX.injected[key] && (out.flags ?? []).length > 0,
+    `${out.mode}/${out.fallback_cause}`)
+}
+// 反向腿：字段缺失（部分网关不发 finish_reason）不得被误判成降级
+stubFetch(() => okJsonFr({ ...VALID_DX, finish_reason_removed: true }, undefined))
+const noFrx = await buildDiagnosis("c1", CHEST_PAIN, ENV)
+check("finish_reason 缺失仍算 live（不误伤不发该字段的网关）", noFrx.mode === "live" && noFrx.fallback_cause === "", `${noFrx.mode}/${noFrx.fallback_cause}`)
 
 // 7) 无 Key 时绝不外呼（防止把占位密钥当真）
 stubFetch(() => { throw new Error("无 Key 也发起了网络调用") })
 dx = await buildDiagnosis("c1", CHEST_PAIN, {})
 check("无 Key 零外呼并降级", calls.length === 0 && dx.mode === "rule-fallback", `calls=${calls.length}`)
+check("无 Key → fallback_cause=no_key（不得与\"模型超时\"共用一句原因）",
+  dx.fallback_cause === CAUSE_FIX.injected.no_key, JSON.stringify(dx.fallback_cause))
 
 // 8) 红线③：live 报告缺 disclaimer 时必须补默认「医生终审」文案
 stubFetch(() => okJson({ soap: { subjective: "胸痛两小时", objective: "BP 150/95", assessment: "首先排除 ACS", plan: "心电图+肌钙蛋白" }, conclusion: "建议尽快完成心电图" }))
@@ -115,6 +157,12 @@ check("报告 mode 如实标注（有 Key 且返回合法即 live）", rep.mode 
 stubFetch(() => okJson({ essential: "不是数组", suggested: null, optional: [] }))
 const w = await buildWorkup("c1", CHEST_PAIN, ENV, null)
 check("workup 畸形输出降级且不崩", ["rule-fallback", "live"].includes(w.mode) && Array.isArray(w.essential))
+check("workup 畸形输出 → fallback_cause=schema（三面都带原因，不只 dx）",
+  w.mode === "rule-fallback" && w.fallback_cause === CAUSE_FIX.injected.workup_malformed, `${w.mode}/${JSON.stringify(w.fallback_cause)}`)
+stubFetch(() => okJson({ nothing: true }))
+const repSchema = await buildReport("c1", CHEST_PAIN, ENV, null)
+check("report 缺 soap → fallback_cause=schema", repSchema.mode === "rule-fallback" && repSchema.fallback_cause === CAUSE_FIX.injected.report_missing_soap,
+  `${repSchema.mode}/${JSON.stringify(repSchema.fallback_cause)}`)
 
 // 10) 系统提示词必须携带红线约束（防有人改 prompt 把红线删掉）
 stubFetch(() => okJson(VALID_DX))

@@ -126,18 +126,21 @@ def build_diagnosis(case_id: str, history: list[dict] | None = None) -> dict:
     evidence = _RETRIEVER.search(state["transcript"], 5)
     evidence_ids = [e["id"] for e in evidence]
 
-    live = _llm_diagnosis(state, evidence)
+    sink = {"cause": ""}
+    live = _llm_diagnosis(state, evidence, sink)
     if live:
-        out, mode, reason = live, "live", ""
+        out, mode, reason, cause = live, "live", "", ""
     else:
         out, mode = _rule_diagnosis(state, evidence), "rule-fallback"
         reason = "LLM 超时/输出非法，已切换规则引擎" if llm_available() else "未配置 LLM Key，使用规则引擎"
+        cause = _fallback_cause(sink)
 
     out = _validate_diagnosis(out, evidence_ids)
     out["flags"] = state["red_flags"]          # 红旗兜底：不可被模型覆盖
     out["flag_details"] = state["red_flag_details"]
     out["mode"] = mode
     out["fallback_reason"] = reason
+    out["fallback_cause"] = cause
     out["trace"] = {"evidence_ids": evidence_ids, "rounds": state["rounds"], "symptoms": state["symptoms"]}
     out["state"] = state
     # 能力级适用范围（#76）：先判"该不该我做"，再判"证据够不够"；红旗已在上面算完且不被范围命中清空（红线）。
@@ -246,8 +249,29 @@ def _rule_diagnosis(state: dict, evidence: list[dict]) -> dict:
     }
 
 
-def _llm_diagnosis(state: dict, evidence: list[dict]) -> dict | None:
+def _note_cause(sink: dict | None, cause: str) -> None:
+    """降级原因记号（#146 归因，与 JS 侧 noteCause 同语义）。
+
+    sink 由 build_* 每次调用新建，**不用模块级变量**：镜像面跑在 FastAPI 并发下，
+    模块级状态会把上一个请求的原因串进下一个请求的读数。首记优先，后续覆盖无益。
+    """
+    if sink is not None and not sink.get("cause"):
+        sink["cause"] = cause
+
+
+def _cause_of(exc: BaseException) -> str:
+    return getattr(exc, "cause_code", None) or "unknown"
+
+
+def _fallback_cause(sink: dict | None) -> str:
     if not llm_available():
+        return "no_key"
+    return (sink or {}).get("cause") or "unknown"
+
+
+def _llm_diagnosis(state: dict, evidence: list[dict], sink: dict | None = None) -> dict | None:
+    if not llm_available():
+        _note_cause(sink, "no_key")
         return None
     ev_block = "\n".join(f"- [{e['id']}] {e['title']}（{e['source']} {e['year']}）：{e['text']}" for e in evidence)
     flag_block = "已检出红旗：" + "；".join(state["red_flags"]) if state["red_flags"] else "未检出红旗"
@@ -267,11 +291,16 @@ def _llm_diagnosis(state: dict, evidence: list[dict]) -> dict | None:
             {"role": "user", "content": prompt},
         ])
         if not isinstance(data.get("primary"), list) or not data["primary"]:
+            _note_cause(sink, "schema")
             return None
         data["evidence"] = evidence
         data["faq"] = data.get("faq", [])[:3] if isinstance(data.get("faq"), list) else []
         return data
-    except Exception:
+    except llm_svc.LLMUnavailable as e:
+        _note_cause(sink, _cause_of(e))
+        return None
+    except Exception:  # 未分类异常一律记 unknown，绝不静默当"没有原因"
+        _note_cause(sink, "unknown")
         return None
 
 
@@ -297,15 +326,18 @@ def build_workup(case_id: str, history: list[dict] | None = None, provided_dx: d
     dx = _reuse_or_build(state, history, provided_dx)
     first_name = dx["primary"][0].get("name", "") if dx.get("primary") else ""
     evidence = _RETRIEVER.search(state["transcript"] + " " + first_name, 5)
-    live = _llm_workup(state, dx, evidence)
+    sink = {"cause": ""}
+    live = _llm_workup(state, dx, evidence, sink)
     if live:
-        out, mode, reason = live, "live", ""
+        out, mode, reason, cause = live, "live", "", ""
     else:
         out, mode = _rule_workup(state, dx), "rule-fallback"
         reason = "LLM 超时/输出非法，已切换规则引擎" if llm_available() else "未配置 LLM Key，使用规则引擎"
+        cause = _fallback_cause(sink)
     out = _validate_workup(out)
     out["mode"] = mode
     out["fallback_reason"] = reason
+    out["fallback_cause"] = cause
     out["evidence_ids"] = [e["id"] for e in evidence]
     return out
 
@@ -337,8 +369,9 @@ def _rule_workup(state: dict, dx: dict) -> dict:
             "optional": [base("专科评估或复查", "症状迁延时补充")]}
 
 
-def _llm_workup(state: dict, dx: dict, evidence: list[dict]) -> dict | None:
+def _llm_workup(state: dict, dx: dict, evidence: list[dict], sink: dict | None = None) -> dict | None:
     if not llm_available():
+        _note_cause(sink, "no_key")
         return None
     ev_block = "\n".join(f"- [{e['id']}] {e['title']}" for e in evidence)
     names = "；".join(p["name"] for p in dx["primary"])
@@ -349,9 +382,14 @@ def _llm_workup(state: dict, dx: dict, evidence: list[dict]) -> dict | None:
             {"role": "user", "content": prompt},
         ])
         if not (d.get("essential") or d.get("suggested") or d.get("optional")):
+            _note_cause(sink, "schema")
             return None
         return d
+    except llm_svc.LLMUnavailable as e:
+        _note_cause(sink, _cause_of(e))
+        return None
     except Exception:
+        _note_cause(sink, "unknown")
         return None
 
 
@@ -361,9 +399,10 @@ def build_report(case_id: str, history: list[dict] | None = None, provided_dx: d
     dx = _reuse_or_build(state, history, provided_dx)
     c = _case(case_id)
     vitals = "，".join(f"{v['key']} {v['value']}" for v in c["vitals"])
-    live = _llm_report(state, dx, vitals)
+    sink = {"cause": ""}
+    live = _llm_report(state, dx, vitals, sink)
     if live:
-        out, mode, reason = live, "live", ""
+        out, mode, reason, cause = live, "live", "", ""
     else:
         names = "；".join(p["name"] for p in dx["primary"])
         out = {
@@ -379,14 +418,17 @@ def build_report(case_id: str, history: list[dict] | None = None, provided_dx: d
         }
         mode = "rule-fallback"
         reason = "LLM 超时/输出非法，已切换规则模板" if llm_available() else "未配置 LLM Key，使用规则模板"
+        cause = _fallback_cause(sink)
     out["mode"] = mode
     out["fallback_reason"] = reason
+    out["fallback_cause"] = cause
     out["evidence_ids"] = dx.get("trace", {}).get("evidence_ids", [])
     return out
 
 
-def _llm_report(state: dict, dx: dict, vitals: str) -> dict | None:
+def _llm_report(state: dict, dx: dict, vitals: str, sink: dict | None = None) -> dict | None:
     if not llm_available():
+        _note_cause(sink, "no_key")
         return None
     names = "；".join(p["name"] for p in dx["primary"])
     flags = "；".join(dx["flags"]) or "无"
@@ -396,10 +438,16 @@ def _llm_report(state: dict, dx: dict, vitals: str) -> dict | None:
             {"role": "system", "content": llm_svc.SYSTEM_BASE},
             {"role": "user", "content": prompt},
         ])
-        if not d.get("soap") or not d["soap"].get("subjective"):
+        soap = d.get("soap")
+        if not isinstance(soap, dict) or not soap.get("subjective"):
+            _note_cause(sink, "schema")
             return None
         if not d.get("disclaimer"):
             d["disclaimer"] = "本报告由 AI 辅助生成，仅作接诊参考，最终诊断由执业医生确定。"
         return d
+    except llm_svc.LLMUnavailable as e:
+        _note_cause(sink, _cause_of(e))
+        return None
     except Exception:
+        _note_cause(sink, "unknown")
         return None

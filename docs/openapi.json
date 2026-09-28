@@ -552,6 +552,10 @@
           "fallback_reason": {
             "type": "string"
           },
+          "fallback_cause": {
+            "type": "string",
+            "description": "降级原因分类（live 时为空串）：no_key/timeout/net_error/empty/bad_json/schema/truncated/content_filter/finish_unrecognized/unknown 或 http_<status>。只到类别，不含堆栈与内部路径。单一源 tests/fixtures/llm_fallback_causes.json"
+          },
           "faq": {
             "type": "array",
             "items": {

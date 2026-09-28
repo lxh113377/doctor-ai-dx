@@ -1,0 +1,32 @@
+{
+  "_source": "降级原因（fallback_cause）期望值的唯一真相源。JS 权威面 frontend/functions/lib/engine.js 与 Py 镜像面 backend/app/services/llm.py 各自内联了同一张枚举（Workers 运行期读不到本文件），因此两侧都必须回到本文件对账：JS 由 tests/live_path_guard.mjs 断言，Py 由 tests/test_live_path.py 断言。只比\"两端互相等\"不够——两边一起错就永远绿（同 error_parity.json 的第二十一轮教训）。",
+  "_why": "台账 #146：四类失败原先塌成一句「LLM 超时/输出非法」，2026-09-28 实测线上 31/31 回落却无法说出原因。把原因做成闭集枚举，降级才可归因、可运维。",
+  "causes": ["no_key", "timeout", "net_error", "empty", "bad_json", "schema", "truncated", "content_filter", "finish_unrecognized", "unknown"],
+  "http_prefix": "http_",
+  "finish_reason": {
+    "_note": "对标 openai/openai-node src/core/error.ts（实测 18 个导出错误类，含 LengthFinishReasonError／ContentFilterFinishReasonError）。本仓此前 0 处读取 finish_reason ⇒ 被过滤/截断的输出会被当 live 发出。",
+    "allowed": ["stop", "tool_calls", ""],
+    "truncated": "length",
+    "filtered": "content_filter"
+  },
+  "field_on": ["dx", "workup", "report"],
+  "injected": {
+    "bad_json_text": "bad_json",
+    "empty_primary": "schema",
+    "http_500": "http_500",
+    "http_429": "http_429",
+    "missing_choices": "empty",
+    "json_throws": "bad_json",
+    "fetch_abort": "timeout",
+    "net_typeerror": "net_error",
+    "py_connect_error": "net_error",
+    "py_timeout": "timeout",
+    "no_key": "no_key",
+    "workup_malformed": "schema",
+    "finish_length": "truncated",
+    "finish_filtered": "content_filter",
+    "finish_junk": "finish_unrecognized",
+    "report_missing_soap": "schema"
+  },
+  "_live_case": "live 分支必须给空串（不带原因＝没降级），由 live_path_guard 的 live 断言承载"
+}

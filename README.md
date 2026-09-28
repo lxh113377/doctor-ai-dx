@@ -116,7 +116,7 @@ curl http://127.0.0.1:8000/health
 |---|---|---|---|
 | GET  | /api/cases | — | 病例列表（含脱敏合成标注） |
 | POST | /api/intake/ask | {case_id, history[]} | reply/question, chips[], done, state{symptoms,missing_slots,red_flags,red_flag_details,rounds}, mode |
-| POST | /api/dx/{id} | {case_id, history[]} | primary[]{name,prob,strength,reasons,evidence_ids,refs}, differential[], flags[], flag_details[]{name,severity,advice}, evidence[], trace, mode, fallback_reason, **fhir**（FHIR R4 light Bundle） |
+| POST | /api/dx/{id} | {case_id, history[]} | primary[]{name,prob,strength,reasons,evidence_ids,refs}, differential[], flags[], flag_details[]{name,severity,advice}, evidence[], trace, mode, fallback_reason/**fallback_cause**, **fhir**（FHIR R4 light Bundle） |
 | POST | /api/workup/{id} | {case_id, history[], dx?} | essential/suggested/optional[]{item,why,evidence_ids}, evidence_ids[], mode |
 | POST | /api/report/{id} | {case_id, history[], dx?} | soap{S,O,A,P}, conclusion, disclaimer, evidence_ids[], mode |
 | GET  | /api/health | — | {status, llm_mode: live\|mock-fallback, version} |
