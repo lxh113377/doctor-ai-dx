@@ -113,13 +113,19 @@ function conditionResources(dx) {
     subject: patientRef,
     clinicalStatus: { coding: [{ system: CS.clinical, code: "active" }] },
   }
+  // 验证状态按 HL7 FHIR R4 值集 condition-ver-status 分档（实测页内码：unconfirmed/provisional/
+  // differential/confirmed/refuted；**R4 没有 unknown**，弃权态取证据不足的 unconfirmed）。
+  // 此前首要诊断与鉴别诊断一律写 unconfirmed，集成方（HIS）在互操作层读不出"首要考虑"与"待排除"的差别；
+  // 而 AI 输出永远不得写 confirmed/refuted——那是把辅助参考冒充确诊（红线同族）。
+  const verCode = dx.abstain === true ? "unconfirmed" : "provisional"
+  const verDiff = dx.abstain === true ? "unconfirmed" : "differential"
   dx.primary.slice(0, 4).forEach((p, i) => {
     const codes = p.evidence_ids.flatMap((id) => icdCodes((KB_BY_ID.get(id) || {}).icd))
     const coding = [...new Set(codes)].map((c) => ({ system: CS.icd10, code: c }))
     out.push({
       ...base,
       id: `cond-primary-${i + 1}`,
-      verificationStatus: { coding: [{ system: CS.verStatus, code: "unconfirmed" }] },
+      verificationStatus: { coding: [{ system: CS.verStatus, code: verCode }] },
       category: [{ coding: [{ system: CS.category, code: "encounter-diagnosis" }] }],
       code: { text: p.name.slice(0, 60), ...(coding.length ? { coding } : {}) },
       note: [{ text: `优先级 ${p.prob}｜支持理由：${p.reasons.slice(0, 2).join("；")}`.slice(0, 300) }],
@@ -132,7 +138,7 @@ function conditionResources(dx) {
     out.push({
       ...base,
       id: `cond-differential-${i + 1}`,
-      verificationStatus: { coding: [{ system: CS.verStatus, code: "unconfirmed" }] },
+      verificationStatus: { coding: [{ system: CS.verStatus, code: verDiff }] },
       category: [{ coding: [{ system: CS.category, code: "problem-list-item" }] }],
       code: { text: d.name.slice(0, 60), ...(coding.length ? { coding } : {}) },
       note: d.note ? [{ text: d.note.slice(0, 300) }] : [],

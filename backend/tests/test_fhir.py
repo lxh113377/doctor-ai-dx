@@ -29,6 +29,25 @@ def resources(bundle):
     return [e["resource"] for e in bundle["entry"]]
 
 
+# 逐例回表：与 JS 侧 fhir_guard 共用同一份评测集（31 例，零密钥 ⇒ 确定性 rule 路径）。
+SUITE = json.loads((Path(__file__).resolve().parents[2] / "frontend" / "tests"
+                    / "fixtures" / "eval_cases.json").read_text(encoding="utf-8"))["cases"]
+ALL_DX = [engine.build_diagnosis(c.get("case_id") or "c1",
+                                 [{"role": "user", "content": a} for a in c["answers"]]) for c in SUITE]
+
+
+def cond_ver_ok(dx, res):
+    """R4 condition-ver-status 分档断言：首要＝provisional／鉴别＝differential／弃权＝unconfirmed。"""
+    for c in res:
+        if c["resourceType"] != "Condition":
+            continue
+        got = c["verificationStatus"]["coding"][0]["code"]
+        exp = "unconfirmed" if dx.get("abstain") else ("provisional" if c["id"].startswith("cond-primary") else "differential")
+        if got != exp:
+            return False
+    return True
+
+
 CLOCK_RE = re.compile(r'"(timestamp|issued|effective|metaLastUpdated)"\s*:')
 
 client = TestClient(app)
@@ -45,7 +64,25 @@ res = resources(bundle)
 check("Bundle.type = collection（已核验 bundle-type 码集）", bundle["type"] == "collection")
 check("五类资源齐备", {"Patient", "Encounter", "Condition", "Observation", "DiagnosticReport"}
       <= {x["resourceType"] for x in res})
-check("每个资源含 resourceType 与 id", all(x.get("resourceType") and x.get("id") for x in res))
+check("Condition 验证状态按 R4 值集分档（首要＝provisional／鉴别＝differential／弃权＝unconfirmed）——逐例回表",
+      all(cond_ver_ok(dx2, resources(dx2["fhir"])) for dx2 in ALL_DX),
+      "｜".join(f"{d['primary'][0]['name'][:8]}:{sorted({c['verificationStatus']['coding'][0]['code'] for c in resources(d['fhir']) if c['resourceType'] == 'Condition'})}" for d in ALL_DX[:2]))
+BAD_VERDICT = [f"{c['id']}={c['verificationStatus']['coding'][0]['code']}"
+               for d in ALL_DX for c in resources(d["fhir"])
+               if c["resourceType"] == "Condition" and c["verificationStatus"]["coding"][0]["code"] in ("confirmed", "refuted")]
+check("红线：任何一例 Condition 都不得被写成 confirmed/refuted（AI 不声称确诊或已排除）",
+      not BAD_VERDICT, ",".join(BAD_VERDICT[:4]))
+ABSTAIN_DX = [d for d in ALL_DX if d.get("abstain")]
+check(f"弃权例（实测 {len(ABSTAIN_DX)} 例）的 Condition 一律 unconfirmed（R4 无 unknown；分母 0 不得记通过）",
+      len(ABSTAIN_DX) > 0 and all(
+          c["verificationStatus"]["coding"][0]["code"] == "unconfirmed"
+          for d in ABSTAIN_DX for c in resources(d["fhir"]) if c["resourceType"] == "Condition"),
+      ",".join(str(d.get("state", {}).get("case_id")) for d in ABSTAIN_DX) or "弃权分母为 0＝没测到，不许记绿")
+CODES_SEEN = {c["verificationStatus"]["coding"][0]["code"]
+              for d in ALL_DX for c in resources(d["fhir"]) if c["resourceType"] == "Condition"}
+check("分档确实在产出（出现过的码 ≥2 且含 provisional/differential，只有一种＝等于没分）",
+      len(CODES_SEEN) >= 2 and {"provisional", "differential"} <= CODES_SEEN, ",".join(sorted(CODES_SEEN)))
+
 check("红旗命中被独立承载（规则层不被模型覆盖）", bool(dx["flags"]) and any(
     x["id"] == "flag-summary" and x["component"] for x in res))
 

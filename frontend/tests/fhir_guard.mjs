@@ -26,7 +26,11 @@ const VERIFIED = {
   "http://hl7.org/fhir/diagnostic-report-status": ["registered", "partial", "final", "amended", "cancelled", "entered-in-error", "unknown"],
   "http://hl7.org/fhir/administrative-gender": ["male", "female", "other", "unknown"],
   "http://terminology.hl7.org/CodeSystem/condition-clinical": ["active", "inactive"],
-  "http://terminology.hl7.org/CodeSystem/condition-ver-status": ["unconfirmed", "confirmed", "refuted", "entered-in-error"],
+  // 取的是**闭包**（含嵌套子概念），不是顶层一层：官方 CodeSystem-condition-ver-status.json 实测
+  // `unconfirmed` 之下挂着 `provisional`／`differential` 两个子概念，顶层-only 的抄法会把合法码判成编造码
+  // （本仓核验面自己的漏项，第五十八轮由本次改动撞出来；重取原文可复算：
+  //  curl -sL https://terminology.hl7.org/CodeSystem-condition-ver-status.json）。
+  "http://terminology.hl7.org/CodeSystem/condition-ver-status": ["unconfirmed", "provisional", "differential", "confirmed", "refuted", "entered-in-error"],
   "http://terminology.hl7.org/CodeSystem/condition-category": ["problem-list-item", "encounter-diagnosis"],
   "http://terminology.hl7.org/CodeSystem/v3-ActCode": ["AMB"],
   "http://hl7.org/fhir/sid/icd-10": null, // 码值来自本仓知识库，受 ICD_RE 形状约束，不在此枚举
@@ -103,9 +107,30 @@ const resources = sample.entry.map((e) => e.resource)
 check("资源组合含 Patient/Encounter/Condition/Observation/DiagnosticReport 五类",
   ["Patient", "Encounter", "Condition", "Observation", "DiagnosticReport"].every((t) => resources.some((r) => r.resourceType === t)))
 check("每个资源都有 resourceType 与 id", resources.every((r) => r.resourceType && r.id))
-check("Condition 必带 clinicalStatus(active) 与 verificationStatus(unconfirmed)",
-  resources.filter((r) => r.resourceType === "Condition")
-    .every((r) => r.clinicalStatus.coding[0].code === "active" && r.verificationStatus.coding[0].code === "unconfirmed"))
+check("Condition 必带 clinicalStatus(active)，且验证状态按 R4 值集分档（首要＝provisional／鉴别＝differential／弃权＝unconfirmed）",
+  bundles.every(({ dx, bundle }) => {
+    const cs = bundle.entry.map((e) => e.resource).filter((r) => r.resourceType === "Condition")
+    if (!cs.every((r) => r.clinicalStatus.coding[0].code === "active")) return false
+    const want = (id) => (dx.abstain === true ? "unconfirmed" : id.startsWith("cond-primary") ? "provisional" : "differential")
+    return cs.every((r) => r.verificationStatus.coding[0].code === want(r.id))
+  }),
+  bundles.slice(0, 3).map((b) => `${b.id}:${b.bundle.entry.map((e) => e.resource).filter((r) => r.resourceType === "Condition").map((r) => `${r.id}=${r.verificationStatus.coding[0].code}`).join(",")}`).join(" | "))
+// 这三条是同一次改动配的：判据只断"分档存在"不够，还得证明**没被写坏**与**弃权确实回落**。
+const badVerdict = bundles.flatMap(({ bundle }) => bundle.entry.map((e) => e.resource)
+  .filter((r) => r.resourceType === "Condition")
+  .filter((r) => ["confirmed", "refuted"].includes(r.verificationStatus.coding[0].code))
+  .map((r) => `${r.id}=${r.verificationStatus.coding[0].code}`))
+check("红线：31 例里没有任何 Condition 被写成 confirmed/refuted（AI 不得声称确诊或已排除）",
+  badVerdict.length === 0, badVerdict.slice(0, 4).join(","))
+const distinct = new Set(bundles.flatMap(({ bundle }) => bundle.entry.map((e) => e.resource)
+  .filter((r) => r.resourceType === "Condition").map((r) => r.verificationStatus.coding[0].code)))
+check("分档确实在产出（全表出现过的码 ≥2 个，只有一种＝等于没分）",
+  distinct.size >= 2 && distinct.has("provisional") && distinct.has("differential"), [...distinct].join(","))
+const ab = bundles.filter(({ dx }) => dx.abstain === true)
+check(`弃权例（实测 ${ab.length} 例）的 Condition 一律落 unconfirmed（R4 无 unknown，取"证据不足"档；分母 0 不得记通过）`,
+  ab.length > 0 && ab.every(({ bundle }) => bundle.entry.map((e) => e.resource).filter((r) => r.resourceType === "Condition")
+    .every((r) => r.verificationStatus.coding[0].code === "unconfirmed")),
+  ab.map((x) => x.id).join(",") || "弃权分母为 0＝评测集里没弃权例，本条不许记绿")
 const pat = resources.find((r) => r.resourceType === "Patient")
 check("Patient.gender 取值在 administrative-gender 已核验码集内",
   VERIFIED[CS.gender].includes(pat.gender), pat.gender)
@@ -222,6 +247,9 @@ const poisons = [
   ["混入时钟字段", (b) => { b.timestamp = "2026-09-25T00:00:00Z" }],
   ["结论丢失医生终审文案", (b) => { res(b, "DiagnosticReport").conclusion = "诊断明确" }],
   ["编造无出处的 ICD 编码", (b) => { res(b, "Condition").code.coding = [{ system: CS.icd10, code: "Z99.9" }] }],
+  // 这条是给"刚扩过的验证状态白名单"配的：合法码 provisional/differential 是 CodeSystem 的**嵌套子概念**，
+  // 而 "suspected" 不在码集内 —— 若白名单被改成"来者不拒"，这条就不会红。
+  ["编造的验证状态码（证清白名单非恒真）", (b) => { res(b, "Condition").verificationStatus.coding[0].code = "suspected" }],
 ]
 for (const [name, mutate] of poisons) {
   const bad = clone(bundles[0].bundle)

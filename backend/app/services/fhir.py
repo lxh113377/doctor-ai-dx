@@ -117,6 +117,12 @@ def _condition_resources(dx):
         "clinicalStatus": {"coding": [{"system": CS["clinical"], "code": "active"}]},
     }
     out = []
+    # 验证状态按 HL7 FHIR R4 值集 condition-ver-status 分档（与 engine 侧 fhir.js 同表同码）：
+    # 首要诊断＝provisional（暂定，仍在考虑），鉴别＝differential（一组待排除候选），弃权＝证据不足的 unconfirmed。
+    # R4 无 unknown 码；AI 输出永不写 confirmed/refuted（把辅助参考冒充确诊＝红线事故）。
+    abstain = bool(dx.get("abstain"))
+    ver_code = "unconfirmed" if abstain else "provisional"
+    ver_diff = "unconfirmed" if abstain else "differential"
     for i, p in enumerate((dx.get("primary") or [])[:4]):
         codes = list(dict.fromkeys(
             c for eid in (p.get("evidence_ids") or []) for c in _icd_codes(rag.kb_icd(eid))))
@@ -124,7 +130,7 @@ def _condition_resources(dx):
         if codes:
             code["coding"] = [{"system": CS["icd10"], "code": c} for c in codes]
         out.append({**base, "id": f"cond-primary-{i + 1}",
-                    "verificationStatus": {"coding": [{"system": CS["verStatus"], "code": "unconfirmed"}]},
+                    "verificationStatus": {"coding": [{"system": CS["verStatus"], "code": ver_code}]},
                     "category": [{"coding": [{"system": CS["category"], "code": "encounter-diagnosis"}]}],
                     "code": code,
                     "note": [{"text": _s(f"优先级 {p.get('prob')}｜支持理由：{'；'.join((p.get('reasons') or [])[:2])}", 300)}],
@@ -137,7 +143,7 @@ def _condition_resources(dx):
         if codes:
             code["coding"] = [{"system": CS["icd10"], "code": c} for c in codes]
         out.append({**base, "id": f"cond-differential-{i + 1}",
-                    "verificationStatus": {"coding": [{"system": CS["verStatus"], "code": "unconfirmed"}]},
+                    "verificationStatus": {"coding": [{"system": CS["verStatus"], "code": ver_diff}]},
                     "category": [{"coding": [{"system": CS["category"], "code": "problem-list-item"}]}],
                     "code": code,
                     "note": [{"text": _s(d.get("note"), 300)}] if d.get("note") else [],

@@ -5,6 +5,16 @@
 
 ## [Unreleased]
 
+- **FHIR 互操作层的验证状态分档（第六十八轮，#190 前置）**：一手读数——真实 Bundle 22 条 entry 里 `dataAbsentReason` 出现 **0 次**，
+  而 31 例的 `Condition.verificationStatus` **一律** `unconfirmed`：首要诊断与鉴别诊断在互操作层读不出差别，弃权卡（信息不足）也被当成同一种状态。
+  现按官方码集分档：首要＝`provisional`（暂定，仍在考虑）、鉴别＝`differential`（一组待排除候选）、弃权＝`unconfirmed`（证据不足；
+  R4 该码集无 `unknown`）。原文可复算：`curl -sL https://terminology.hl7.org/CodeSystem-condition-ver-status.json`，
+  实测层级为 unconfirmed→{provisional, differential} / confirmed / refuted / entered-in-error。
+  AI 输出永不写 `confirmed`/`refuted`——新增红线腿断言 31 例里一例都不许出现，另加 poison（码 `suspected`）反证白名单非恒真。
+  **顺带抓出核验面自己的缺陷**：`fhir_guard` 的已核验白名单原先只抄 CodeSystem 顶层概念，嵌套子码会被误判成"编造术语"
+  ⇒ 已改为取**闭包**，并在注释里留复算命令（这类"抄一层"的核验面漏项，比代码缺陷更早该被发现）。
+  双端同步：`fhir.js` 与 `fhir.py` 同表同码；`contract_parity` 31:31、`fhir_guard` 49 项、`test_fhir` 20 项各自回表。
+
 - **问诊追问三态诚实化（第六十七轮，#188）**：一手＝2026-09-28T08:31Z 线上实测，live 通道全回落时第 6 轮追问回的仍是
   「问诊信息已足够……」，而同一时刻 /api/dx 报 `LLM 超时/输出非法` ⇒ **模型没判断过"够不够"，话却是"已足够"**。
   现拆三态：`intake-done`（仅模型明确 done，唯一可说"已足够"）／`intake-cap`（补充 3 轮用完，陈述采集边界）／
