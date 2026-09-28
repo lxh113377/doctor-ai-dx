@@ -82,6 +82,12 @@ CODES_SEEN = {c["verificationStatus"]["coding"][0]["code"]
               for d in ALL_DX for c in resources(d["fhir"]) if c["resourceType"] == "Condition"}
 check("分档确实在产出（出现过的码 ≥2 且含 provisional/differential，只有一种＝等于没分）",
       len(CODES_SEEN) >= 2 and {"provisional", "differential"} <= CODES_SEEN, ",".join(sorted(CODES_SEEN)))
+R4_VER_CODES = {"unconfirmed", "provisional", "differential", "confirmed", "refuted", "entered-in-error"}
+OUT_OF_CODESYS = sorted(CODES_SEEN - R4_VER_CODES)
+check("镜像面只用 R4 CodeSystem 在册码（含 unconfirmed 之下的嵌套子码 provisional/differential）",
+      not OUT_OF_CODESYS, ",".join(OUT_OF_CODESYS))
+check("弃权分母非 0 且逐例回表（本轮实测 " + str(len(ABSTAIN_DX)) + " 例）",
+      len(ABSTAIN_DX) > 0, "评测集里没有弃权例＝这条判据在空转")
 
 check("红旗命中被独立承载（规则层不被模型覆盖）", bool(dx["flags"]) and any(
     x["id"] == "flag-summary" and x["component"] for x in res))
