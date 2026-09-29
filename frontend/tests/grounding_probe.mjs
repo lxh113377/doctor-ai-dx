@@ -14,28 +14,9 @@ import { readFileSync } from "node:fs"
 import { fileURLToPath } from "node:url"
 import { buildDiagnosis } from "../functions/lib/engine.js"
 import { KNOWLEDGE_BASE, KB_BY_ID } from "../functions/lib/knowledge.js"
+import { supportRatio, MIN_SPAN } from "./grounding_ruler.mjs"
 
-const MIN_SPAN = 4 // 短于 4 字的断言（"肺炎""头痛"）不参与比值：二元组集合本身就只有 1 个元素，噪声压倒信号
 const ROT = 7 // 错配对照的偏移量：取常量而非随机，保证两次跑逐字节同读数
-
-const PUNCT_RE = /[\s\p{P}\p{S}]/gu
-function bigrams(s) {
-  const t = String(s ?? "").toLowerCase().replace(PUNCT_RE, "")
-  const out = new Set()
-  for (let i = 0; i < t.length - 1; i++) out.add(t.slice(i, i + 2))
-  return out
-}
-
-// 支撑比 = 断言的二元组里，有多少能在所引证据正文里找到（集合口径，与 ragas 的 span fraction 同形）
-function supportRatio(claim, sources) {
-  const cb = bigrams(claim)
-  if (cb.size === 0) return { ratio: null, spans: 0, hit: 0 }
-  const sb = new Set()
-  for (const s of sources) for (const g of bigrams(s)) sb.add(g)
-  let hit = 0
-  for (const g of cb) if (sb.has(g)) hit++
-  return { ratio: hit / cb.size, spans: cb.size, hit }
-}
 
 function textOf(id) {
   const k = KB_BY_ID.get(id)
