@@ -40,7 +40,7 @@
 | 可观测性 | 每请求 `X-Request-Id`；错误结构化日志（无堆栈/路径/密钥，出站前脱敏）；>8s 慢请求告警 | `frontend/functions/lib/observe.js` ↔ `backend/app/observe.py`；route_guard 25 项 + 后端 test_api_observe 40 项 + live 路径 43/37 项（含追问 live 分支与「超限轮零外呼」）（含无 crypto 回退、warn/info 两级日志、空入参、慢请求 warn 与 404 契约）。日志未接集中式后端（见 §3） |
 | 降级行为 | 无 Key / 超时 / 非法 JSON → `rule-fallback` 且带 `fallback_reason` | 31/31 降级标注通过；错误态只显示医生可理解文案 + 故障编号 |
 <!-- >>> eval-card-live v1 (由 tests/eval_card_guard.mjs 单向生成，禁手改) >>> -->
-| 线上链路读数（**现役**·本行由脚本从报告生成，手改必被判红） | live **0/31** ｜ rule-fallback **31/31** ｜ 红旗 **14/14** ｜ P95 1717ms（≤10s 达标） ｜ 结构 **31/31** ｜ 引用 **31/31** ｜ 弃权 **3/31** ｜ 非设计内回落 **28/31** | 取数=当日线上评测报告（date=2026-09-28T16:13:49.399Z, base=https://doctor-ai-dx.pages.dev）；该面不入库（干净检出里没有它，缺席时判据记 UNVERIFIED 不记绿），生产方 `npm run eval:live` 与 `.github/workflows/live-smoke.yml` online-eval 同一套。**P95 只在同 mode 内可比**：本行是 回落主导链路读数，禁止与另一 mode 的历史行横比。降级归因**线上不可见**：`fallback_cause_field_cases`=0，线上跑的仍是未带该字段的已发版本（属未到期，不是回归） |
+| 线上链路读数（**现役**·本行由脚本从报告生成，手改必被判红） | live **31/31** ｜ rule-fallback **0/31** ｜ 红旗 **14/14** ｜ P95 4602ms（≤10s 达标） ｜ 结构 **31/31** ｜ 引用 **31/31** ｜ 弃权 **3/31** ｜ 非设计内回落 **0/31** | 取数=当日线上评测报告（date=2026-09-29T18:01:31.350Z, base=https://doctor-ai-dx.pages.dev）；该面不入库（干净检出里没有它，缺席时判据记 UNVERIFIED 不记绿），生产方 `npm run eval:live` 与 `.github/workflows/live-smoke.yml` online-eval 同一套。**P95 只在同 mode 内可比**：本行是 live 主导链路读数，禁止与另一 mode 的历史行横比。降级归因**线上不可见**：`fallback_cause_field_cases`=0，线上跑的仍是未带该字段的已发版本（属未到期，不是回归） |
 <!-- <<< eval-card-live v1 <<< -->
 
 ## 2b. 弃权 / 范围外第三态（第二十八轮，台账 #52）

@@ -5,7 +5,8 @@
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs"
 import { dirname, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
-import { KNOWLEDGE_BASE } from "../frontend/functions/lib/knowledge.js"
+import { KNOWLEDGE_BASE, KB_BY_ID } from "../frontend/functions/lib/knowledge.js"
+import { supportRatio } from "../frontend/tests/grounding_ruler.mjs"
 
 // 参数一律走 argv 而不是环境变量：本脚本是**工具链面**（评测者手工跑），不是应用配置。
 // 用 env 会被 tests/env_guard.mjs 按「应用从零启动的声明面」口径要求写进 backend/.env.example，
@@ -17,6 +18,31 @@ const arg = (name, dflt) => {
 const BASE = arg("--base", "https://doctor-ai-dx.pages.dev").replace(/\/$/, "")
 const VALID = new Set(KNOWLEDGE_BASE.map((k) => k.id))
 const suite = JSON.parse(readFileSync(new URL("../frontend/tests/fixtures/eval_cases.json", import.meta.url), "utf8"))
+// --limit：通路间歇（台账 #146）时先跑前 N 例拿真读数，比"整批跑到超时然后什么都没有"有用。
+// 用了它就**必须把"样本"这件事带进报告与终行**（分母两侧都印），否则 10 例的读数会被读成 31 例的。
+const CASES_ALL = Array.isArray(suite.cases) ? suite.cases : []
+const LIMIT = Number(arg("--limit", String(CASES_ALL.length)))
+const CASES = Number.isFinite(LIMIT) && LIMIT > 0 ? CASES_ALL.slice(0, Math.floor(LIMIT)) : CASES_ALL
+if (CASES.length === 0) {
+  console.log(`FAIL :: 用例取到 0 例（面内 ${CASES_ALL.length} 例，limit=${arg("--limit", "未给")}）⇒ 零输入绝不记 ALL PASS`)
+  console.log("[GATE:eval-empty-denominator]")
+  process.exit(2)
+}
+if (CASES.length < CASES_ALL.length) console.log(`⚠️ 本轮是**样本**：前 ${CASES.length} 例 / 面内 ${CASES_ALL.length} 例——所有分母均按 ${CASES.length} 计，不得当全量引用`)
+
+// 引用落地性（第七十七轮，台账 #202 的 live 面）：尺与 npm run probe:grounding 同一把
+// （tests/grounding_ruler.mjs 单一源，不在此另立第二真值）。
+// 为什么在 live 面才量得到：回填通道（functions/lib/engine.js 的 validateDiagnosis，
+// LLM 未挂引用时回填全局检索证据）只在带 Key 的 live 分支触发，rule-fallback 面上构造性测不到——
+// 第七十五轮的探针因此自带 blind 行而不是宣称全绿。
+// 客户端响应只拿得到**最终** evidence_ids，分不清哪几个是 LLM 自己挂的、哪几个是回填的；
+// 所以这里量的是结果侧的"支撑有无"（口径A＝诊断名 ⇄ 所引条目正文），不是回填计数——
+// 低支撑=引用没落在讲这个病的条目上，回填是其成因之一而非唯一成因，读数按此措辞引用。
+const kbText = (id) => { const k = KB_BY_ID.get(id); return k ? `${k.title || ""} ${k.condition || ""} ${k.text || ""}` : "" }
+const gSelf = []
+const gCtrl = []
+const gBad = []
+
 
 const lat = []
 function pct(arr, p) { const a = [...arr].sort((x, y) => x - y); return a[Math.min(a.length - 1, Math.floor(a.length * p))] }
@@ -33,7 +59,7 @@ let structPass = 0, citePass = 0, modeLive = 0, modeFallback = 0, flagOk = 0, fl
 const modeByCase = {}
 const failures = []
 
-for (const c of suite.cases) {
+for (const c of CASES) {
   const caseId = c.case_id || "c1"
   const history = c.answers.map((a) => ({ role: "user", content: a }))
   const errs = []
@@ -60,6 +86,28 @@ for (const c of suite.cases) {
     if (d.scope_status !== "in-scope") errs.push(`未弃权但scope=${d.scope_status}`)
   }
   if (!Array.isArray(d.evidence) || d.evidence.length < 2) errs.push("evidence<2")
+  // 落地性逐条计分（非弃权例；弃权例的 primary 是承诺的弃权卡，不参与"挂错条"判定）
+  if (d.abstain !== true) {
+    const items = [...(d.primary || []), ...(d.differential || [])]
+    items.forEach((it, ii) => {
+      const ids = (it && Array.isArray(it.evidence_ids)) ? it.evidence_ids : []
+      const cited = ids.map(kbText).filter(Boolean)
+      const claim = String((it && it.name) || "")
+      if (!cited.length || claim.length < 2) return
+      const m = supportRatio(claim, cited)
+      if (m.ratio === null) return
+      gSelf.push(m.ratio)
+      const own = new Set(ids)
+      const alt = KNOWLEDGE_BASE.map((k) => k.id).filter((x) => !own.has(x))
+      if (alt.length) {
+        const pick = [alt[(gSelf.length * 7) % alt.length]]
+        const mc = supportRatio(claim, pick.map(kbText).filter(Boolean))
+        if (mc.ratio !== null) gCtrl.push(mc.ratio)
+      }
+      if (m.ratio < 0.34) gBad.push({ case: c.id, scene: c.scene, item: claim.slice(0, 26), ids, ratio: Number(m.ratio.toFixed(3)) })
+    })
+  }
+
   const ids = [...(d.evidence || []).map((e) => e.id), ...(d.trace?.evidence_ids || []), ...d.primary.flatMap((p) => p.evidence_ids || [])]
   const bad = ids.filter((i) => !VALID.has(i))
   if (bad.length) errs.push("非法引用:" + bad.join(",")); else citePass++
@@ -80,7 +128,27 @@ for (const cid of ["c1", "c2", "c3"]) {
   if (!rp.data?.soap?.subjective) failures.push({ id: "report-" + cid, errs: ["SOAP空"] })
 }
 
-const n = suite.cases.length
+const n = CASES.length
+const gm = (a) => (a.length ? a.reduce((x, y) => x + y, 0) / a.length : null)
+const liveSelf = gm(gSelf); const liveCtrl = gm(gCtrl)
+const grounding_obj = {
+  items_scored: gSelf.length, control_scored: gCtrl.length,
+  mean_support: liveSelf === null ? null : Number(liveSelf.toFixed(3)),
+  mean_control: liveCtrl === null ? null : Number(liveCtrl.toFixed(3)),
+  below_034: gBad.length,
+  // 0.34 不是本轮拍的：它取第七十五轮同尺两侧边界（自证 1.000／刻意错配 0.059）之间的低位，
+  // 且本轮只作分布读数不作闸（R236 补注③：标定前先测两侧）。
+  ruler: "frontend/tests/grounding_ruler.mjs（与 npm run probe:grounding 同一把）",
+  sample: CASES.length < CASES_ALL.length ? `前 ${CASES.length}/${CASES_ALL.length} 例` : "全量",
+  weakest: gBad.slice(0, 6),
+}
+console.log(`引用落地性（live 面，口径A＝诊断名⇄所引条目）：计分 ${gSelf.length} 条｜对照 ${gCtrl.length} 条｜`
+  + `mean_support=${grounding_obj.mean_support}｜mean_control=${grounding_obj.mean_control}｜低于 0.34 的 ${gBad.length} 条｜样本=${grounding_obj.sample}`)
+if (gSelf.length && liveCtrl !== null && liveSelf !== null && liveSelf <= liveCtrl) {
+  console.log("⚠️ [GATE:live-grounding-flat] 本轮 live 读数的自证支撑不高于刻意错配 ⇒ 与 rule-fallback 面（1.000/0.059）形状不同，须逐例看是不是引用没落在讲这个病的条目上")
+} else if (gSelf.length) {
+  console.log("[GATE:live-grounding-scored] 两侧读数已取到，可作 #202 的标定依据（不当闸）")
+}
 const report = {
   date: new Date().toISOString(), base: BASE,
   dx_latency_ms: { n: lat.length, p50: pct(lat, 0.5), p95: pct(lat, 0.95), max: Math.max(...lat) },
@@ -106,6 +174,7 @@ const report = {
   unexpected_fallback: Object.values(modeByCase).filter((x) => x.mode !== 'live' && !x.abstain).length,
   red_flag_recall_live: `${flagOk}/${flagTotal}`,
   p95_within_10s: pct(lat, 0.95) <= 10000,
+  grounding: grounding_obj,
   failures,
 }
 const outputPath = arg("--report", "")
