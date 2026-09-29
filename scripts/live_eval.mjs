@@ -104,7 +104,29 @@ for (const c of CASES) {
         const mc = supportRatio(claim, pick.map(kbText).filter(Boolean))
         if (mc.ratio !== null) gCtrl.push(mc.ratio)
       }
-      if (m.ratio < 0.34) gBad.push({ case: c.id, scene: c.scene, item: claim.slice(0, 26), ids, ratio: Number(m.ratio.toFixed(3)) })
+      if (m.ratio < 0.34) {
+        // 本可改引的条目：全库里对该结论名支撑最高、且**不在它现有引用里**的那一条。
+        // 为什么当场算而不是留给下一轮：处置 12 条低支撑时第一个要问的就是"那它该引谁"，
+        // 让下一轮重新跑一遍线上才能拿到这个数，等于把同一笔网络成本付两次（且通路按时刻可断）。
+        // 归类口径（不引入任何外部断言，纯读数）：alt_ratio 明显高于 ratio ⇒ 内容侧问题（语料里有更合适的条目，是挂错）；
+        // alt_ratio 也低 ⇒ 机制/语料侧问题（这 60 条里根本没有讲这个病的条目），两者处置动作不同，不许混成一条待办。
+        const own = new Set(ids)
+        let alt = null
+        for (const k of KNOWLEDGE_BASE) {
+          if (own.has(k.id)) continue
+          const s = supportRatio(claim, [kbText(k.id)])
+          if (s.ratio === null) continue
+          if (!alt || s.ratio > alt.ratio) alt = { id: k.id, source: k.source, year: k.year, ratio: s.ratio }
+        }
+        gBad.push({
+          case: c.id, scene: c.scene, item: claim.slice(0, 30), ids,
+          ratio: Number(m.ratio.toFixed(3)),
+          alt_id: alt ? alt.id : null, alt_source: alt ? alt.source : null,
+          alt_ratio: alt ? Number(alt.ratio.toFixed(3)) : null,
+          kind: alt ? (alt.ratio >= m.ratio + 0.2 ? "挂错条(内容侧有更适条目)" : "语料无对应条目(机制/语料侧)") : "无替代候选",
+        })
+      }
+
     })
   }
 
@@ -140,10 +162,12 @@ const grounding_obj = {
   // 且本轮只作分布读数不作闸（R236 补注③：标定前先测两侧）。
   ruler: "frontend/tests/grounding_ruler.mjs（与 npm run probe:grounding 同一把）",
   sample: CASES.length < CASES_ALL.length ? `前 ${CASES.length}/${CASES_ALL.length} 例` : "全量",
-  weakest: gBad.slice(0, 6),
+  weakest: gBad,
 }
 console.log(`引用落地性（live 面，口径A＝诊断名⇄所引条目）：计分 ${gSelf.length} 条｜对照 ${gCtrl.length} 条｜`
   + `mean_support=${grounding_obj.mean_support}｜mean_control=${grounding_obj.mean_control}｜低于 0.34 的 ${gBad.length} 条｜样本=${grounding_obj.sample}`)
+const wrongBind = gBad.filter((x) => x.kind.startsWith("挂错条")).length
+console.log(`低支撑归类（同一把尺，alt＝全库里对该结论名支撑最高且未被引的条目）：挂错条 ${wrongBind} 条／语料无对应条目 ${gBad.length - wrongBind} 条／无替代候选 ${gBad.filter((x) => !x.alt_id).length} 条`)
 if (gSelf.length && liveCtrl !== null && liveSelf !== null && liveSelf <= liveCtrl) {
   console.log("⚠️ [GATE:live-grounding-flat] 本轮 live 读数的自证支撑不高于刻意错配 ⇒ 与 rule-fallback 面（1.000/0.059）形状不同，须逐例看是不是引用没落在讲这个病的条目上")
 } else if (gSelf.length) {
