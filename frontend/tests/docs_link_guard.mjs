@@ -190,6 +190,24 @@ for (const file of mdFiles) {
     }
   }
 }
+// 第七十五轮补的**第二面**：上面这个循环只覆盖本仓 docs/README，而「手抄条数」这一族的缺口
+// 是按面漏的（#51 的原始结论就是"补一次不算完"）。一手实测：本仓这把尺此前已抓到过一次
+// （PITFALLS 那条 55→60 就是它点名的），而父仓两份**注入面**——`../AGENTS.md` 04 节与
+// `../memory/04-file-map.md`——旧写条数 55 而真值已 60，且父仓 freeze_check 的 29 检里
+// 没有条数这把尺（本轮 freeze 29/29 全绿即为证）。这两面会被自动注入每一个新会话，过期读数直接进上下文。
+// 干净检出里父仓不在场 ⇒ 声明为**可选面**：在场就纳入同一判据，不在场不冒充"已覆盖"（读数进 check 名）。
+// 注：本注释块自身的写法也要避开 `N 条知识库` 形——源码面在射程内，第一版就是被这条判据判红的（自踩实录）。
+const INJECT_FACES = ["../AGENTS.md", "../memory/04-file-map.md"]
+  .map((p) => resolve(ROOT, p)).filter((p) => existsSync(p))
+for (const p of INJECT_FACES) {
+  const t = readFileSync(p, "utf8")
+  for (const re of KB_RE) {
+    for (const m of t.matchAll(re)) {
+      kbTotal++
+      if (Number(m[1]) !== KB_COUNT) docClaims.push(`${relative(ROOT, p).replace(/\\/g, "/")} → "${m[0]}" 应为 ${KB_COUNT} 条（父仓注入面）`)
+    }
+  }
+}
 // 第四~六族派生真值（第三十三轮 #51 的第一块落点）：知识库的另外三个计数。
 // 触发实测：本轮把 `docs/ARCHITECTURE.md` 的「症状→证据映射 60 键」核出来是 73——
 // 上一轮的 #91 只把**条数**扩了射程，同一段里的键数/组数/加权词数仍无人对账，
@@ -216,7 +234,7 @@ check(`三个计数判据各自有输入（每族 ≥1 处，实测 ${KB_TALLIES
   KB_TALLIES.every(([, , label]) => (tallySeen[label] || 0) >= 1),
   "某族扫到 0 处＝该族正则失效或文档已不写这个数，两种都要点名而不是静默")
 
-check(`文档中的套件数/工作流份数/知识库条数全部为派生真值（套件=${suiteCount}、工作流=${wfCount}、条目=${KB_COUNT}）`,
+check(`文档中的套件数/工作流份数/知识库条数全部为派生真值（套件=${suiteCount}、工作流=${wfCount}、条目=${KB_COUNT}、父仓注入面在场 ${INJECT_FACES.length}/2）`,
   docClaims.length === 0, docClaims.slice(0, 8).join(" | "))
 check(`该判据确有输入（扫到 ${countTotal} 处计数声明，≥3 才算在射程内）`, countTotal >= 3,
 

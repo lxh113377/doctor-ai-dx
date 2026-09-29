@@ -69,6 +69,7 @@
     "probe:register": "node tests/register_probe.mjs",
     "test:register": "node tests/register_probe.mjs",
     "probe:ablation": "node tests/bonus_ablation.mjs",
+    "probe:grounding": "node tests/grounding_probe.mjs",
     "test:gold2": "node tests/gold_second_source.mjs"
   },
   "dependencies": {
