@@ -52,7 +52,7 @@ SUITES: dict[str, list[tuple[str, str, str, str, int]]] = {
          "npm run test:e2e", 1200),
     ],
     "delivery": [
-        ("freeze-check", "交付口径十二检（工作区父仓 work/freeze_check.mjs）", "..",
+        ("freeze-check", "交付口径检查（工作区父仓 work/freeze_check.mjs；检数=本步末行 OVERALL 的 n/n，不在此抄）", "..",
          "node work/freeze_check.mjs", 600),
         ("delivery-consistency", "交付副本对账（工作区父仓）", "..",
          "python work/check_delivery_consistency.py", 600),
