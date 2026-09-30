@@ -5,6 +5,19 @@
 
 ## [Unreleased]
 
+- **OPENAPI.md 派生化与漂移守卫（第八十三轮，#211）**：第八十二轮为补「人类可读 API 文档」产出的 `docs/OPENAPI.md`，
+  是**一次性命令的产物**——既没有生成源也没有守卫：json 里加一个端点或升一个版本号，md 会静静停在旧值上
+  （#106 同族：派生件一旦可手写就必然过期，而读 md 的那一方正是人）。现把真值收拢到一处：
+  `scripts/gen_openapi.py` 在同步 `info.version` 之外**按 json 现算重写 md**（端点／summary／响应码／tags 全派生），
+  `--check` 增加 md 逐字节比对；新增 `frontend/tests/openapi_md_guard.mjs`（第 28 件套）做
+  版本／端点集合／每端点响应码／summary 四处**双向全等**。三组反例实测 rc=1：
+  只改 json 版本号（md 仍 1.45.0）⇒ 红；json 加幽灵端点 `/api/ghost`（md 无）⇒ 红；
+  手改 md 一条 summary（json 未动）⇒ 红；恢复后 28 件套 rc=0、`docs_link_guard` 27 pass／0 fail、
+  ruff／mypy（46 文件 0 错）／ESLint 全绿。件套数由 `docs_link_guard` 从 `package.json` 现算点名后，
+  6 份文档「二十七件套」→「二十八件套」（不手抄）。提交链同步：`.pre-commit-config.yaml` 新增 `openapi-md-drift` 钩
+  （17→18 钩，钩数由 `docs_link_guard` 现算后 5 份文档同步），并把 `openapi-version-drift` 的 `files:` 扩到
+  `docs/OPENAPI.md` —— 否则「判据扩了面、钩子没扩 files」会让它永远 Skipped（r44 同族教训）。
+
 - **FHIR 互操作层的验证状态分档（第六十八轮，#190 前置）**：一手读数——真实 Bundle 22 条 entry 里 `dataAbsentReason` 出现 **0 次**，
   而 31 例的 `Condition.verificationStatus` **一律** `unconfirmed`：首要诊断与鉴别诊断在互操作层读不出差别，弃权卡（信息不足）也被当成同一种状态。
   现按官方码集分档：首要＝`provisional`（暂定，仍在考虑）、鉴别＝`differential`（一组待排除候选）、弃权＝`unconfirmed`（证据不足；

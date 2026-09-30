@@ -25,11 +25,20 @@ repos:
         pass_filenames: false
 
       - id: openapi-version-drift
-        name: OpenAPI 版本与后端单一源一致
+        name: OpenAPI 版本与后端单一源一致（含 OPENAPI.md 派生同步）
         entry: python scripts/gen_openapi.py --check
         language: system
         pass_filenames: false
-        files: ^(backend/app/(version|main)\.py|backend/app/routers/.*|docs/openapi\.json)$
+        # files 必须与判据的取数面同宽（r44 教训：扩了判据却忘改 files ⇒ 钩子永远 Skipped）：
+        # --check 第八十三轮起也比对 docs/OPENAPI.md，故 md 单独被改也要触发。
+        files: ^(backend/app/(version|main)\.py|backend/app/routers/.*|docs/openapi\.json|docs/OPENAPI\.md)$
+
+      - id: openapi-md-drift
+        name: OPENAPI.md（派生件）↔ openapi.json 四处双向全等
+        entry: node frontend/tests/openapi_md_guard.mjs
+        language: system
+        pass_filenames: false
+        files: ^(docs/openapi\.json|docs/OPENAPI\.md)$
 
       # 静态检查两枚（第十四轮补）：与 CI 同源判据、同配置文件。
       # 刻意不用 hook 级 cwd：pre-commit 4.6.2 对 repo:local 的 cwd 键只告警不生效（实测），

@@ -32,7 +32,7 @@
 ## 提交前必须全绿
 
 ```bash
-cd frontend && npm test                       # 二十七件套，含双端契约、配置契约(env)、诊断排序金标准与知识库门禁
+cd frontend && npm test                       # 二十八件套，含双端契约、配置契约(env)、诊断排序金标准与知识库门禁
 cd frontend && npm run lint                   # 静态检查门禁（ESLint + ruff；警告也算红）
 cd frontend && npm run typecheck              # Python 类型门禁（mypy 严格档，阈值 fixtures/type_floor.json）
 cd frontend && npm run lock                   # 依赖锁定对账（requirements.lock 钉版+哈希 且 Dockerfile 真从锁装）
@@ -50,9 +50,9 @@ CI 会跑同样的东西；`main` 分支保护要求 `build-and-test` 与 `backe
 **克隆后必须跑一次 `pre-commit install`**（第三十三轮 #95 收口）。`.pre-commit-config.yaml` 自 v1.6.1 就在仓里，
 但那是**本机钩子配置**，不是 CI 步骤——实测 v1.29.0 之前本机 `.git/hooks/pre-commit` 并不存在、`core.hooksPath` 未设，
 于是它是「配置在册、无人执行」。第三十三轮（v1.30.0）的处置是**二选一里选了「写进文档」这一项**：不在 CI 另挂一份 `pre-commit run --all-files`，
-理由是那 17 个钩与上面 `npm test` / `lint` / `typecheck` 同源判据、只是换条链重跑，会把 CI 时长翻倍而不增加任何覆盖面。
+理由是那 18 个钩与上面 `npm test` / `lint` / `typecheck` 同源判据、只是换条链重跑，会把 CI 时长翻倍而不增加任何覆盖面。
 判据的覆盖面因此是：CI 守全部阻断项，`pre-commit` 只把同一批判据前移到提交前 30 秒。装好后用 `pre-commit run --all-files` 验一次，
-应为 17 个钩全跑（没装的人不会有任何提示——这就是本段存在的意义）。
+应为 18 个钩全跑（没装的人不会有任何提示——这就是本段存在的意义）。
 
 一条命令跑完本机全部验证面（步骤清单唯一源 = `scripts/verify.py`，文档不再各抄一份命令序列）：
 
@@ -149,6 +149,6 @@ python scripts/verify.py --suite gate
 - **同文件多 PR 积压**：按"聚合批"处理——自开分支一次覆盖 N 包，PR 描述引用被覆盖编号，合入后关闭原 PR（留言可 `/rerun` 重建）。
 - **major**：先查 peer（`npm i` 干跑看 ERESOLVE），框架级升级（如 vite 大版本）单独立项，不混入依赖批；结论写入 PR 评论留痕。
 - 自动审计：`.github/workflows/dep-audit.yml` 每周一 npm audit（high 即红）+ pip-audit（观察期报告制，删 `continue-on-error` 一行即转硬门禁）；依赖文件变更的 PR 也会触发。注：本机镜像 registry 无 audit 端点，本地 `npm audit` 不可用属环境限制，以 CI 为准（2026-09-24 实测）。
-- 任何依赖变更后：`npm run lint` + `npm test` 二十七件套 + `npm run lock` + `npm run build` + `npm run test:bundle`（体积地板线）+ `npm run sbom && npm run sbom:check` 全绿。
+- 任何依赖变更后：`npm run lint` + `npm test` 二十八件套 + `npm run lock` + `npm run build` + `npm run test:bundle`（体积地板线）+ `npm run sbom && npm run sbom:check` 全绿。
   SBOM 属发布期产物、**刻意不入库**（入库就会造出「陈旧副本 vs 当前 lock」的第二真值）；tag 工作流会重算并连同 SHA256 一起挂到 Release。
   改依赖后本地先跑一遍对账，别等发布期才发现清单漂移。方可合。
