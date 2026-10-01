@@ -4,4 +4,4 @@
 # CI 依赖（CI 从不重跑蒸馏）——但它是**代码 import 的名字**，必须有一张声明面装着它，
 # 否则 `scripts/dep_completeness.py` 的「import ⊆ 声明」判据要么判红、要么被豁免掉（两者都是假绿）。
 # 装法：python -m pip install -r backend/requirements-build.txt
-numpy>=2.1.0
+numpy>=2.5.3
