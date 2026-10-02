@@ -182,6 +182,43 @@ export async function listHandoffs(env, { limit } = {}) {
   return { available: true, items: rows }
 }
 
+/** 工单合法状态集（与 d1_schema.sql 的 CHECK 同源口径；schema 加状态必须同步这里与守卫）。 */
+export const HANDOFF_STATUSES = Object.freeze(["open", "assigned", "closed"])
+
+/**
+ * 工单状态机（r91，S3）：合法迁移表的唯一真相源，守卫按它断言。
+ * open→assigned（坐席接单）/ open→closed（直接关闭）/ assigned→closed（处理完关闭）；
+ * closed 是终态，任何回退与重放都拒绝——「关闭了的工单又被悄悄改回 open」比没有状态机更糟。
+ */
+const HANDOFF_TRANSITIONS = Object.freeze({
+  open: Object.freeze(["assigned", "closed"]),
+  assigned: Object.freeze(["closed"]),
+  closed: Object.freeze([]),
+})
+
+export function canTransitionHandoff(from, to) {
+  return (HANDOFF_TRANSITIONS[from] || []).includes(to)
+}
+
+/**
+ * 指派/关闭转人工工单（补齐 r90 缺口「判定齐了，接管没人」）。
+ * 返回 {ok, code, ...}：422 非法目标态 / 503 存储不可用 / 404 不存在 / 409 非法迁移。
+ */
+export async function updateHandoffStatus(env, { id, status }) {
+  if (!HANDOFF_STATUSES.includes(status) || status === "open") {
+    return { ok: false, code: 422, reason: "status 必须是 assigned 或 closed（open 是初始态，不可回设）" }
+  }
+  if (!d1Available(env)) return { ok: false, code: 503, reason: "转人工工单存储不可用，请稍后重试" }
+  const rows = await all(env, "SELECT id, status FROM handoffs WHERE id = ?", id)
+  const row = rows[0]
+  if (!row) return { ok: false, code: 404, reason: "工单不存在" }
+  if (!canTransitionHandoff(row.status, status)) {
+    return { ok: false, code: 409, reason: `非法状态迁移 ${row.status} -> ${status}` }
+  }
+  await env[DB_BINDING].prepare("UPDATE handoffs SET status = ? WHERE id = ?").bind(status, id).run()
+  return { ok: true, id, status }
+}
+
 /**
  * 满意度统计。
  * avg_score 用 SQL AVG 而不是取回全量在 JS 里算——量级上去后一次性取全表会把 Worker 内存打爆，

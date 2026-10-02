@@ -17,6 +17,7 @@
 | `401` | 管理后台未提供令牌（仅 `/api/admin/*`） | `未提供管理令牌` | `AUTH_NO_TOKEN.message`（`frontend/functions/lib/admin_auth.js`） | 从 `x-admin-token` 请求头补齐；**不要**把令牌放进 query（会被日志与浏览器历史记录） |
 | `403` | 管理令牌不正确（仅 `/api/admin/*`） | `管理令牌不正确` | `AUTH_BAD_TOKEN.message`（`frontend/functions/lib/admin_auth.js`） | 不重试；找管理员重置。令牌比对走恒定时间比较，泄露的是"错"而不是"差多少" |
 | `503` | 管理后台未启用：服务器未配置 `ADMIN_TOKEN`（仅 `/api/admin/*`） | `管理后台未启用：服务器未配置 ADMIN_TOKEN` | `AUTH_MISSING.message`（`frontend/functions/lib/admin_auth.js`） | 运维问题，不是调用方问题；**没配令牌时一律拒绝而非放行**——装个样子比没有门更危险 |
+| `409` | 转人工工单非法状态迁移（仅 `PATCH /api/admin/handoffs/{id}`；`closed` 为终态，任何回退与重放都拒绝） | `非法状态迁移 {当前态} -> {目标态}` | `chat_store.js updateHandoffStatus`（状态机唯一真相源 `canTransitionHandoff`） | 刷新工单列表取当前态再决定；不要对 `closed` 工单重放旧指令 |
 
 ## 三条通用约定
 

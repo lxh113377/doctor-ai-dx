@@ -108,6 +108,13 @@ def admin_handoffs(x_admin_token: str | None = Header(default=None)):
     return {"code": 0, "data": {"available": False, "reason": "镜像面不持久化", "items": []}}
 
 
+@router.patch("/admin/handoffs/{handoff_id}")
+def admin_handoff_patch(handoff_id: str, x_admin_token: str | None = Header(default=None)):
+    """镜像面同形端点（S3）：鉴权三态与权威面一致；镜像面不持久化，如实声明 available:false。"""
+    _admin_guard(x_admin_token)
+    return {"code": 0, "data": {"available": False, "reason": "镜像面不持久化", "id": handoff_id}}
+
+
 @router.get("/admin/stats")
 def admin_stats(x_admin_token: str | None = Header(default=None)):
     _admin_guard(x_admin_token)

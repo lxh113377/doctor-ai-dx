@@ -29,6 +29,7 @@ const CONTRACT = [
   ["/api/admin/conversations", "get", "seg[2] === \"conversations\" && method === \"GET\""],
   ["/api/admin/conversations/{conversationId}", "get", "seg[1] === \"admin\" && seg[2] === \"conversations\" && method === \"GET\""],
   ["/api/admin/handoffs", "get", "seg[2] === \"handoffs\" && method === \"GET\""],
+  ["/api/admin/handoffs/{handoffId}", "patch", "seg[2] === \"handoffs\" && seg[3] && method === \"PATCH\""],
   ["/api/admin/stats", "get", "seg[2] === \"stats\" && method === \"GET\""],
   ["/cds-services", "get", "method !== \"GET\""],
   ["/cds-services/{service}", "post", "seg[0] !== \"cds-services\""],

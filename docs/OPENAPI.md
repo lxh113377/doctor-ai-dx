@@ -70,6 +70,14 @@ tags: admin
 
 响应码: 200 / 401 / 403 / 500 / 503
 
+## PATCH /api/admin/handoffs/{handoffId}
+
+管理后台：转人工工单状态迁移 assigned/closed（需 x-admin-token；closed 为终态不可逆）
+
+tags: admin
+
+响应码: 200 / 401 / 403 / 404 / 409 / 422 / 500 / 503
+
 ## GET /api/admin/stats
 
 管理后台：满意度与意图统计（需 x-admin-token）

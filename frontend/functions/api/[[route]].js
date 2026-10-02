@@ -11,6 +11,7 @@ import {
   listConversations,
   getConversationDetail,
   listHandoffs,
+  updateHandoffStatus,
   satisfactionStats,
   topUnresolved,
   setFeedback,
@@ -101,6 +102,20 @@ export async function onRequest(context) {
     } else if (seg.length === 3 && seg[0] === "api" && seg[1] === "admin" && seg[2] === "handoffs" && method === "GET") {
       const auth = authorizeAdmin(context.request, env)
       response = auth.ok ? json(await listHandoffs(env, { limit: url.searchParams.get("limit") }), 200, requestId) : fail(auth.status, auth.message, requestId)
+    } else if (seg.length === 4 && seg[0] === "api" && seg[1] === "admin" && seg[2] === "handoffs" && seg[3] && method === "PATCH") {
+      // 工单状态机（S3）：坐席接单 assigned / 处理完 closed；非法迁移 409，closed 终态不可逆。
+      const auth = authorizeAdmin(context.request, env)
+      if (!auth.ok) {
+        response = fail(auth.status, auth.message, requestId)
+      } else {
+        const body = await readBody(context)
+        const r = await updateHandoffStatus(env, { id: seg[3], status: body.status })
+        if (r.ok) response = json({ id: r.id, status: r.status }, 200, requestId)
+        else if (r.code === 404) response = fail(404, `not found: ${path}`, requestId)
+        else if (r.code === 409) response = fail(409, r.reason, requestId)
+        else if (r.code === 503) response = fail(503, r.reason, requestId)
+        else response = fail(422, r.reason, requestId)
+      }
     } else if (seg.length === 3 && seg[0] === "api" && seg[1] === "admin" && seg[2] === "stats" && method === "GET") {
       const auth = authorizeAdmin(context.request, env)
       response = auth.ok

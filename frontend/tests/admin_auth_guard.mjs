@@ -9,6 +9,7 @@ import { join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { onRequest } from "../functions/api/[[route]].js"
 import { safeEqual, authorizeAdmin } from "../functions/lib/admin_auth.js"
+import { canTransitionHandoff } from "../functions/lib/chat_store.js"
 
 /** 令牌是否出现在一段文本里——抽成函数，好让「反向对照」能真的驱动它一次。 */
 const leaksSecret = (text, secret) => text.includes(secret)
@@ -65,6 +66,41 @@ console.log("== 恒定时间比较 ==")
 check("safeEqual 相同串 => true", safeEqual(SECRET, SECRET) === true)
 check("safeEqual 不同串 => false", safeEqual(SECRET, SECRET + "x") === false)
 check("safeEqual 空串 vs 非空 => false", safeEqual("", SECRET) === false)
+
+console.log("== 工单状态机 PATCH（S3：鉴权三态 × 状态迁移矩阵）==")
+const patchReq = (path, token, env, body) => onRequest({
+  request: new Request(`https://dx.test${path}`, {
+    method: "PATCH",
+    headers: token ? { "x-admin-token": token, "Content-Type": "application/json" } : { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  }),
+  env,
+})
+
+check("P1 PATCH 无令牌 => 401", (await patchReq("/api/admin/handoffs/ho_x", "", envOn, { status: "assigned" })).status === 401)
+check("P2 PATCH 错误令牌 => 403", (await patchReq("/api/admin/handoffs/ho_x", "wrong", envOn, { status: "assigned" })).status === 403)
+check("P3 PATCH 未配置令牌 => 503（不放行）", (await patchReq("/api/admin/handoffs/ho_x", SECRET, {}, { status: "assigned" })).status === 503)
+check("P4 PATCH 正确令牌但 D1 未绑定 => 503（不假装成功）",
+  (await patchReq("/api/admin/handoffs/ho_x", SECRET, envOn, { status: "assigned" })).status === 503)
+
+const mockDb = (rows) => ({ prepare: () => ({ bind: (...a) => ({ all: async () => ({ results: rows.filter((r) => r.id === a[0]) }), run: async () => {} }) }) })
+const envDb = { ...envOn, DB: mockDb([{ id: "ho_x", status: "open" }]) }
+const okRes = await patchReq("/api/admin/handoffs/ho_x", SECRET, envDb, { status: "assigned" })
+check("P5 open→assigned 正确令牌 => 200（反向对照：防「永远拒绝」假绿）", okRes.status === 200, String(okRes.status))
+check("P6 工单不存在 => 404", (await patchReq("/api/admin/handoffs/ho_none", SECRET, envDb, { status: "closed" })).status === 404)
+const closedDb = { ...envOn, DB: mockDb([{ id: "ho_x", status: "closed" }]) }
+check("P7 closed→assigned => 409（终态不可逆）", (await patchReq("/api/admin/handoffs/ho_x", SECRET, closedDb, { status: "assigned" })).status === 409)
+const assignedDb = { ...envOn, DB: mockDb([{ id: "ho_x", status: "assigned" }]) }
+check("P8 assigned→assigned => 409（同态重放拒绝）", (await patchReq("/api/admin/handoffs/ho_x", SECRET, assignedDb, { status: "assigned" })).status === 409)
+
+// 纯函数矩阵：迁移表是唯一真相源，七向边界直接断言（不需要 D1）。
+check("T1 open→assigned 合法", canTransitionHandoff("open", "assigned") === true)
+check("T2 open→closed 合法", canTransitionHandoff("open", "closed") === true)
+check("T3 assigned→closed 合法", canTransitionHandoff("assigned", "closed") === true)
+check("T4 closed→assigned 非法（终态）", canTransitionHandoff("closed", "assigned") === false)
+check("T5 assigned→open 非法（回退）", canTransitionHandoff("assigned", "open") === false)
+check("T6 open→open 非法（重放）", canTransitionHandoff("open", "open") === false)
+check("T7 未知当前态一律非法（防脏数据越权）", canTransitionHandoff("weird", "assigned") === false)
 
 console.log(`\nADMIN AUTH GUARD: ${pass} pass / ${fail} fail`)
 process.exit(fail ? 1 : 0)
