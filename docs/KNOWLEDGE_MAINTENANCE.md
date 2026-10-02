@@ -15,6 +15,14 @@
 - 撤回：从 `entries` 删除对应项后同样走导出与邻接重建；过期撤回流程以本节为准，结论使用前请核对来源年份。
 - 加权词规矩：加权词一律取指南侧写法（医生口语侧由同义词表桥接）；每个加权词必须在语料正文真出现，否则恒零分并被零豁免判据拦。
 
+## 2.5 满意度反馈 → 知识库待办（r91 S11 起）
+
+- 数据源：`GET /api/admin/stats` 返回的 `top_unresolved`（转人工原因 × 意图交叉，含 `satisfactionStats` 聚合与 `topUnresolved` 查询）。
+- 生成待办：导出统计 JSON 后跑 `node scripts/kb_todo_from_feedback.mjs <stats.json> [--out todo.md]`，
+  产出「原因 × 意图 → 建议动作（落点：entries/synonyms/keywords）」的待办清单。
+- 安全边界：**只做脚本，不开管理写端点**（不在脱敏面上再开写口）；本清单是人工审核的输入，
+  最终落库必须走 §1 流程 + `kb_guard`，脚本本身不写任何库、不改任何数据。
+
 ## 3. Provider 失败归因与处置矩阵（实现事实：单次调用、零重试、无熔断）
 
 > 实现唯一源为 `frontend/functions/lib/engine.js` 内的 `callLLM` 与 `llmCauseOf`。本表只陈述**已实现**的行为，且每行给出机器可核的回执锚点：形状是「回执」二字后接仓根相对路径、双冒号、该文件里真实存在的标识，整体用六角括号包住（表下即实例）。由 `docs_link_guard` 逐条核"路径可解析 + 标识在该文件里在场"，指向不存在的实现即判红。
