@@ -5,6 +5,41 @@
 
 ## [Unreleased]
 
+（暂无）
+
+## [1.46.0] - 2026-10-03
+
+### Added（第 91 轮对标执行轮：r90 报告 S 清单落地）
+
+- **S1 意图同义扩展**：`intent.js` 意图打分复用 `knowledge.js` 的 `SYNONYMS` 单一源（与 `rag.js expandQuery` 同形），
+  口语变体（头重脚轻/天旋地转等）经扩展命中医疗意图；镜像面 `chat.py` 同形。`intents_guard` 增 Y1-Y6。
+  负发现留痕：往 `SYNONYMS` 加新词会扰动 RAG 排序（ret-46/ret-01 回归锁实测命中），故词表零改动。
+- **S3 转人工工单状态机**：`PATCH /api/admin/handoffs/{id}`（open→assigned→closed，closed 终态不可逆，
+  同态重放 409，open 回设 422）；`ERRORS.md` 增 409；openapi 15→16 paths；镜像面同形端点。`admin_auth_guard` 增 P1-P8/T1-T7。
+- **S4 D1 批量落库**：一回合最多 6 次串行 `.run()` 合并为单次 `.batch()`（隐式事务，消除半回合脏态）；
+  `handoff.ticket_id` 改用真实工单 id。新增判定链基准件 `scripts/bench_chat.mjs`（`npm run bench:chat`，
+  p95 读数可复算，预算两侧实测标定）。
+- **S5 槽位追问一轮**：缺槽位先追问（`SLOT_ASK_TEXT` 单一源常量），追问后仍缺才 `MISSING_SLOT` 转人工；
+  追问后只回号 ⇒ 承接上轮意图（示例实跑暴露的缺口，双端同修）。`chat_api_guard` 增 S5/S5b，镜像 O4/O5/O5c。
+- **S6 面2↔面3 契约守卫**：`agent_contract_guard.mjs` 把 medchat.ts 手写 `ClinicalChatData` 与
+  chat.js 权威返回块逐字段对账（TS ⊆ 权威 + 内层字段 + 反例自证）。
+- **S7 表达层 provider 适配器**：`providers.ts`（接口+注册表+echo 回显）+ `AGENT_PROVIDER` 显式切换，
+  未知 provider fail-closed 回 codebuddy；status 端点回报 provider；probe 增 P1-P6（18/18）。
+- **S9 examples/**：最小可运行示例（零密钥零网络零 D1）+ 集成方最小契约 README。
+- **S10 会话 TTL**：schema v2（conversations.expires_at + 过期索引）；`RETENTION_DAYS=180` 单一源；
+  `scripts/d1_cleanup.mjs` 默认 dry-run、--apply 真删、存量 NULL 行绝不碰；DEPLOY_RUNBOOK 增 §6.5。
+- **S11 满意度→知识库待办**：`scripts/kb_todo_from_feedback.mjs` 从 `top_unresolved` 生成待办清单
+  （脚本不写库，落库仍走 KNOWLEDGE_MAINTENANCE 人工审核）；KNOWLEDGE_MAINTENANCE 增 §2.5。
+- **r89-新-2 接线**：`peer_evidence_guard.py` 进 pre-commit（18→19 钩）、`docs_surface_guard.mjs` 进
+  `npm test`（34→35 件套）；钩数/件套数 6 份文档同步为派生真值。
+
+### Changed
+
+- 件套数 33→35（新增 agent-contract / docs-surface 两套）；pre-commit 钩 18→19。
+- openapi 路径 15→16（新增 admin handoff PATCH）。
+- r89-新-4：CONTRIBUTING 写明 CoC 建立触发条件（当前无外部贡献通道，暂不建）。
+
+
 - **OPENAPI.md 派生化与漂移守卫（第八十三轮，#211）**：第八十二轮为补「人类可读 API 文档」产出的 `docs/OPENAPI.md`，
   是**一次性命令的产物**——既没有生成源也没有守卫：json 里加一个端点或升一个版本号，md 会静静停在旧值上
   （#106 同族：派生件一旦可手写就必然过期，而读 md 的那一方正是人）。现把真值收拢到一处：

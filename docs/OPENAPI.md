@@ -1,6 +1,6 @@
 # OPENAPI（人类可读派生版）
 
-版本: 1.45.0 ｜ 标题: 医·基层AI辅助诊断系统 API
+版本: 1.46.0 ｜ 标题: 医·基层AI辅助诊断系统 API
 
 > 本文件由 `docs/openapi.json` 单向派生，禁止手写契约；契约变更只改 openapi.json 后重跑 `python scripts/gen_openapi.py`。
 
