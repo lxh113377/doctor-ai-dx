@@ -177,8 +177,8 @@ if (gSelf.length && liveCtrl !== null && liveSelf !== null && liveSelf <= liveCt
 const report = {
   date: new Date().toISOString(), base: BASE,
   // #218：live 读数此前**一个 provenance 字段都没有**，所以「P95 4602ms」挂不到任何一组输入字节上。
-  // 注意取数时刻＝本次请求跑完之后、落盘之前；引擎/知识若在期间被改，下面记的是改后的字节，
-  // 而工作树相对 HEAD 的脏度一并记在 provenance.git 里，由判据去分「已提交」与「在途」。
+  // 取数时刻＝本次请求跑完之后、落盘之前；provenance 里只放 git 决定的量（HEAD），
+  // 不放工作树脏度——那种值会随读它的人当下在途什么而变，写进被提交的报告里第一次复算就对不上。
   provenance: buildProvenance({
     casesPath: fileURLToPath(new URL("../frontend/tests/fixtures/eval_cases.json", import.meta.url)),
     runnerPath: "scripts/live_eval.mjs",

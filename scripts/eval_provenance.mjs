@@ -86,7 +86,7 @@ export function buildProvenance({ casesPath, runnerPath, root = ROOT, at = new D
     schema: SCHEMA,
     produced_at: at,
     inputs,
-    // 归属锚点：读数是相对哪个提交产的、当时工作树还脏几件（脏件多到覆盖输入集时，这份读数只能算在途态）。
+    // 归属锚点：这组读数是相对哪个提交产的（只取 git 决定的量，见 gitInfo 的注释）。
     git: gitInfo(root),
     // 聚合哈希按 path:sha 排序行拼接：与单个文件顺序无关，且任一项为 null 时整串标 UNBOUND。
     input_set_sha256: inputs.some((i) => i.sha256 === null)
@@ -126,19 +126,21 @@ export function verifyProvenance(recorded, current) {
   return out;
 }
 
+/**
+ * 归属锚点只取 `HEAD`（由 git 决定的量）。
+ * 刻意不记「工作树相对 HEAD 脏几件」：那是 `git status` 状态列消费者（#175 名册要枚举的那类），
+ * 幻影（CRLF 归一等等价脏）会把条数虚报；而且 provenance 会随报告**被提交**，
+ * 把随工作树变化的数写进一个被 git 固化的件里，第一次复算就对不上（台账值须可移植）。
+ */
 function gitInfo(root = ROOT) {
-  const errs = [];
-  const run = (args) => {
-    try { return execFileSync("git", ["-C", root, ...args], { encoding: "utf8" }).trim(); }
+  try {
+    const head = execFileSync("git", ["-C", root, "rev-parse", "HEAD"], { encoding: "utf8" }).trim();
+    return { head };
+  } catch (e) {
     // 失败原因必须留下：git 不在 PATH（工具缺失）与「这里不是 git 仓」是两件事，
     // 都吞成 head=null 的话，取数面坏了和没归属会被读成同一个值。
-    catch (e) { errs.push(`${e.name}: ${String(e.message).split("\n")[0].slice(0, 70)}`); return null; }
-  };
-  const head = run(["rev-parse", "HEAD"]);
-  const dirty = head === null ? null
-    : run(["status", "--porcelain", "--untracked-files=no"])?.split("\n").filter(Boolean)
-      .map((l) => toPosix(l.slice(1).trim())).filter(Boolean) ?? [];
-  return { head, dirty_count: dirty === null ? null : dirty.length, dirty, ...(head === null ? { unavailable_reason: errs[0] || "unknown" } : {}) };
+    return { head: null, unavailable_reason: `${e.name}: ${String(e.message).split("\n")[0].slice(0, 70)}` };
+  }
 }
 
 // ---------------- selftest ----------------
@@ -168,7 +170,7 @@ function selftest() {
   w("runner.mjs", "// runner\n");
   const base = buildProvenance({ casesPath: "cases.json", runnerPath: "runner.mjs", root: tmp, at });
   ck("真面：输入集＝引擎闭包2＋数据源3＋用例＋runner＝7 且聚合哈希可算", base.inputs.length === 7 && /^[0-9a-f]{64}$/.test(String(base.input_set_sha256)));
-  ck("非 git 目录下 head/dirty 记 null（取不到归属锚点不得折成「干净」）", base.git.head === null && base.git.dirty_count === null);
+  ck("非 git 目录下 head=null 且带 unavailable_reason（取不到归属锚点不得静默）", base.git.head === null && String(base.git.unavailable_reason || "").length > 4);
   // 正向腿：在真仓里 head 必须是 40 位提交号。第九十一轮实测漏 import execFileSync 时，
   // git 块整片 null 而判据一声不响——只有正向断言能抓住「工具没接到」这种形态。
   const real = buildProvenance({ casesPath: "frontend/tests/fixtures/eval_cases.json", runnerPath: "scripts/run_eval.mjs" });
@@ -264,7 +266,7 @@ async function main() {
   // 三态各归各位：一致=0／被篡改或不符=1／不可归因=2。**不可归因不得折成 1**（那是"抓到造假"），
   // 也不得折成 0（那是"证据合格"）。
   const tag = res.state === "UNBOUND" ? "unbound" : res.fail ? "red" : "pass";
-  console.log(`[GATE:evalprov-${tag}] state=${res.state}｜核 ${prov.inputs.length} 项｜不符 ${res.bad.length}｜新增 ${res.new_since_report.length}｜报告缺项 ${res.missing_in_report.length}｜input_set=${String(prov.input_set_sha256 ?? "UNBOUND").slice(0, 12)}｜git_head=${prov.git.head ? prov.git.head.slice(0, 7) : "不可测"}｜工作树相对 HEAD 已改 ${prov.git.dirty_count === null ? "不可测" : prov.git.dirty_count} 件`);
+  console.log(`[GATE:evalprov-${tag}] state=${res.state}｜核 ${prov.inputs.length} 项｜不符 ${res.bad.length}｜新增 ${res.new_since_report.length}｜报告缺项 ${res.missing_in_report.length}｜input_set=${String(prov.input_set_sha256 ?? "UNBOUND").slice(0, 12)}｜git_head=${prov.git.head ? prov.git.head.slice(0, 7) : `不可测（${prov.git.unavailable_reason}）`}`);
   for (const b of res.bad) console.log(`  FAIL ${b}`);
   process.exit(res.state === "UNBOUND" ? 2 : res.fail ? 1 : 0);
 }
