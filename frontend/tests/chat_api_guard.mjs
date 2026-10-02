@@ -79,6 +79,15 @@ const slot2 = await postChat({
   ],
 })
 check("S5 追问后仍缺 ⇒ MISSING_SLOT 转人工", slot2.body.data.handoff?.reason_code === "MISSING_SLOT", slot2.body.data.handoff?.reason_code)
+// S5b 槽位承接：追问后用户只回一个号（无意图词）⇒ 沿用上一轮意图，不再误判 out_of_scope 转人工。
+const slot3 = await postChat({
+  text: "挂号号是12345678",
+  history: [
+    { role: "user", content: "我要退费" },
+    { role: "assistant", content: SLOT_ASK_TEXT + "\n\n" + COMPLIANCE_LINE },
+  ],
+})
+check("S5b 追问后只回号 ⇒ 承接上轮意图（refund）且不转人工", slot3.body.data.intent === "refund" && !slot3.body.data.handoff, `intent=${slot3.body.data.intent} handoff=${JSON.stringify(slot3.body.data.handoff)}`)
 check("S5 转人工响应带追问标识（话术常量单一源，history 识别不漂移）", typeof SLOT_ASK_TEXT === "string" && SLOT_ASK_TEXT.length > 10)
 const withSlot = await postChat({ text: "我要退挂号费，挂号号是12345678" })
 check("给了槽位则不再因缺槽位转人工", withSlot.body.data.handoff?.reason_code !== "MISSING_SLOT", withSlot.body.data.handoff?.reason_code)

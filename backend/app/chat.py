@@ -345,6 +345,26 @@ def handle_chat(payload: dict[str, Any]) -> dict[str, Any]:
         raise ValueError("请求内容超出可处理范围，请精简问诊记录后重试")
 
     det = detect_intent(raw)
+
+    # S5 槽位承接（与 functions/lib/chat.js 同形）：上一条助手消息是槽位追问、本轮只补号
+    # （输入无意图词 ⇒ confidence=0）时，沿用上一轮用户消息的意图，让追问链闭环。
+    # 红旗不受影响：raw 含红旗词时 detect_intent 第一步已短路。
+    _last_assistant_early = next(
+        (str(h.get("content") or "") for h in reversed(history) if isinstance(h, dict) and h.get("role") == "assistant"),
+        "",
+    )
+    if det["intent"] == "out_of_scope" and det["confidence"] == 0 and SLOT_ASK_TEXT in _last_assistant_early:
+        _has_slot = bool(SLOT_RE.search(raw) or SLOT_RE.search(" ".join(
+            str(h.get("content") or "") for h in history if isinstance(h, dict) and h.get("role") == "user")))
+        if _has_slot:
+            _prior_user = next(
+                (str(h.get("content") or "") for h in reversed(history) if isinstance(h, dict) and h.get("role") == "user"),
+                "",
+            )
+            _prior = detect_intent(_prior_user) if _prior_user else None
+            if _prior and _prior["intent"] not in ("out_of_scope", RED_FLAG_INTENT):
+                det = _prior
+
     faq = build_faq_answer(raw, det["flags"]) if should_retrieve_faq(det["intent"]) else None
 
     spec = cast("dict[str, Any] | None", INTENT_BY_ID.get(det["intent"]))

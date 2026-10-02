@@ -56,7 +56,25 @@ export async function handleChat({ text, history = [], conversation_id = null, e
   }
 
   // ---- 1. 意图（红旗闸门在 detectIntent 内部第一步）----
-  const det = detectIntent(raw)
+  let det = detectIntent(raw)
+
+  // S5 槽位承接（r91 示例实跑暴露的缺口）：上一条助手消息是槽位追问、且本轮只补了个号
+  // （输入无任何意图词 ⇒ confidence=0）时，沿用上一轮用户消息的意图，让追问链闭环——
+  // 否则「挂号号是12345678」会被判 out_of_scope 误转人工，追问等于白问。
+  // 红旗不受影响：raw 若含红旗词，detectIntent 第一步就已短路，走不到这里。
+  const lastAssistant = (Array.isArray(history) ? history : [])
+    .filter((h) => h && h.role === "assistant")
+    .map((h) => String(h.content || ""))
+    .pop()
+  const askedSlotBefore = !!lastAssistant && lastAssistant.includes(SLOT_ASK_TEXT)
+  if (det.intent === "out_of_scope" && det.confidence === 0 && askedSlotBefore && hasSlot(raw, history)) {
+    const priorUser = (Array.isArray(history) ? history : [])
+      .filter((h) => h && h.role === "user")
+      .map((h) => String(h.content || ""))
+      .pop()
+    const priorDet = priorUser ? detectIntent(priorUser) : null
+    if (priorDet && priorDet.intent !== "out_of_scope" && priorDet.intent !== RED_FLAG_INTENT) det = priorDet
+  }
 
   // ---- 2. FAQ：只有医疗问诊类意图检索临床知识库 ----
   const faq = shouldRetrieveFaq(det.intent) ? buildFaqAnswer(raw, det.flags) : null
@@ -66,11 +84,6 @@ export async function handleChat({ text, history = [], conversation_id = null, e
   const missingSlot = SLOT_REQUIRED_POLICIES.has(policy) && !hasSlot(raw, history)
   // S5：缺槽位首轮**追问一轮**（askedSlotBefore 靠 history 里上一条助手消息是否含追问话术识别，
   // 话术常量与生成处共用 SLOT_ASK_TEXT 单一源）；追问过仍缺 ⇒ 才升级 MISSING_SLOT 转人工。
-  const lastAssistant = (Array.isArray(history) ? history : [])
-    .filter((h) => h && h.role === "assistant")
-    .map((h) => String(h.content || ""))
-    .pop()
-  const askedSlotBefore = !!lastAssistant && lastAssistant.includes(SLOT_ASK_TEXT)
   const escalateSlot = missingSlot && askedSlotBefore
   const handoff = decideHandoff({
     intent: det.intent,

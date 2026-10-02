@@ -103,6 +103,16 @@ _escalate = chat_mod.handle_chat({
 check("O5 追问后仍缺 ⇒ MISSING_SLOT 转人工", _escalate["handoff"]["reason_code"] == "MISSING_SLOT",
       str(_escalate["handoff"]))
 check("O5b 镜像面转人工工单号 HO- 形态", _escalate["handoff"]["ticket_id"].startswith("HO-"))
+_carry = chat_mod.handle_chat({
+    "text": "挂号号是12345678",
+    "history": [
+        {"role": "user", "content": "我要退费"},
+        {"role": "assistant", "content": chat_mod.SLOT_ASK_TEXT + "\n\n" + chat_mod.COMPLIANCE_LINE},
+    ],
+})
+check("O5c 追问后只回号 ⇒ 承接上轮意图（refund）且不转人工",
+      _carry["intent"] == "refund" and _carry["handoff"] is None,
+      f"intent={_carry['intent']} handoff={_carry['handoff']}")
 
 print(f"\nCHAT MIRROR SUMMARY: {passed} pass / {failed} fail")
 sys.exit(1 if failed else 0)
