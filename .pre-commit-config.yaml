@@ -169,3 +169,11 @@ repos:
         language: system
         pass_filenames: false
         files: ^(AGENTS|README|CONTRIBUTING|SECURITY)\.md$|^docs/[^/]+\.md$
+      # r91（r89-新-2 接线）：peer 取证守卫此前零自动调用方（bench_r89_gate 的腿之一，#222「注册≠接线」同族）。
+      # 取数面 = bench peer 名册与守卫本体任一改动 ⇒ 提交前必跑；名册缺失判 EMPTY 不判绿（守卫内建）。
+      - id: peer-evidence-guard
+        name: peer 取证守卫（对标读数必须来自当日 API 实测，README/报告禁抄对方 README 数字）
+        entry: python scripts/peer_evidence_guard.py
+        language: system
+        pass_filenames: false
+        files: ^frontend/tests/fixtures/bench_peer_roster\.json$|^scripts/peer_evidence_guard\.py$

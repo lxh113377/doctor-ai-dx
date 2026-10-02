@@ -117,7 +117,7 @@ cd frontend; node node_modules/wrangler/bin/wrangler.js pages deployment list --
 | 改知识库不生效 | 查生成件 | 忘了跑 export（生成物禁手改） | `npm run kb:export` | `frontend/tests/kb_guard.mjs` |
 | 构建产物为空 | `Get-ChildItem frontend/dist` | 构建没跑就发 | 先 `npm run build` | `bundle_size_guard.mjs`（`dist/assets` 缺失即 exit 1） |
 | 部署报连不上 | 换通路重试 | 网络/代理 TLS 中断（实测出现过 `TLS connect error`） | **一条路失败先换另一条再下结论**，两条都试过才写「通路不通」 | — |
-| 提交被钩子拦红 | 看红因归属 | 判据在审别人的在途改动 / 我方真违规 | 属前者→修判据取数面；属后者→改内容 | 提交链上的 18 钩 |
+| 提交被钩子拦红 | 看红因归属 | 判据在审别人的在途改动 / 我方真违规 | 属前者→修判据取数面；属后者→改内容 | 提交链上的 19 钩 |
 
 > 复算：`docs/PITFALLS.md` 是「症状→根因→处置」的扩展手册（347 行），本节只放**线上止损路径**。
 
