@@ -9,7 +9,7 @@
  * 危险信号提示与急诊/转诊建议逐字直出面2，不经任何模型改写。这比"在提示里要求模型别改"强一个量级。
  */
 import type { Request, Response } from "express";
-import { phraseWithAgent, AGENT_TIMEOUT_MS } from "./agent.js";
+import { phraseWithAgent, AGENT_TIMEOUT_MS, activeProviderId, listProviderIds } from "./agent.js";
 import { probeSdk } from "./sdk_status.js";
 
 /** 面2 基址：本地 wrangler pages dev 用 http://127.0.0.1:8788，线上用已部署的 Pages。 */
@@ -164,6 +164,9 @@ export async function handleMedStatus(_req: Request, res: Response): Promise<voi
       sdk: status,
       clinical_base: CLINICAL_BASE,
       agent_timeout_ms: AGENT_TIMEOUT_MS,
+      // S7：当前生效的表达层 provider 与在册清单（换供应商不改编排层的实证面）。
+      provider: activeProviderId(),
+      providers: listProviderIds(),
     },
   });
 }

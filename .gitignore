@@ -58,3 +58,9 @@ _ci.log
 # 且它是随机器/随引擎走的配置，入库＝把本地实验态发布成作品的一部分（评审面不需要）。
 wflow.toml
 runs/
+
+# agent-service 的 tsc -b 构建产物（r91 实测：`npm run build` 会把 *.js/*.d.ts 落在 server/ 源目录，
+# 与 .ts 源混放且含 downlevel helper 词（trys）触发 codespell；产物不入库，面3 门禁走 tsx probe）
+agent-service/server/*.js
+agent-service/server/*.d.ts
+!agent-service/server/index.d.ts

@@ -8,7 +8,8 @@
  * 用法：npm run probe（退出码 0/1）
  */
 import { probeSdk, cliCandidates } from "./sdk_status.js";
-import { AGENT_TIMEOUT_MS } from "./agent.js";
+import { AGENT_TIMEOUT_MS, activeProviderId, listProviderIds } from "./agent.js";
+import { getActiveProvider } from "./providers.js";
 
 let pass = 0;
 let fail = 0;
@@ -44,6 +45,25 @@ check("M2 变异后 mode=mock-fallback", forced.mode === "mock-fallback", forced
 check("M3 变异后仍满足 live⟺ready", (forced.mode === "live") === (forced.state === "ready"));
 if (prev === undefined) delete process.env.AGENT_SDK_ENABLED;
 else process.env.AGENT_SDK_ENABLED = prev;
+
+console.log("== provider 适配器（S7）==");
+const ids = listProviderIds();
+check("P1 在册 provider 至少含现役 codebuddy 与内置 echo", ids.includes("codebuddy") && ids.includes("echo"), JSON.stringify(ids));
+check("P2 默认生效 provider = codebuddy（未点名 AGENT_PROVIDER 时）", activeProviderId() === "codebuddy", activeProviderId());
+const prevProvider = process.env.AGENT_PROVIDER;
+process.env.AGENT_PROVIDER = "echo";
+check("P3 显式点名 echo ⇒ 生效 provider 切换（换路不改编排代码）", activeProviderId() === "echo", activeProviderId());
+const echo = getActiveProvider();
+const echoProbe = echo.provider ? await echo.provider.probe() : null;
+check("P4 echo provider 探测恒 ready（不依赖 CLI/密钥）", !!echoProbe && echoProbe.ready === true);
+const echoOut = echo.provider
+  ? await echo.provider.phrase({ userText: "测试", plan: { intent: "x", answer_text: "确定性话术原文", citations: [], handoff_reason: null, abstain: false }, history: [] }, echoProbe!)
+  : null;
+check("P5 echo phrase 原样回显面2 文案且 ok=true", !!echoOut && echoOut.ok === true && echoOut.text === "确定性话术原文", JSON.stringify(echoOut));
+process.env.AGENT_PROVIDER = "no-such-provider";
+check("P6 点名不存在的 provider ⇒ fail-closed 回 codebuddy 且给告警", activeProviderId() === "codebuddy");
+if (prevProvider === undefined) delete process.env.AGENT_PROVIDER;
+else process.env.AGENT_PROVIDER = prevProvider;
 
 console.log("`nAGENT-SERVICE PROBE: " + pass + " pass / " + fail + " fail");
 process.exit(fail ? 1 : 0);
