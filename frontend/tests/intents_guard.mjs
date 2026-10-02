@@ -59,6 +59,19 @@ console.log("== 否定词否决 ==")
 check("N1 「我不退费」不得判 refund", detectIntent("我不退费，只是问一下").intent !== "refund", detectIntent("我不退费，只是问一下").intent)
 check("N2 否定词被记入 negations 供审计", detectIntent("我不退费，只是问一下").negations.length > 0)
 
+console.log("== 同义扩展（r91：复用 SYNONYMS 单一源，纯代码接线、零词表改动）==")
+// S1 判据：SYNONYMS 既有组内的口语变体必须能命中意图（改前「喘不上气/天旋地转」这类词不在 intents 词表，直接漏判）。
+// 注意：「心脏不舒服」这类**表外**口语词经实测不能经本通道解决——往 SYNONYMS 加词会扰动 RAG 检索排序
+// （ret-46 mrr 1→0.5、ret-01 recall@5 1→0.5 两条回归锁实测命中），已按 R263 回滚数据、保留本纯复用方案；
+// 表外口语词的承载机制归 S5（槽位/实体层）。
+check("Y1 表内口语「头重脚轻」命中 general_medical（同义扩展）", detectIntent("一起床就头重脚轻").intent === "general_medical", `实得 ${detectIntent("一起床就头重脚轻").intent} / flags=${JSON.stringify(detectIntent("一起床就头重脚轻").flags)}`)
+check("Y2 表内口语「天旋地转」命中 general_medical", detectIntent("一起床就天旋地转").intent === "general_medical", `实得 ${detectIntent("一起床就天旋地转").intent}`)
+check("Y3 扩展命中的关键词可溯源（matched 里是扩展落点词，非空）", detectIntent("一起床就头重脚轻").matched.length > 0, JSON.stringify(detectIntent("一起床就头重脚轻").matched))
+// 反向对照：无临床符号的输入经扩展后仍必须零命中——防「扩展把一切文本都拉成医疗意图」的过扩。
+check("Y4 反向对照：无临床符号输入仍 out_of_scope（扩展不过扩）", detectIntent("今天天气怎么样").intent === "out_of_scope", `实得 ${detectIntent("今天天气怎么样").intent}`)
+check("Y5 反向对照：问候语 confidence 仍为 0", detectIntent("你好").confidence === 0)
+check("Y6 红旗输入走扩展也无影响（闸门在扩展之前）", detectIntent("喘不上气，而且压榨样胸痛冒冷汗").intent === RED_FLAG_INTENT, `实得 ${detectIntent("喘不上气，而且压榨样胸痛冒冷汗").intent}`)
+
 console.log("== 失败安全 ==")
 check("F1 无任何关键词命中 => out_of_scope（不猜成医疗结论）", detectIntent("你好").intent === "out_of_scope")
 check("F2 无命中时 confidence 恒为 0", detectIntent("你好").confidence === 0)

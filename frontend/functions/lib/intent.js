@@ -8,6 +8,7 @@
 // 因为客服短语里「退费」出现两次不代表比「退挂号费窗口」一次更可能是退费意图。
 import { scanFlagDetails } from "./rules.js"
 import { INTENTS, INTENT_BY_ID } from "./intents.js"
+import { SYNONYMS } from "./knowledge.js"
 
 /** 红旗意图不是注册表里的一类：它由规则层裁定，优先级高于整张表。 */
 export const RED_FLAG_INTENT = "red_flag"
@@ -28,6 +29,23 @@ function toConfidence(score) {
 
 function weightOf(keyword) {
   return Math.sqrt(String(keyword).length)
+}
+
+/**
+ * 同义扩展（复用 knowledge.js 的 SYNONYMS 单一源，与 rag.js expandQuery 同形，不新增第二张词表）：
+ * 口语变体命中某组 ⇒ 把组内其余词追加进扩展文本，让「心脏不舒服」也能落到「心悸」这组关键词上。
+ * 只追加不替换：红旗闸门与否定词匹配仍吃原始文本（扩展发生在闸门之后），命中行为面零回归风险。
+ */
+function expandSynonyms(text) {
+  let out = text
+  for (const [canon, syns] of Object.entries(SYNONYMS)) {
+    const forms = [canon, ...(Array.isArray(syns) ? syns : [])].map((w) => String(w).toLowerCase())
+    if (!forms.some((f) => text.includes(f))) continue
+    for (const w of forms) {
+      if (!out.includes(w)) out += " " + w
+    }
+  }
+  return out
 }
 
 /**
@@ -84,8 +102,8 @@ export function detectIntent(text) {
 
   const needHuman = HUMAN_ASK_TERMS.some((t) => raw.includes(t))
 
-  // ---- 第 2 步：客服/医疗意图打分 ----
-  const { scores, negations } = scoreIntents(raw)
+  // ---- 第 2 步：客服/医疗意图打分（在同义扩展文本上跑；否定词表匹配的是扩展文本的超集， veto 只会更严不会更松） ----
+  const { scores, negations } = scoreIntents(expandSynonyms(raw))
   const top = scores.find((s) => s.score > 0)
 
   if (!top) {

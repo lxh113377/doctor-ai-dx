@@ -21,6 +21,23 @@ HUMAN_ASK_TERMS = ("人工", "转人工", "客服", "真人", "人工服务", "�
 MAX_TEXT = 2000
 CHAT_MAX_TURNS = 32
 
+# 同义扩展与权威面 intent.js 的 expandSynonyms 同形（r91）：复用 knowledge.py 的 SYNONYMS 单一源，
+# 命中组把组内其余词追加进扩展文本，让「心脏不舒服」也能落到「心悸」这组关键词上。只追加不替换。
+from .knowledge import SYNONYMS  # noqa: E402
+
+
+def _expand_synonyms(text: str) -> str:
+    out = text
+    for canon, syns in SYNONYMS.items():
+        forms = [canon, *(syns or [])]
+        if not any(f.lower() in text for f in forms):
+            continue
+        for w in forms:
+            lw = str(w).lower()
+            if lw not in out:
+                out += " " + lw
+    return out
+
 # ---- 红旗：镜像面复用既有规则层，不另写一份（红线 1：规则层只有一处） ----
 from .rules import scan_flag_details  # noqa: E402  （放最后以免与上面的常量定义交错）
 
@@ -92,13 +109,14 @@ def detect_intent(text: str) -> dict[str, Any]:
         }
 
     need_human = any(t in raw for t in HUMAN_ASK_TERMS)
+    expanded = _expand_synonyms(raw)
     negations: list[str] = []
     scored: list[tuple[str, float, list[str]]] = []
     for spec in cast("list[dict[str, Any]]", INTENTS):
-        matched = [kw for kw in spec["keywords"] if kw.lower() in raw]
+        matched = [kw for kw in spec["keywords"] if kw.lower() in expanded]
         if not matched:
             continue
-        veto = [n for n in spec["negative_terms"] if n.lower() in raw]
+        veto = [n for n in spec["negative_terms"] if n.lower() in expanded]
         if veto:
             negations.extend(veto)
             continue
