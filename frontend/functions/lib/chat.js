@@ -83,38 +83,23 @@ export async function handleChat({ text, history = [], conversation_id = null, e
   })
 
   // ---- 5. 脱敏落库（D1 未绑定时如实回报 persisted:false）----
-  const conv = await store.ensureConversation(env, conversation_id)
-  const cid = conv.persisted ? conv.conversation_id : conversation_id || null
-  let persisted = conv.persisted
-  let persist_reason = conv.reason || ""
-
-  if (conv.persisted) {
-    const userMsg = await store.appendMessage(env, { conversation_id: cid, role: "user", content: raw })
-    const asstMsg = await store.appendMessage(env, {
-      conversation_id: cid,
-      role: "assistant",
-      content: answer.text,
-      red_flag: det.intent === RED_FLAG_INTENT ? 1 : 0,
-    })
-    await store.recordIntentEvent(env, {
-      conversation_id: cid,
-      intent: det.intent,
-      confidence: det.confidence,
-      matched: det.matched,
-    })
-    if (handoff.need_handoff) {
-      const ho = await store.recordHandoff(env, {
-        conversation_id: cid,
-        reason_code: handoff.reason_code,
-        reason_text: handoff.reason_text,
-        context_digest: handoff.context_digest,
-      })
-      persisted = persisted && ho.persisted
-    }
-    await store.bumpTurn(env, cid)
-    persisted = persisted && userMsg.persisted && asstMsg.persisted
-    persist_reason = persist_reason || (persisted ? "" : "部分写入失败")
-  }
+  // r91（S4）：一回合的全部写合并为单次 .batch()（隐式事务 + 消除串行往返），见 chat_store.persistTurnBatch。
+  const turn = await store.persistTurnBatch(env, {
+    conversation_id,
+    user_text: raw,
+    assistant_text: answer.text,
+    red_flag: det.intent === RED_FLAG_INTENT ? 1 : 0,
+    intent: det.intent,
+    confidence: det.confidence,
+    matched: det.matched,
+    handoff: handoff.need_handoff
+      ? { reason_code: handoff.reason_code, reason_text: handoff.reason_text, context_digest: handoff.context_digest }
+      : null,
+  })
+  const cid = turn.persisted ? turn.conversation_id : conversation_id || null
+  const persisted = !!turn.persisted
+  const persist_reason = turn.persisted ? "" : turn.reason || "D1 未绑定"
+  const realHandoffId = turn.handoff_id || null
 
   return {
     conversation_id: cid,
@@ -128,7 +113,9 @@ export async function handleChat({ text, history = [], conversation_id = null, e
       ? {
           reason_code: handoff.reason_code,
           reason_text: handoff.reason_text,
-          ticket_id: `HO-${(cid || "local").slice(-6)}-${handoff.reason_code}`,
+          // 真实工单 id（落库时生成）优先——后台 PATCH /api/admin/handoffs/{id} 直接可用；
+          // D1 未绑定时退回本地可读票号（仅展示用，不可用于后台操作）。
+          ticket_id: realHandoffId || `HO-${(cid || "local").slice(-6)}-${handoff.reason_code}`,
         }
       : null,
     abstain: faq ? faq.abstain : false,

@@ -84,6 +84,7 @@
     "test:d1": "node tests/d1_persist_guard.mjs",
     "d1:schema": "node ../scripts/d1_migrate.mjs",
     "d1:schema:check": "node ../scripts/d1_migrate.mjs --check",
+    "bench:chat": "node ../scripts/bench_chat.mjs",
     "agent:probe": "node --version && cd agent-service && npm run probe"
   },
   "dependencies": {

@@ -70,5 +70,18 @@ check("无绑定时 d1Available=false", d1Available({}) === false)
 check("有 prepare 的对象视为可用", d1Available({ DB: { prepare: () => {} } }) === true)
 check("有 DB 但不是 D1（无 prepare）=> false", d1Available({ DB: {} }) === false)
 
+console.log("== 一回合批量落库（S4：单次 batch 隐式事务）==")
+const chatSrc = readFileSync(REPO + "frontend/functions/lib/chat.js", "utf8")
+check("B1 chat_store 存在 .batch() 调用（逐条 .run 串行写已退役）", storeSrc.includes(".batch("))
+check("B2 chat.js 编排层改用 persistTurnBatch", chatSrc.includes("persistTurnBatch(env"))
+check("B3 batch 分支内不再逐条写（防批量化后又混入串行写）",
+  !chatSrc.includes("store.appendMessage") && !chatSrc.includes("store.recordIntentEvent")
+  && !chatSrc.includes("store.recordHandoff") && !chatSrc.includes("store.bumpTurn"))
+check("B4 persistTurnBatch 生成真实工单 id 并回传（供后台 PATCH 用）",
+  storeSrc.includes('handoff_id = newId("ho")') && chatSrc.includes("turn.handoff_id"))
+check("B5 反例自证：判据对失真的源码必须翻红（证明 B1 不是恒真）",
+  !storeSrc.replaceAll(".batch(", ".BATCH_MISSING(").includes(".batch(")
+  && storeSrc.replaceAll(".batch(", ".BATCH_MISSING(").includes(".BATCH_MISSING("))
+
 console.log(`\nD1 PERSIST GUARD: ${pass} pass / ${fail} fail`)
 process.exit(fail ? 1 : 0)

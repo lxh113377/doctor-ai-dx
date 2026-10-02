@@ -118,6 +118,51 @@ export async function bumpTurn(env, conversation_id) {
     .run()
   return { persisted: true }
 }
+
+/**
+ * 一回合批量落库（r91，S4）：把「建会话 + 两条消息 + 意图事件 + （可选）转人工 + 轮次+1」
+ * 从逐条 .run()（最多 6 次串行往返）合并为**单次 .batch()**。D1 的 batch 是隐式事务——
+ * 要么整回合落库、要么整回合不落，顺带消除了「用户消息存了、助手回复没存」的半回合脏态。
+ * handoff 给出时由这里生成真实工单 id（ho_ 前缀）并随返回值带回，供后台 PATCH 直接使用。
+ */
+export async function persistTurnBatch(env, { conversation_id, user_text, assistant_text, red_flag = 0, intent, confidence, matched = [], handoff = null }) {
+  if (!d1Available(env)) return unavailable()
+  const cid = conversation_id || newId("cv")
+  const ts = nowIso()
+  const cleanUser = redactPii(String(user_text || ""))
+  const cleanAsst = redactPii(String(assistant_text || ""))
+  const statements = [
+    env[DB_BINDING]
+      .prepare("INSERT OR IGNORE INTO conversations (id, created_at, updated_at, turn_count, handed_off) VALUES (?, ?, ?, 0, 0)")
+      .bind(cid, ts, ts),
+    env[DB_BINDING]
+      .prepare("INSERT INTO messages (id, conversation_id, role, content, redacted_hits, red_flag, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
+      .bind(newId("msg"), cid, "user", cleanUser.text, JSON.stringify(cleanUser.hits), 0, ts),
+    env[DB_BINDING]
+      .prepare("INSERT INTO messages (id, conversation_id, role, content, redacted_hits, red_flag, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
+      .bind(newId("msg"), cid, "assistant", cleanAsst.text, JSON.stringify(cleanAsst.hits), red_flag ? 1 : 0, ts),
+    env[DB_BINDING]
+      .prepare("INSERT INTO intent_events (id, conversation_id, intent, confidence, matched, created_at) VALUES (?, ?, ?, ?, ?, ?)")
+      .bind(newId("ev"), cid, intent, Number(confidence) || 0, JSON.stringify((matched || []).slice(0, 12)), ts),
+    env[DB_BINDING]
+      .prepare("UPDATE conversations SET turn_count = turn_count + 1, updated_at = ? WHERE id = ?")
+      .bind(ts, cid),
+  ]
+  let handoff_id = null
+  if (handoff) {
+    handoff_id = newId("ho")
+    statements.push(
+      env[DB_BINDING]
+        .prepare("INSERT INTO handoffs (id, conversation_id, reason_code, reason_text, context_digest, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
+        .bind(handoff_id, cid, handoff.reason_code, String(handoff.reason_text || "").slice(0, 200), String(handoff.context_digest || "").slice(0, 120), "open", ts),
+      env[DB_BINDING]
+        .prepare("UPDATE conversations SET handed_off = 1, updated_at = ? WHERE id = ?")
+        .bind(ts, cid),
+    )
+  }
+  await env[DB_BINDING].batch(statements)
+  return { persisted: true, conversation_id: cid, handoff_id }
+}
 // —— 以下为只读查询面（后台用）。读写同文件但分区：后台的查询口径（统计怎么算、列表怎么排）
 // 需要独立演进，改它不该碰到写入路径。d1Available / DB_BINDING / redactPii 已在写面声明，此处直接复用。
 
