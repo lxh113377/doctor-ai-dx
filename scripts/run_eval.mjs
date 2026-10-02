@@ -8,12 +8,12 @@
 // 断言：①红旗召回（scanFlags 对纯答案文本）②JSON结构 ③引用ID有效 ④降级标注 ⑤输入敏感性
 // 用法：node scripts/run_eval.mjs [--cases <path>] [--out <path>]
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs"
-import { createHash } from "node:crypto"
 import { resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 import { buildDiagnosis, buildWorkup, buildReport, ABSTAIN_PRIMARY } from "../frontend/functions/lib/engine.js"
 import { scanFlags } from "../frontend/functions/lib/rules.js"
 import { hasEvidence } from "../frontend/functions/lib/rag.js"
+import { buildProvenance, shaOfPath } from "./eval_provenance.mjs"
 
 const argv = process.argv.slice(2)
 const flag = (name) => {
@@ -101,6 +101,8 @@ for (const c of suite.cases) {
 }
 
 const n = suite.cases.length
+// 输入集指纹在跑完之后、落盘之前取：provenance 记的就是「产这组读数那一刻」的字节，事后补算只能算回溯态。
+const provenance = buildProvenance({ casesPath, runnerPath: "scripts/run_eval.mjs" })
 const report = {
   date: new Date().toISOString(),
   mode: "rule-fallback (no key)",
@@ -118,7 +120,10 @@ const report = {
   // 每例内容语义相等，只差 `_meta` 文案与行尾 ⇒ 两面各自的 cases_sha256 **必然不等**，这不是分叉。
   // 反过来若哪天两串相等，说明镜像被"顺手统一"掉了（含被覆盖 _meta）⇒ 该去查是谁合并了这两份。
   // 哈希一律按字节取（与工作区那份同一定义），禁改成只哈希 cases 数组——那会造出第三套口径、两面再也比不了。
-  cases_sha256: createHash("sha256").update(readFileSync(casesPath)).digest("hex"),
+  cases_sha256: shaOfPath(provenance, casesPath),
+  // 第八十九~九十一轮挂账 #218 的落点：整组**被评测输入**（引擎 import 闭包 + 知识/规则单一源 + 用例 + 本 runner）
+  // 的逐项字节哈希。上一行与它同取一次字节，不再各算各的（同一事实两处算迟早漂）。
+  provenance,
   abstain_cases: abstainCount,
   abstain_scenes: abstainScenes,
   distinct_primary_outputs: primarySignatures.size,

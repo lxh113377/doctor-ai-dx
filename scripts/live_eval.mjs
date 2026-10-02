@@ -7,6 +7,7 @@ import { dirname, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 import { KNOWLEDGE_BASE, KB_BY_ID } from "../frontend/functions/lib/knowledge.js"
 import { supportRatio } from "../frontend/tests/grounding_ruler.mjs"
+import { buildProvenance } from "./eval_provenance.mjs"
 
 // 参数一律走 argv 而不是环境变量：本脚本是**工具链面**（评测者手工跑），不是应用配置。
 // 用 env 会被 tests/env_guard.mjs 按「应用从零启动的声明面」口径要求写进 backend/.env.example，
@@ -175,6 +176,13 @@ if (gSelf.length && liveCtrl !== null && liveSelf !== null && liveSelf <= liveCt
 }
 const report = {
   date: new Date().toISOString(), base: BASE,
+  // #218：live 读数此前**一个 provenance 字段都没有**，所以「P95 4602ms」挂不到任何一组输入字节上。
+  // 注意取数时刻＝本次请求跑完之后、落盘之前；引擎/知识若在期间被改，下面记的是改后的字节，
+  // 而工作树相对 HEAD 的脏度一并记在 provenance.git 里，由判据去分「已提交」与「在途」。
+  provenance: buildProvenance({
+    casesPath: fileURLToPath(new URL("../frontend/tests/fixtures/eval_cases.json", import.meta.url)),
+    runnerPath: "scripts/live_eval.mjs",
+  }),
   dx_latency_ms: { n: lat.length, p50: pct(lat, 0.5), p95: pct(lat, 0.95), max: Math.max(...lat) },
   workup_report_latency_ms: { n: wrLat.length, p50: pct(wrLat, 0.5), p95: pct(wrLat, 0.95), max: Math.max(...wrLat) },
   structure_pass: `${structPass}/${n}`,
