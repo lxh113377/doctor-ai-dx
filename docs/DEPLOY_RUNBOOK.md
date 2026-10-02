@@ -130,6 +130,22 @@ cd frontend; node node_modules/wrangler/bin/wrangler.js pages deployment list --
 - [ ] 双端契约一致：`node frontend/tests/contract_parity.mjs`
 - [ ] 需要发镜像时才跑 SBOM：`npm run sbom`（**注意 cwd**：输出路径相对 `frontend/`，落在仓根 `docs/sbom/`；该目录被 `.gitignore` 排除，**干净检出看不到，必须在文档里说明须本地生成**）
 
+## 6.5 会话数据 TTL 清理（r91 S10 起）
+
+- 会话表 `conversations.expires_at` 默认保留 180 天（单一源 `frontend/functions/lib/chat_store.js::RETENTION_DAYS`），
+  到期级联删消息/意图事件/工单/反馈（D1 外键 `ON DELETE CASCADE`）。
+- 预览（默认 dry-run，只打印 SQL 与精确 wrangler 命令，不动数据）：
+  `node scripts/d1_cleanup.mjs`；自定义保留期 `--days 90`。
+- 真删：`node scripts/d1_cleanup.mjs --apply`（需本机 wrangler 已登录 Cloudflare；
+  无登录态时脚本以退出码 1 如实报错，**不假装已清理**）。
+- 存量口径：schema v1 时代的行 `expires_at` 为 NULL ⇒ **视为不过期**，本脚本绝不碰；
+  需要清理旧数据由运维显式回填 `expires_at` 后再跑。复算命令：
+
+```powershell
+node scripts/d1_cleanup.mjs          # dry-run
+node scripts/d1_cleanup.mjs --apply  # 真删（需登录态）
+```
+
 ## 7. 本 runbook 的自检命令
 
 ```powershell

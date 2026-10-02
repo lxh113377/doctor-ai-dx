@@ -15,7 +15,7 @@ import { fileURLToPath } from "node:url"
 const ROOT = fileURLToPath(new URL("../", import.meta.url))
 const OUT = ROOT + "scripts/d1_schema.sql"
 
-export const SCHEMA_VERSION = 1
+export const SCHEMA_VERSION = 2
 
 // 建表顺序按外键依赖排：先被引用者后引用者。
 const STATEMENTS = [
@@ -25,7 +25,8 @@ const STATEMENTS = [
   updated_at TEXT NOT NULL,
   turn_count INTEGER NOT NULL DEFAULT 0,
   handed_off INTEGER NOT NULL DEFAULT 0,
-  satisfaction INTEGER
+  satisfaction INTEGER,
+  expires_at TEXT
 )`,
   `CREATE TABLE IF NOT EXISTS messages (
   id TEXT PRIMARY KEY,
@@ -67,6 +68,8 @@ const STATEMENTS = [
 )`,
   // 列表默认按 updated_at 倒序、转人工队列按 (status, created_at) 排 —— 无索引就是全表扫。
   `CREATE INDEX IF NOT EXISTS idx_conversations_updated ON conversations(updated_at DESC)`,
+  // r91（S10）TTL：过期清理按 expires_at 扫（见 scripts/d1_cleanup.mjs）。
+  `CREATE INDEX IF NOT EXISTS idx_conversations_expires ON conversations(expires_at)`,
   `CREATE INDEX IF NOT EXISTS idx_messages_conv ON messages(conversation_id, created_at ASC)`,
   `CREATE INDEX IF NOT EXISTS idx_intent_events_conv ON intent_events(conversation_id, created_at ASC)`,
   `CREATE INDEX IF NOT EXISTS idx_intent_events_intent ON intent_events(intent)`,
@@ -75,8 +78,10 @@ const STATEMENTS = [
 ]
 
 const HEADER = [
-  "-- D1 schema（构建期产物，禁手改）——由 scripts/d1_migrate.mjs 生成，schema_version=1。",
+  `-- D1 schema（构建期产物，禁手改）——由 scripts/d1_migrate.mjs 生成，schema_version=${SCHEMA_VERSION}。`,
   "-- 对话面持久化：会话 / 消息 / 意图事件 / 转人工 / 满意度反馈。",
+  "-- TTL（r91 S10）：conversations.expires_at 到期由 scripts/d1_cleanup.mjs 清理（级联删消息/事件/工单/反馈）；",
+  "--   v1 时代的存量行 expires_at 为 NULL，视为不过期（不静默删旧数据），需清理由运维显式回填。",
   "-- 漂移守卫：node scripts/d1_migrate.mjs --check（逐字节比对，漂移即红）。",
   "",
   "PRAGMA foreign_keys = ON;",

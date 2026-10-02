@@ -8,7 +8,11 @@
 import { redactPii } from "./pii.js"
 
 export const DB_BINDING = "DB"
-export const SCHEMA_VERSION = 1
+export const SCHEMA_VERSION = 2
+
+/** 会话保留期（天，r91 S10）：写入时算 expires_at，到期由 scripts/d1_cleanup.mjs 清理。
+ *  演示数据全经 pii.js 脱敏，保留期只控存储量级，不是隐私兜底。 */
+export const RETENTION_DAYS = 180
 
 /** D1 是否可用。不可用时所有写操作走 no-op 分支并给出可归因原因。 */
 export function d1Available(env = {}) {
@@ -129,12 +133,13 @@ export async function persistTurnBatch(env, { conversation_id, user_text, assist
   if (!d1Available(env)) return unavailable()
   const cid = conversation_id || newId("cv")
   const ts = nowIso()
+  const expiresAt = new Date(Date.now() + RETENTION_DAYS * 86400000).toISOString()
   const cleanUser = redactPii(String(user_text || ""))
   const cleanAsst = redactPii(String(assistant_text || ""))
   const statements = [
     env[DB_BINDING]
-      .prepare("INSERT OR IGNORE INTO conversations (id, created_at, updated_at, turn_count, handed_off) VALUES (?, ?, ?, 0, 0)")
-      .bind(cid, ts, ts),
+      .prepare("INSERT OR IGNORE INTO conversations (id, created_at, updated_at, turn_count, handed_off, expires_at) VALUES (?, ?, ?, 0, 0, ?)")
+      .bind(cid, ts, ts, expiresAt),
     env[DB_BINDING]
       .prepare("INSERT INTO messages (id, conversation_id, role, content, redacted_hits, red_flag, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
       .bind(newId("msg"), cid, "user", cleanUser.text, JSON.stringify(cleanUser.hits), 0, ts),
