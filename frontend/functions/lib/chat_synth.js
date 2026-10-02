@@ -8,6 +8,13 @@ import { RED_FLAG_INTENT } from "./intent.js"
 /** 全站合规声明：任何路径的回复都不得省略它（红线 2）。 */
 export const COMPLIANCE_LINE = "本回复为 AI 辅助参考 · 医生终审，不能替代医生面诊。"
 
+/**
+ * 槽位追问引导语（r91，S5；单一源）：
+ * chat.js 的追问分支用它生成回复，也用它在 history 里识别「上一轮已经追问过」——
+ * 两处共用同一个常量，措辞改了识别逻辑不会静默漂移。
+ */
+export const SLOT_ASK_TEXT = "请提供您的挂号单号、订单号或报告编号（6 位以上数字），我帮您继续办理。"
+
 /** 客服三类的话术模板：只讲「下一步去哪做」，不承诺结果、不给医学判断。 */
 const SERVICE_TEMPLATES = {
   service_refund: [
@@ -44,7 +51,7 @@ const SERVICE_TEMPLATES = {
  * @returns {{text:string,citations:Array}}
  */
 export function synthesize(input) {
-  const { intent, flags = [], handoff_reason_text = "", faq = null } = input || {}
+  const { intent, flags = [], handoff_reason_text = "", faq = null, slot_followup = false } = input || {}
 
   // 1) 红旗：逐字复述规则层给的建议，一条都不改写、不追加医学内容。
   if (intent === RED_FLAG_INTENT && flags.length > 0) {
@@ -54,6 +61,12 @@ export function synthesize(input) {
         "请立即停止自行处理并前往急诊或联系 120；不要等待本系统进一步回复。",
       ])
     return { text: lines.join("\n") + "\n\n" + COMPLIANCE_LINE, citations: [] }
+  }
+
+  // 1.5) 槽位追问（S5）：缺标识符的首轮，先追问一轮再谈转人工——追问里不含任何流程承诺，
+  // 只请对方补号；下一轮仍缺才交 MISSING_SLOT 转人工（chat.js 决定，这里只负责话术）。
+  if (slot_followup) {
+    return { text: SLOT_ASK_TEXT + "\n\n" + COMPLIANCE_LINE, citations: [] }
   }
 
   // 2) 医疗问诊：有 FAQ 就用 FAQ 证据包（弃权时由 FAQ 自带说明）。

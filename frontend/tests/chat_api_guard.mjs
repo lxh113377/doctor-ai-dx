@@ -5,6 +5,7 @@
 // 顺带把「没绑定也要如实回报 persisted:false」这条契约钉住（它最容易在赶功能时被悄悄改成 true）。
 import { onRequest } from "../functions/api/[[route]].js"
 import { hasEvidence } from "../functions/lib/rag.js"
+import { SLOT_ASK_TEXT, COMPLIANCE_LINE } from "../functions/lib/chat_synth.js"
 
 let pass = 0
 let fail = 0
@@ -69,7 +70,16 @@ const oos = await postChat({ text: "今天天气怎么样" })
 check("超范围转人工 OUT_OF_SCOPE", oos.body.data.handoff?.reason_code === "OUT_OF_SCOPE")
 check("转人工带工单号", /^HO-/.test(oos.body.data.handoff?.ticket_id || ""), oos.body.data.handoff?.ticket_id)
 const slot = await postChat({ text: "我要退费" })
-check("查询/退费缺槽位转人工 MISSING_SLOT", slot.body.data.handoff?.reason_code === "MISSING_SLOT", slot.body.data.handoff?.reason_code)
+check("S5 缺槽位首轮 ⇒ 追问一轮（不直接转人工）", !slot.body.data.handoff && slot.body.data.answer.text.includes(SLOT_ASK_TEXT), JSON.stringify(slot.body.data.handoff))
+const slot2 = await postChat({
+  text: "我就是要退费，别问了",
+  history: [
+    { role: "user", content: "我要退费" },
+    { role: "assistant", content: SLOT_ASK_TEXT + "\n\n" + COMPLIANCE_LINE },
+  ],
+})
+check("S5 追问后仍缺 ⇒ MISSING_SLOT 转人工", slot2.body.data.handoff?.reason_code === "MISSING_SLOT", slot2.body.data.handoff?.reason_code)
+check("S5 转人工响应带追问标识（话术常量单一源，history 识别不漂移）", typeof SLOT_ASK_TEXT === "string" && SLOT_ASK_TEXT.length > 10)
 const withSlot = await postChat({ text: "我要退挂号费，挂号号是12345678" })
 check("给了槽位则不再因缺槽位转人工", withSlot.body.data.handoff?.reason_code !== "MISSING_SLOT", withSlot.body.data.handoff?.reason_code)
 

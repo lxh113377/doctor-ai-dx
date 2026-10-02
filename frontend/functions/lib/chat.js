@@ -9,7 +9,7 @@
 import { detectIntent, shouldRetrieveFaq, RED_FLAG_INTENT } from "./intent.js"
 import { decideHandoff } from "./handoff.js"
 import { buildFaqAnswer } from "./faq.js"
-import { synthesize } from "./chat_synth.js"
+import { synthesize, SLOT_ASK_TEXT } from "./chat_synth.js"
 import { replyPolicyOf } from "./intent.js"
 import * as store from "./chat_store.js"
 import { APP_VERSION } from "./version.js"
@@ -64,13 +64,21 @@ export async function handleChat({ text, history = [], conversation_id = null, e
   // ---- 3. 转人工判定 ----
   const policy = replyPolicyOf(det.intent)
   const missingSlot = SLOT_REQUIRED_POLICIES.has(policy) && !hasSlot(raw, history)
+  // S5：缺槽位首轮**追问一轮**（askedSlotBefore 靠 history 里上一条助手消息是否含追问话术识别，
+  // 话术常量与生成处共用 SLOT_ASK_TEXT 单一源）；追问过仍缺 ⇒ 才升级 MISSING_SLOT 转人工。
+  const lastAssistant = (Array.isArray(history) ? history : [])
+    .filter((h) => h && h.role === "assistant")
+    .map((h) => String(h.content || ""))
+    .pop()
+  const askedSlotBefore = !!lastAssistant && lastAssistant.includes(SLOT_ASK_TEXT)
+  const escalateSlot = missingSlot && askedSlotBefore
   const handoff = decideHandoff({
     intent: det.intent,
     confidence: det.confidence,
     flags: det.flags,
     need_human: det.need_human,
     unresolved_turns: turns,
-    missing_slot: missingSlot,
+    missing_slot: escalateSlot,
     abstain: faq ? faq.abstain : false,
   })
 
@@ -80,6 +88,7 @@ export async function handleChat({ text, history = [], conversation_id = null, e
     flags: det.flags,
     handoff_reason_text: handoff.need_handoff ? handoff.reason_text : "",
     faq,
+    slot_followup: missingSlot && !escalateSlot,
   })
 
   // ---- 5. 脱敏落库（D1 未绑定时如实回报 persisted:false）----

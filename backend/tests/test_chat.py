@@ -90,8 +90,19 @@ out = chat_mod.handle_chat({"text": "我要退挂号费，但是压榨样胸痛�
 check("O1 编排层红旗优先", out["intent"] == "red_flag" and out["red_flag"] is not None)
 check("O2 镜像面如实回报未持久化（不假装已保存）", out["persisted"] is False and "Pages-only" in out["persist_reason"])
 check("O3 mode恒为 deterministic（本面不调模型）", out["mode"] == "deterministic")
-check("O4 缺槽位时给出转人工工单号",
-      chat_mod.handle_chat({"text": "检查报告在哪里看"})["handoff"]["ticket_id"].startswith("HO-"))
+check("O4 缺槽位首轮 ⇒ 追问一轮（不直接转人工）",
+      chat_mod.handle_chat({"text": "检查报告在哪里看"})["handoff"] is None
+      and "请提供您的挂号单号" in chat_mod.handle_chat({"text": "检查报告在哪里看"})["answer"]["text"])
+_escalate = chat_mod.handle_chat({
+    "text": "我就是要退费嘛",
+    "history": [
+        {"role": "user", "content": "我要退费"},
+        {"role": "assistant", "content": chat_mod.SLOT_ASK_TEXT + "\n\n" + chat_mod.COMPLIANCE_LINE},
+    ],
+})
+check("O5 追问后仍缺 ⇒ MISSING_SLOT 转人工", _escalate["handoff"]["reason_code"] == "MISSING_SLOT",
+      str(_escalate["handoff"]))
+check("O5b 镜像面转人工工单号 HO- 形态", _escalate["handoff"]["ticket_id"].startswith("HO-"))
 
 print(f"\nCHAT MIRROR SUMMARY: {passed} pass / {failed} fail")
 sys.exit(1 if failed else 0)

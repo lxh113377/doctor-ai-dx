@@ -180,6 +180,10 @@ SLOT_REQUIRED_POLICIES = {"service_refund", "service_order_query"}
 
 COMPLIANCE_LINE = "本回复为 AI 辅助参考 · 医生终审，不能替代医生面诊。"
 
+# 槽位追问引导语（r91，S5；与 functions/lib/chat_synth.js 的 SLOT_ASK_TEXT 逐字同源）：
+# 追问分支用它生成回复，也用它在 history 里识别「上一轮已追问过」。
+SLOT_ASK_TEXT = "请提供您的挂号单号、订单号或报告编号（6 位以上数字），我帮您继续办理。"
+
 
 def decide_handoff(
     *,
@@ -255,7 +259,12 @@ _SERVICE_TEMPLATES = {
 
 
 def synthesize(
-    *, intent: str, flags: list | None = None, handoff_reason_text: str = "", faq: dict | None = None
+    *,
+    intent: str,
+    flags: list | None = None,
+    handoff_reason_text: str = "",
+    faq: dict | None = None,
+    slot_followup: bool = False,
 ) -> dict[str, Any]:
     """确定性话术。红旗路径逐字复述规则层建议，一条都不改写（红线 1）。"""
     flags = flags or []
@@ -263,6 +272,9 @@ def synthesize(
         lines = [f"· {f['name']}：{f['advice']}" for f in flags]
         lines.append("请立即停止自行处理并前往急诊或联系 120；不要等待本系统进一步回复。")
         return {"text": "\n".join(lines) + "\n\n" + COMPLIANCE_LINE, "citations": []}
+    # 槽位追问（S5）：缺标识符的首轮先追问一轮，下一轮仍缺才交 MISSING_SLOT 转人工。
+    if slot_followup:
+        return {"text": SLOT_ASK_TEXT + "\n\n" + COMPLIANCE_LINE, "citations": []}
     if faq:
         return {"text": faq["text"] + "\n\n" + COMPLIANCE_LINE, "citations": faq.get("citations", [])}
     template = _SERVICE_TEMPLATES.get(intent)
@@ -339,6 +351,13 @@ def handle_chat(payload: dict[str, Any]) -> dict[str, Any]:
     policy = spec["reply_policy"] if spec else ""
     prior = " ".join(str(h.get("content") or "") for h in history if isinstance(h, dict) and h.get("role") == "user")
     missing_slot = policy in SLOT_REQUIRED_POLICIES and not (SLOT_RE.search(raw) or SLOT_RE.search(prior))
+    # S5：上一条助手消息是否已是追问话术（常量与生成处同源）；追问过仍缺 ⇒ 升级 MISSING_SLOT。
+    last_assistant = next(
+        (str(h.get("content") or "") for h in reversed(history) if isinstance(h, dict) and h.get("role") == "assistant"),
+        "",
+    )
+    asked_slot_before = SLOT_ASK_TEXT in last_assistant
+    escalate_slot = missing_slot and asked_slot_before
 
     handoff = decide_handoff(
         intent=det["intent"],
@@ -346,7 +365,7 @@ def handle_chat(payload: dict[str, Any]) -> dict[str, Any]:
         flags=det["flags"],
         need_human=det["need_human"],
         unresolved_turns=turns,
-        missing_slot=missing_slot,
+        missing_slot=escalate_slot,
         abstain=bool(faq and faq["abstain"]),
     )
     answer = synthesize(
@@ -354,6 +373,7 @@ def handle_chat(payload: dict[str, Any]) -> dict[str, Any]:
         flags=det["flags"],
         handoff_reason_text=handoff["reason_text"] if handoff["need_handoff"] else "",
         faq=faq,
+        slot_followup=missing_slot and not escalate_slot,
     )
 
     red_flag = None
