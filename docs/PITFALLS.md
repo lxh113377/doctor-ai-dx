@@ -334,7 +334,7 @@
 - 已知残余（不是量纲问题，如实登记）：`q+q` 会在拼接处生成一个**跨边界双字组**；它恰好存在于语料时，该配对分数不是
   精确 2×、top-10 之后的位次可动（实测 1/77：ret-12 的 kb-003 与 kb-059 在第 8–10 位互换）。这是字符级双字滑窗对
   「重复」这一输入形态的真实敏感面，top-5 与线上服务档 top-4 均不受影响 ⇒ 不靠调 K 或改分词把它糊掉。
-- 常驻判据：`frontend/tests/repetition_guard.mjs`（**第三十六轮起进 `npm test` 阻断**，三十三件套之一）——分母自证、恒等复算、
+- 常驻判据：`frontend/tests/repetition_guard.mjs`（**第三十六轮起进 `npm test` 阻断**，三十四件套之一）——分母自证、恒等复算、
   top-5/top-4 名次不变、top-5 命中数不变、危急子集不变、分数 2× 地板（实测 76/77，地板 60，变异体只有 22）。
   `npm run probe:register` 保留为读数面，重复敏感性棘轮基线由 4 收到 **0**。
   **为什么第三十四轮降成看守、v1.33.0 那轮敢阻断**：那时判据首跑就红，常红的判据＝没有判据；v1.33.0 那轮缺陷本体已按归因治好、
@@ -385,7 +385,7 @@ python scripts/verify.py --suite all      # 再加交付面（需工作区父仓
 # 以下全部在**仓库根**执行（别一半在根一半在 frontend，`../` 写法最容易错）
 pre-commit run --all-files                          # 十八钩（清单唯一源 .pre-commit-config.yaml，第三十七轮起钩数由 docs_link_guard 现算对账；
 #   第 14 只是第四十轮加的 run 块语法探针 scripts/shell_block_probe.py）
-(cd frontend && npm test)                           # 三十三件套（含 docs_link_guard、error_parity）
+(cd frontend && npm test)                           # 三十四件套（含 docs_link_guard、error_parity）
 (cd frontend && npm run test:e2e)                   # 双视口浏览器回归（Playwright）
 python backend/selftest.py                          # 全 9 套（仓库根在场时）exit 0；镜像内那半见下一行
 python backend/selftest.py --simulate-image         # 本机无 docker 守护进程时：按 backend/Dockerfile 推算镜像里
