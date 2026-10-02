@@ -1,0 +1,155 @@
+{
+  "_editing": "对标 peer 名册（第八十九轮）。字段纪律由 scripts/peer_evidence_guard.py 强制：① full_name 必须 owner/name 全名；② fetched_at 必填（数字类当日现取）；③ can_recompute 必填；④ 禁用字段名 open_issues_count（那是未闭数含 PR，不是响应速度），须写 *_unclosed* 并附 note；⑤ 任何分布型读数必须带 sample_n 与中文口径。改这份名册前先读该脚本 docstring——每条纪律背后都有本轮的一手代价。",
+  "_provenance": "2026-10-02 用绝对路径 gh.exe api 当日现取（不用 PATH 里的 0 字节占位 gh）。生成器：工作区 work/bench-r89/fetch_peers.mjs（其自检 10/10）。本文件是仓内可复算副本；工作区原始读数（含 readme 首屏全文与 fetch_cmd 全表）在父仓 work/bench-r89/peer-facts-20261002.json。",
+  "_recompute": "node work/bench-r89/fetch_peers.mjs（工作区）；python scripts/peer_evidence_guard.py --selftest（本仓）",
+  "_caveat_window": "对方历史跨度远长于 30 天；我方两仓全部历史不足 30 天 ⇒ 任何「30d 提交数」都不可横比。另：对方 README 内宣称的性能/质量数字本轮一个都没抄（不可复算 ⇒ 不进结论）。",
+  "peers": [
+    {
+      "slot": "医疗产品侧",
+      "full_name": "openemr/openemr",
+      "stars": 5490,
+      "forks": 3064,
+      "open_issues_count_unclosed_including_prs": 1139,
+      "open_issues_count_note": "GitHub 该字段＝未闭 issue+PR 数；不可当「响应速度」或「积压」的唯一口径",
+      "pushed_at": "2026-10-02T13:17:31Z",
+      "license": "GPL-3.0",
+      "archived": false,
+      "commits_last_30d": 311,
+      "releases_total": 6,
+      "contributors_count": ">=100（API 单页封顶 100，非精确值）",
+      "closed_issue_response": {
+        "sample_n": 29,
+        "population_last_30d": 29,
+        "median_hours": 83.98,
+        "p90_hours": 1795.32,
+        "口径": "created→closed 自然小时；样本＝近 30 天已关闭的非 PR issue；只声称样本 N 内结论",
+        "sample_cmd": "gh api search/issues 取 q=repo:openemr/openemr 加 is:issue is:closed closed:>=2026-09-02 sort=created per_page=100"
+      },
+      "first_response": {
+        "sample_n": 2,
+        "median_hours": 111.55,
+        "sampled_issues": 20,
+        "issues_without_any_comment": 18,
+        "口径": "created→首条评论；无评论不计入分布。20 条里 18 条零评论 ⇒ 公开 issue 评论不是社区响应质量的可靠代理"
+      },
+      "identity_check": {
+        "looks_like_shipped_product": true,
+        "matched_signals": ["docker"],
+        "matched_research_only_signals": [],
+        "top_level_dirs_count": 33
+      },
+      "borrowable": "Documentation/ 按主题分件（INSTALL / MIGRATION_GUIDE / README-Log-Backup / Emergency_User_README / Clinical_Decision_Rules_Manual.pdf / SystemArchitecture.txt）——我方缺的两块（兼容性矩阵、runbook）的现成范式",
+      "can_recompute": "元数据与 issue 时间戳可用 gh api 逐条复算；README 内宣称的性能/质量数字本轮未采用（无复算命令）",
+      "fetched_at": "2026-10-02T16:30:00+08:00"
+    },
+    {
+      "slot": "医疗数据/集成侧",
+      "full_name": "medplum/medplum",
+      "stars": 2717,
+      "forks": 969,
+      "open_issues_count_unclosed_including_prs": 689,
+      "open_issues_count_note": "GitHub 该字段＝未闭 issue+PR 数；不可当「响应速度」或「积压」的唯一口径",
+      "pushed_at": "2026-10-02T01:44:16Z",
+      "license": "Apache-2.0",
+      "archived": false,
+      "commits_last_30d": 174,
+      "releases_total": ">=100（API 单页封顶 100，非精确值）",
+      "contributors_count": ">=100（API 单页封顶 100，非精确值）",
+      "closed_issue_response": {
+        "sample_n": 41,
+        "population_last_30d": 41,
+        "median_hours": 219.81,
+        "p90_hours": 1541.16,
+        "口径": "created→closed 自然小时；样本＝近 30 天已关闭的非 PR issue；只声称样本 N 内结论"
+      },
+      "first_response": {
+        "sample_n": 5,
+        "median_hours": 6.07,
+        "sampled_issues": 20,
+        "issues_without_any_comment": 15,
+        "口径": "created→首条评论；无评论不计入分布"
+      },
+      "identity_check": {
+        "looks_like_shipped_product": true,
+        "matched_signals": ["api"],
+        "matched_research_only_signals": []
+      },
+      "borrowable": "packages/definitions（FHIR 资源定义）加 examples/（把「怎么接」做成可运行示例）；反证项：其根目录只有 README 加 SECURITY（无 CONTRIBUTING），文档数量与成熟度不构成正相关",
+      "can_recompute": "元数据与 issue 时间戳可用 gh api 逐条复算；README 内宣称的性能/质量数字本轮未采用（无复算命令）",
+      "fetched_at": "2026-10-02T16:30:00+08:00"
+    },
+    {
+      "slot": "工程维护/社区侧",
+      "full_name": "nodejs/node",
+      "stars": 122220,
+      "forks": 38472,
+      "open_issues_count_unclosed_including_prs": 1169,
+      "open_issues_count_note": "GitHub 该字段＝未闭 issue+PR 数；不可当「响应速度」或「积压」的唯一口径",
+      "pushed_at": "2026-10-02T07:35:11Z",
+      "license": "NOASSERTION",
+      "archived": false,
+      "commits_last_30d": 658,
+      "releases_total": ">=100（API 单页封顶 100，非精确值）",
+      "contributors_count": ">=100（API 单页封顶 100，非精确值）",
+      "closed_issue_response": {
+        "sample_n": 100,
+        "population_last_30d": 174,
+        "median_hours": 149.76,
+        "p90_hours": 1471.71,
+        "口径": "created→closed 自然小时；样本＝近 30 天已关闭非 PR issue 的最新 100 条（总体 174，样本被截断，只声称前 100 条内结论）"
+      },
+      "first_response": {
+        "sample_n": 11,
+        "median_hours": 3.03,
+        "p90_hours": 27.03,
+        "sampled_issues": 20,
+        "issues_without_any_comment": 9,
+        "口径": "created→首条评论；无评论不计入分布"
+      },
+      "identity_check": {
+        "looks_like_shipped_product": true,
+        "matched_signals": ["api"],
+        "matched_research_only_signals": []
+      },
+      "borrowable": "doc/node-config-schema.json 加 doc/abi_version_registry.json：把配置项与 ABI 约束做成机器可读 JSON 并入仓校验（我方报告 §2.2 的结构缺口）；另有 GOVERNANCE / CODE_OF_CONDUCT / onboarding / glossary 成组",
+      "can_recompute": "元数据与 issue 时间戳可用 gh api 逐条复算；README 内宣称的性能/质量数字本轮未采用（无复算命令）",
+      "fetched_at": "2026-10-02T16:30:00+08:00"
+    },
+    {
+      "slot": "性能/负载侧",
+      "full_name": "locustio/locust",
+      "stars": 28195,
+      "forks": 3253,
+      "open_issues_count_unclosed_including_prs": 6,
+      "open_issues_count_note": "GitHub 该字段＝未闭 issue+PR 数；不可当「响应速度」或「积压」的唯一口径",
+      "pushed_at": "2026-09-26T09:11:45Z",
+      "license": "MIT",
+      "archived": false,
+      "commits_last_30d": 22,
+      "releases_total": ">=100（API 单页封顶 100，非精确值）",
+      "contributors_count": ">=100（API 单页封顶 100，非精确值）",
+      "closed_issue_response": {
+        "sample_n": 4,
+        "population_last_30d": 4,
+        "median_hours": 16.82,
+        "p90_hours": 476.09,
+        "口径": "created→closed 自然小时；样本＝近 30 天已关闭的非 PR issue 全部 4 条；样本极小，只声称 4 条内结论"
+      },
+      "first_response": {
+        "sample_n": 2,
+        "median_hours": 7.88,
+        "sampled_issues": 4,
+        "issues_without_any_comment": 2,
+        "口径": "created→首条评论；无评论不计入分布"
+      },
+      "identity_check": {
+        "looks_like_shipped_product": true,
+        "matched_signals": ["run"],
+        "matched_research_only_signals": []
+      },
+      "borrowable": "benchmarks/dispatch.py 单件仓内可复算负载基准——把并发读数做成小脚本加固定读数，而不是宣称架构能扛；这正是我方性能维缺的那一件",
+      "can_recompute": "元数据与 issue 时间戳可用 gh api 逐条复算；README 内宣称的性能/质量数字本轮未采用（无复算命令）",
+      "fetched_at": "2026-10-02T16:30:00+08:00"
+    }
+  ]
+}

@@ -106,11 +106,22 @@ for (const [id, name, handler] of fallbackCases) {
   check(`降级·${name} → rule-fallback`, out.mode === "rule-fallback" && !!out.fallback_reason, `${out.mode}/${out.fallback_reason}`)
   check(`降级·${name} → 红旗仍成立（降级不削弱安全层）`, (out.flags ?? []).length > 0, `flags=${JSON.stringify(out.flags)}`)
   check(`降级·${name} → 仍产出 FHIR Bundle`, out.fhir?.resourceType === "Bundle" && out.fhir.entry.length >= 4)
+  // 行为回执·单次调用零重试：失败路径对外只发起一次请求。当前实现既无重试环也无熔断，
+  // 这条断言是 `docs/KNOWLEDGE_MAINTENANCE.md` §3 处置矩阵的行为真值来源——将来若真加retry，此处先红，逼文档同步。
+  check(`降级·${name} → 单次调用零重试`, calls.length === 1, `实测外呼 ${calls.length} 次（>1 即说明链上出现重试，须同步 §3 处置矩阵）`)
   // 归因维：文案是一句话，原因是闭集枚举。塌成一句「LLM 超时/输出非法」就是 #146 量不出原因的根因。
   check(`降级·${name} → fallback_cause 归类正确`,
     out.fallback_cause === CAUSE_FIX.injected[id],
     `实得 ${JSON.stringify(out.fallback_cause)}，期望 ${JSON.stringify(CAUSE_FIX.injected[id])}（原因塌成一句=不可归因）`)
 }
+// 反例·证明「外呼次数」这把尺量得到东西：连打两个不同病例，计数必须 ==2。
+// 为什么要有这条：若 stub 计数恒 1（缓存吞掉第二次外呼）或恒 0（链路根本没走到 fetch），
+// 上面那条「单次调用零重试」就对所有实现都恒绿——那是死判据，与 PITFALLS 记过的「零外呼假绿」同族。
+stubFetch(() => okJson(VALID_DX))
+await buildDiagnosis("c1", CHEST_PAIN, ENV)
+await buildDiagnosis("c2", [{ role: "user", content: "突发高热伴躯干皮疹两日，无关节痛" }], ENV)
+check("反例·外呼计数随真实外呼增长（两次调用实测 2）", calls.length === 2, `实测 ${calls.length} 次；不等于 2 则上面那条零重试断言是死的`)
+
 // 反例：超时与网络失败必须分家（两者原先都进同一个 catch）
 stubFetch(() => { const e = new TypeError("fetch failed"); throw e })
 check("降级·网络层 TypeError（出口不通）归为 net_error 而非 timeout",

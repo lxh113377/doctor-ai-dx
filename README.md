@@ -1,4 +1,6 @@
-# 医 · 基层AI辅助诊断系统 — v0.3
+# 医 · 基层AI辅助诊断系统
+
+> 版本号不在标题里写：唯一源是 `frontend/functions/lib/version.js` 的 `APP_VERSION`（由 `version_guard` 五方对账），标题上再抄一份就是第二个真值——它曾长期停在 `v0.3`，与实际发布的 1.x 差 40 多个小版本。当前发布版本看上面的 release 徽章。
 
 [![CI](https://github.com/lxh113377/doctor-ai-dx/actions/workflows/ci.yml/badge.svg)](https://github.com/lxh113377/doctor-ai-dx/actions/workflows/ci.yml)
 [![Latest release](https://img.shields.io/github/v/release/lxh113377/doctor-ai-dx)](https://github.com/lxh113377/doctor-ai-dx/releases)
@@ -51,7 +53,7 @@ docker compose run --rm selftest   # 镜像内可跑的那部分离线断言（�
 
 ```bash
 cd frontend
-npm test       # 二十八件套：49 冒烟(含双端同表红旗探针) + 31 例引擎评测 + 检索分层回归 + 检索器 3 档双端一致 + 语义表守卫 22 + 弃权守卫 20 + 范围表守卫 46 + 红旗表守卫 37（权威==JS==Py 三方全等＋同一份变异夹具两边各跑一遍） + live 路径红线 43 项（含追问 live 分支与续问上限零外呼） + 双端契约 31:31 + FHIR 导出 45 项 + 隐私声明对账 59 项 + 配置契约对账 6 项 + 滥用护栏对账 33 项（契约需本机 Python）
+npm test       # 三十三件套：49 冒烟(含双端同表红旗探针) + 31 例引擎评测 + 检索分层回归 + 检索器 3 档双端一致 + 语义表守卫 22 + 弃权守卫 20 + 范围表守卫 46 + 红旗表守卫 37（权威==JS==Py 三方全等＋同一份变异夹具两边各跑一遍） + live 路径红线 43 项（含追问 live 分支与续问上限零外呼） + 双端契约 31:31 + FHIR 导出 45 项 + 隐私声明对账 59 项 + 配置契约对账 6 项 + 滥用护栏对账 33 项（契约需本机 Python）
 npm run lint     # 静态检查：ESLint（frontend，--max-warnings=0）+ ruff（backend 与 scripts，规则集钉在仓根 ruff.toml）
 npm run typecheck  # Python 类型门禁：mypy 严格档（check_untyped_defs）+ 阈值单一源，实测 23 文件 0 error、抑制项 0（零豁免有机器判据）
 npm run sbom       # 生成前端 CycloneDX SBOM（钉版 @cyclonedx/cyclonedx-npm）；属发布期产物，不入库
@@ -74,7 +76,7 @@ python tests/smoke_engine.py
 - **评测卡 / 安全卡**：[`docs/EVAL_CARD.md`](docs/EVAL_CARD.md) —— 能力边界、病种覆盖清单（60 条 · 20 域）、红旗与安全口径、指标日期一页可查。
 - **架构与不变式**：[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) —— 七段链路图、三条产品红线的代码插入点、JS/Py 双端镜像对账矩阵、检索层实测参数、环境变量与门禁清单（数字均为磁盘实测）。
 - **一条命令跑完本机验证面**：`python scripts/verify.py --suite gate`（步骤清单唯一源 = `scripts/verify.py` 的 `SUITES` 表；`--suite all` 另加交付面，缺工作区父仓时该步记 SKIP 而不是记绿）。
-- **提交前快检**：[`.pre-commit-config.yaml`](.pre-commit-config.yaml) —— `pre-commit install` 后复用仓内既有守卫，共 18 个钩，钩名以该文件为唯一源（本行不抄清单：第三十七轮实测这类抄件的历史值与实数差着 3 只，钩数现已由文档守卫从配置现算对账），秒级；全量二十八件套仍由 CI 兜底。
+- **提交前快检**：[`.pre-commit-config.yaml`](.pre-commit-config.yaml) —— `pre-commit install` 后复用仓内既有守卫，共 18 个钩，钩名以该文件为唯一源（本行不抄清单：第三十七轮实测这类抄件的历史值与实数差着 3 只，钩数现已由文档守卫从配置现算对账），秒级；全量三十三件套仍由 CI 兜底。
 - **安全边界与未保障项**：[`SECURITY.md`](SECURITY.md) —— 已实现的控制、明确未提供的保障（无认证/无审计/日志不留存）、漏洞报告渠道。
 - **错误契约一览**：[`docs/ERRORS.md`](docs/ERRORS.md) —— 集成方只需这张表就能写对重试分支；由 `npm run test:api` 双向核对（表里的码集合 == openapi 声明、三处文案逐字等于 `limits` 常量），改码不改表或表领先实现都判红。
 - **排障手册**：[`docs/PITFALLS.md`](docs/PITFALLS.md) —— 本仓真实踩过的坑按「可 grep 的报错症状 → 根因 → 处置 → 常驻判据」编排；条目必须点名兜住它的判据文件，由 `npm run test:docs` 核对（引用失效即判红）。
@@ -148,16 +150,19 @@ curl http://127.0.0.1:8000/health
    （这是刻意设计：宁可拦住也不放行一张陈旧表）。**该权重与 `bge_onnx_engine.py` 不随本仓库发布**，
    所以在没有它们的环境里，扩库当前是**做不了**而不是不好做——复现证据：
    `python scripts/build_semantic_neighbors.py` → `FAIL: 未找到 bge_onnx_engine.py（不产出半成品表）` exit 1。
-   缺病种清单由 `frontend/tests/fixtures/dx_gold.json` 的 `kb_gap` 字段机器给出（现 5 条）。
+   缺病种清单由 `frontend/tests/fixtures/dx_gold.json` 的 `kb_gap` 字段机器给出（现 0 条；本行数字由
+   `docs_link_guard` 与该 fixture 的真值计数逐轮对账，手改即红——它曾停在「现 5 条」，那是 #53 扩库前的旧数）。
 4. **断网可用，但离线只到「规则档」，不是「模型档」。** 无密钥时全链路零外呼（常驻判据
    `frontend/tests/live_path_guard.mjs`：`calls.length === 0` 且 `mode === rule-fallback`，第二十五轮（v1.23.1）复跑通过），
    知识库/检索/红旗/FHIR/SOAP 全在包内，所以断网仍能出完整五步结果——但结论来自确定性规则模板。
    同类里 `dmustapha/triage-0` 做到了设备内跑本地模型（离线仍有推理）。**不要把这两件事混为一谈**：
    我方离线 ≠ 离线有 AI。补齐需要设备内推理，与「零密钥可跑」「包体积分层」「隐私声明只披露一个出站」
    三条既有约束冲突，当前判定不做。
-5. **无弃权/范围外第三态。** 域外输入仍会得到一份自信的诊断列表（实测：问宠物会返回 ACS 待排除）。
-   已测得候选阈值与安全性（`npm run probe:ood`：域外 top1 上限 38.604 vs 危急域内下限 57.374），
-   但落机制需同时改双端契约、OpenAPI、界面与 E2E 断言面，尚未做。
+5. **弃权与范围外第三态已实现，但主张范围有限。** 域外输入现在返回 `abstain=true`/`scope_status` 而不再给
+   自信的诊断列表（机制与判据见下面第 9、10 条）；本行此前写的是「无弃权第三态、问宠物会返回 ACS 待排除」，
+   那是第三态落地前的旧结论留在页面上与第 9、10 条自相矛盾，2026-10-02 核对代码后更正。
+   仍未解决的是**覆盖**：判据是词面强度（候选阈值由 `npm run probe:ood` 实测：域外 top1 上限 38.604 vs
+   危急域内下限 57.374），所以同一句无关输入重复多次仍可能越过阈值——不是临床可答性判断。
 6. **零持久化、零认证、单用户。** 这是**刻意的**（见 `docs/PRIVACY.md` §7：引入持久化须先改声明再改断言），
    代价是做不到同类已有的复核工作流与审计留痕，因此「医生终审」目前是界面常驻文案而非可验证流程。
 7. **维护者 2 人**，bus factor≈1；无 CI 分钟额度之外的自建基础设施。

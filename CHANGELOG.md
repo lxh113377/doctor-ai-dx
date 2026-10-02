@@ -14,7 +14,7 @@
   只改 json 版本号（md 仍 1.45.0）⇒ 红；json 加幽灵端点 `/api/ghost`（md 无）⇒ 红；
   手改 md 一条 summary（json 未动）⇒ 红；恢复后 28 件套 rc=0、`docs_link_guard` 27 pass／0 fail、
   ruff／mypy（46 文件 0 错）／ESLint 全绿。件套数由 `docs_link_guard` 从 `package.json` 现算点名后，
-  6 份文档「二十七件套」→「二十八件套」（不手抄）。提交链同步：`.pre-commit-config.yaml` 新增 `openapi-md-drift` 钩
+  6 份文档「二十七件套」→「三十三件套」（不手抄）。提交链同步：`.pre-commit-config.yaml` 新增 `openapi-md-drift` 钩
   （17→18 钩，钩数由 `docs_link_guard` 现算后 5 份文档同步），并把 `openapi-version-drift` 的 `files:` 扩到
   `docs/OPENAPI.md` —— 否则「判据扩了面、钩子没扩 files」会让它永远 Skipped（r44 同族教训）。
 
@@ -1969,3 +1969,29 @@ GitHub 开源对标第二轮（6 家同类项目 `gh api` 实测数据驱动）�
 ## [0.x] - 2026-09-04 之前
 
 - 原型（proto-doctor-ai-dx，5 屏静态 SPA）→ MVP 初版（FastAPI 后端 + React19 前端五视图）→ 行业研究报告
+
+### 对话式辅诊面（round90 · 第 90 轮，**本轮不发版**）
+
+- **新增 `/api/chat` 与 `/api/admin/*` 共 7 条路径**（`docs/openapi.json` 现 15 路径，`OPENAPI.md` 由
+  `scripts/gen_openapi.py` 重新派生；`ERRORS.md` 同步新增 401/403/503 三行并纳入双向对账）。
+  链路固定为：**红旗闸门 → 意图识别 → FAQ 检索 → 转人工判定 → 脱敏落库**，顺序本身是红线：
+  `scanFlags()` 在 `detectIntent()` 入口第一步执行，命中即短路，**永不进入 refund / order_query / tech_support 任一客服分支**。
+- **意图注册表新增为第 6 处「单一源→生成物→守卫」范式**：`data/intents.json`（5 类：general_medical /
+  refund 挂号缴费退费退号 / order_query 报告处方挂号单查询 / tech_support 系统使用与故障 / out_of_scope）
+  → `scripts/export_intents.mjs` → `functions/lib/intents.js` + `backend/app/intents.py`，`--check` 逐字节、
+  `--selftest` 15 条中止面。**红旗优先级不在表内**，它硬编码在识别器入口，改表动不了它。
+- **转人工 7 个 reason_code**（红旗/显式要人工/超范围/连续低置信/缺槽位/重复失败/弃权），每条都有会红的判据。
+  **诚实声明**：当前实现到「挂起并留痕」为止（`handoffs.status=open`），**没有坐席工作台，转人工后无人接管**。
+- **持久化**：新增 `scripts/d1_migrate.mjs` + `scripts/d1_schema.sql`（5 表 11 语句 6 索引）。**D1 未绑定时不假装成功**——
+  `persisted=false` 且给出 `persist_reason`，后台返回 `available:false` + 原因。写入前必经 `pii.js` 脱敏（6 类模式），
+  读时再脱一次。`ADMIN_TOKEN` 走 secret，**未配置时后台一律 503 拒绝而非放行**。
+- **新增面 3 `agent-service/`**（CodeBuddy Agent SDK 表达层，由 `init-cbc-sdk-web` 模板落地）：
+  SDK 靠**子进程**调 CodeBuddy CLI，**不能跑进 Cloudflare Workers 运行时**，故与 Pages 面物理分离；
+  红旗命中时**整条绕过 Agent**，危险信号提示逐字直出规则层。SDK 不可用时回落确定性话术并如实标注 `mode`。
+- **门禁**：新增 4 道守卫（`intents_guard` 23 条 / `chat_api_guard` 35 条 / `admin_auth_guard` 14 条 / `d1_persist_guard` 29 条，
+  全部含反例自检）＋镜像 `backend/tests/test_chat.py` 34 条。前端 **32/33 套件绿**、后端 **11/11 套件绿**；
+  唯一红项 `test:evalcard` 为**本轮之前既存**（`EVAL_CARD.md` 早于 `eval_report_live.json`，属答辩材料故未擅自改写）。
+- **包体地板重新标定**：两个**懒加载**视图（ChatView 2.15KB ＋ AdminView 1.88KB gzip）使 assets 合计
+  82,174B → 87,664B，地板按同一纪律（实测＋约 5%）调至 92,000B；**主 chunk 未变（72.47KB），故主包线不动**。
+- **已知未做（下一轮）**：意图侧未复用 `SYNONYMS`；D1 写入未批量化；面 2/面 3 契约无机器校验；工单无指派/关闭；
+  形态 B 部署前置尚未成文。清单与排序依据见 `work/开源对标分析报告-20261002-round90.md` §3/§4。

@@ -1,5 +1,5 @@
 """docs/openapi.json 版本注入口 + docs/OPENAPI.md 唯一派生源（round7 实测教训固化）。
-口径：本仓 docs/openapi.json 是**手工契约文档**（6 端点 = Functions 权威面，含红线安全声明措辞），
+口径：本仓 docs/openapi.json 是**手工契约文档**（8 端点 = Functions 权威面，含红线安全声明措辞），
 不是 FastAPI 自动生成物——曾经用 app.openapi() 全量覆盖直接打爆 api_contract_guard 10 项断言。
 本脚本只更新 info.version 一个字段（真值 = backend/app/version.py），其余内容不动；
 并按同一真值派生 docs/OPENAPI.md（第八十二轮补的人类可读层）——md 是**派生件**，禁手写。

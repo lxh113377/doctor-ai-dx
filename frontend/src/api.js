@@ -77,3 +77,48 @@ export function getReport(caseId, history, dx) {
     body: JSON.stringify({ case_id: caseId, history, dx: dx || null }),
   })
 }
+
+// ---- 对话面与后台（round90）----
+// 后台三态（401 未提供 / 403 不正确 / 503 未配置）由服务端返回，这里**原样把文案透出**：
+// 后台最怕的是把"没配令牌"显示成"没有数据"，那会把配置问题误读成业务事实。
+const jsonPost = (payload) => ({
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify(payload),
+})
+
+export function askChat(payload, signal) {
+  // signal 透传给 req：req 会用自己的 withTimeout 包一层，这里只提供取消依据
+  return req('/api/chat', { ...jsonPost(payload), signal }, 30000)
+}
+
+export function rateChat(conversationId, payload) {
+  return req(`/api/chat/${encodeURIComponent(conversationId)}/feedback`, jsonPost(payload))
+}
+
+export function getConversation(conversationId, signal) {
+  return req(`/api/chat/${encodeURIComponent(conversationId)}`, signal ? { signal } : undefined)
+}
+
+const adminGet = (path, token) => ({
+  headers: { 'x-admin-token': token },
+})
+
+export function adminStats(token) {
+  return req('/api/admin/stats', adminGet('', token))
+}
+
+export function adminConversations(token) {
+  return req('/api/admin/conversations?limit=50', adminGet('', token))
+}
+
+export function adminHandoffs(token) {
+  return req('/api/admin/handoffs?limit=50', adminGet('', token))
+}
+
+/** 快捷意图 chips：与 data/intents.json 的三类客服语义一一对应，口径不另立一套。 */
+export const SERVICE_CHIPS = [
+  { label: '退挂号费', q: '我要退挂号费，请问怎么办' },
+  { label: '查报告', q: '检查报告在哪里看' },
+  { label: '技术支持', q: '页面打不开，登录不上' },
+]

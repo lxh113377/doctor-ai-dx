@@ -449,5 +449,116 @@ check("复现命令行未把覆盖率读数抄成第二真值（数字唯一源 
 check(`覆盖率命令行判据有输入（扫到 ${covTotal} 处，≥3 才算在射程内）`, covTotal >= 3,
   "扫到 0 处＝命令行从文档里消失了或正则失效，判据同样失效，不许静默通过")
 
+// ─────────────────────────────────────────────────────────────────────────────
+// 第八族（2026-10-02 对标 r85，台账 #213）：**行为承诺**也是第二真值。
+// 前七族管的是"计数/路径/版本/条数"，全都管不到这样一句话——「X 至多重试一次」「`Y=z` 可切」——
+// 它描述的是一个**根本不存在的机制**。一手实测两处：
+//   ① `docs/KNOWLEDGE_MAINTENANCE.md` §3 写「timeout／net_error 至多重试一次」并自称"逐行对得上该实现"，
+//      而 `engine.js` 全文只有 **1** 个 `fetch` 调用点（现算 grep），无重试环、无熔断；
+//   ② `docs/EVAL_CARD.md` 写「`RETRIEVER=semantic` 可切，默认 bm25」，而双端引擎都是无参取检索器，
+//      全仓没有任何读取 `RETRIEVER` 的代码，`env_guard` 的声明面里也没有这一项。
+// 两处都由"补文档的那一轮"自己写进去的，且当时全套守卫全绿 ⇒ 说明这一类根本不在射程内，不是笔误。
+// 治法：① 文档只能承诺代码里在场的能力位（按数据流划取数面）；② 行为承诺必须带机器可解析的**回执锚点**
+// `〔回执：<仓根相对路径>::<该文件里真实存在的标识>〕`，指向不存在的实现即红；③④ 顺带把 README 的
+// 标题版本位与 `kb_gap` 手抄条数纳入同一纪律。每条判据都配在场反例（真实历史句）与合规样例，
+// 防"扫到 0 处＝通过"的恒绿。
+// ─────────────────────────────────────────────────────────────────────────────
+
+// 声明面：环境变量类能力位的唯一来源（.env.example ∪ config.py 的 getenv ∪ engine.js 的 process.env）
+const declSources = [
+  ["backend/.env.example", (t) => t.match(/^[A-Z][A-Z0-9_]{2,}/gm) || []],
+  ["backend/app/config.py", (t) => t.match(/getenv\("[A-Z0-9_]+"/g) || []],
+  ["frontend/functions/lib/engine.js", (t) => t.match(/process\.env\.[A-Z0-9_]+/g) || []],
+]
+const ENV_DECL_FACE = new Set()
+for (const [rel, pick] of declSources) {
+  const p = resolve(ROOT, rel)
+  if (!existsSync(p)) continue
+  for (const raw of pick(readFileSync(p, "utf8"))) {
+    const name = (raw.match(/[A-Z][A-Z0-9_]{2,}/) || [])[0]
+    if (name) ENV_DECL_FACE.add(name)
+  }
+}
+const SWITCH_VERB = /可切|切换|设为|改成|改为|开关|启用/
+// 纯函数：喂入 [{file, line}]，返回违规串。抽出来是为了能拿历史句子当面打反例。
+function envSwitchViolations(rows, face) {
+  const out = []
+  for (const { file, line } of rows) {
+    if (!SWITCH_VERB.test(line)) continue
+    const names = new Set()
+    for (const m of line.matchAll(/`([A-Z][A-Z0-9_]{2,})=[^`\s]*`/g)) names.add(m[1])
+    for (const m of line.matchAll(/`([A-Z][A-Z0-9_]{2,})`\s*[*]*\s*(?:可切|可配置|切换)/g)) names.add(m[1])
+    for (const n of names) out.push(`${file} → 宣称 ${n} 是可切换的能力位，但声明面（${declSources.map(([r]) => r).join("／")}）现算 ${face.size} 项里没有 ${n}`)
+  }
+  return out
+}
+const switchRows = []
+for (const file of mdFiles) {
+  if (HISTORY_FILES.has(file)) continue
+  for (const line of mdOf(file).split(/\r?\n/)) switchRows.push({ file, line })
+}
+const switchHits = envSwitchViolations(switchRows, ENV_DECL_FACE)
+check(`文档点名的能力开关必须在声明面在场（声明面现算 ${ENV_DECL_FACE.size} 项，耐久面扫到 ${switchRows.length} 行）`,
+  switchHits.length === 0, switchHits.slice(0, 5).join(" | "))
+check("反例·能力位判据四向都动得了（两种谎形被抓＋合规句与辟谣句不误伤）", (() => {
+  const v = (line) => envSwitchViolations([{ file: "t", line }], ENV_DECL_FACE).length
+  return v("**未启用**（`RETRIEVER=semantic` 可切，默认 bm25）") === 1
+    && v("**未启用**（`RETRIEVER` 可切换，默认 bm25）") === 1
+    && v("档位只在评测 CLI 里按 `--retriever` 选，运行期没有档位开关，链路固定 bm25") === 0
+    && v("本行原先写的环境变量开关经实测并不存在；不存在读取 `RETRIEVER` 的代码") === 0
+})(), "漏抓＝判据是装饰；误伤辟谣句＝逼人把更正从文档里删掉（判据拒真话即判据缺陷）")
+
+// 回执锚点：〔回执：path::identifier〕——path 可从仓根解析，identifier 必须真在该文件里
+const ANCHOR_RE = /〔回执：([^：\s]+)::([^〕]+)〕/g
+const anchorViolations = []
+let anchorTotal = 0
+for (const file of mdFiles) {
+  if (HISTORY_FILES.has(file)) continue
+  for (const m of mdOf(file).matchAll(ANCHOR_RE)) {
+    anchorTotal++
+    const path = m[1].trim()
+    const symbol = m[2].trim()
+    const p = resolve(ROOT, path)
+    if (!existsSync(p)) { anchorViolations.push(`${file} → 回执指向不存在的文件 ${path}`); continue }
+    if (!readFileSync(p, "utf8").includes(symbol)) anchorViolations.push(`${file} → 回执标识 ${path}::${symbol} 在被指文件里找不到（承诺无源）`)
+  }
+}
+check(`行为承诺的回执锚点全部可解析（扫到 ${anchorTotal} 处，≥3 才算在射程内）`,
+  anchorViolations.length === 0 && anchorTotal >= 3, anchorViolations.slice(0, 5).join(" | ") || `在场 ${anchorTotal} 处`)
+check("反例·回执锚点两向都动得了（假路径被抓＋假标识被抓＋真锚点不误伤）", (() => {
+  const probe = (path, symbol) => !(existsSync(resolve(ROOT, path)) && readFileSync(resolve(ROOT, path), "utf8").includes(symbol))
+  return probe("frontend/tests/nope_guard.mjs", "x") && probe("frontend/tests/live_path_guard.mjs", "这句话代码里没有") && !probe("frontend/tests/live_path_guard.mjs", "单次调用零重试")
+})(), "假锚点漏抓＝这条腿是装饰")
+
+// README 标题版本位：标题里抄版本号＝第二个真值（version_guard 五方不含 README，实测它停在 v0.3）
+const APP_VERSION = ((readFileSync(resolve(ROOT, "frontend/functions/lib/version.js"), "utf8").match(/APP_VERSION\s*=\s*"([^"]+)"/) || [])[1]) || ""
+const titleLine = (mdOf("README.md").split(/\r?\n/)[0] || "")
+const titleVersion = (titleLine.match(/\bv(\d+(?:\.\d+)*)\b/i) || [])[1] || ""
+check(`README 标题行不带版本号（唯一源 version.js::APP_VERSION=${APP_VERSION || "读不到"}；标题实测「${titleLine.slice(0, 28)}」）`,
+  titleVersion === "" || titleVersion === APP_VERSION, `标题写着 v${titleVersion}，而发布版本是 ${APP_VERSION}——差 ${titleVersion ? "若干" : "？"} 个小版本且没人对账`)
+check("反例·标题版本位判据抓得住 v9.9.9", /^\s*#\s.*\bv\d/i.test("# 医 · 某系统 — v9.9.9") && !/^\s*#\s.*\bv\d/i.test(titleLine),
+  "抓不到注入版本号的写法＝这条判据对未来的漂移无防")
+
+// kb_gap 手抄条数：真值 = fixture 里 kb_gap 为真的例数
+const GOLD = JSON.parse(readFileSync(resolve(ROOT, "frontend/tests/fixtures/dx_gold.json"), "utf8"))
+const goldCases = Array.isArray(GOLD) ? GOLD : (GOLD.cases || [])
+const KB_GAP_TRUTH = goldCases.filter((c) => c && c.kb_gap).length
+const kbGapClaims = []
+let kbGapTotal = 0
+for (const file of mdFiles) {
+  if (HISTORY_FILES.has(file)) continue
+  for (const line of mdOf(file).split(/\r?\n/)) {
+    if (!line.includes("kb_gap")) continue
+    for (const m of line.matchAll(/（现\s*(\d+)\s*条/g)) {
+      kbGapTotal++
+      if (Number(m[1]) !== KB_GAP_TRUTH) kbGapClaims.push(`${file} → "${m[0]}）" 应为 ${KB_GAP_TRUTH} 条（fixture 现算，共 ${goldCases.length} 例）`)
+    }
+  }
+}
+check(`kb_gap 缺口条数为派生真值（现算 ${KB_GAP_TRUTH} 条，扫到 ${kbGapTotal} 处声明）`,
+  kbGapClaims.length === 0 && kbGapTotal >= 1, kbGapClaims.slice(0, 4).join(" | ") || "扫到 0 处＝文档已不写这个数或正则失效，两种都要点名")
+check("反例·kb_gap 判据对旧数敏感（truth=0 时「现 5 条」必须被抓）",
+  (5 !== KB_GAP_TRUTH) && (KB_GAP_TRUTH === 0 ? true : KB_GAP_TRUTH !== 5), `fixture 真值=${KB_GAP_TRUTH}`)
+
 console.log(`\nRESULT: ${pass} pass / ${fail} fail`)
 process.exit(fail ? 1 : 0)

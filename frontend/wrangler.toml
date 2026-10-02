@@ -7,4 +7,14 @@ name = "doctor-ai-dx"
 compatibility_date = "2024-09-23"
 pages_build_output_dir = "dist"   # ⚠️ 必填：缺它 wrangler 4 会 ignoring config（坑1）
 
-# 无 D1（知识库内嵌，无持久化）——需要时按超市web模式追加 [[d1_databases]]
+# ---- 对话面持久化（round90）----
+# database_id 由 `wrangler d1 create doctor-ai-dx-chat` 现取（2026-10-03），**不编造**。
+# binding 必须是 DB：代码里读的是 env.DB（见 functions/lib/chat_store.js 的 d1Available），
+# wrangler 默认建议的 doctor_ai_dx_chat 与实现对不上，会让"看起来配了但永远不落库"。
+[[d1_databases]]
+binding = "DB"
+database_name = "doctor-ai-dx-chat"
+database_id = "0ad6a745-9d71-444e-8b64-ada2ab43b2dc"
+# 刻意不配 migrations_dir：本仓的 schema 走「权威源 + 生成物 + 守卫」范式
+# （scripts/d1_migrate.mjs --print | wrangler d1 execute），不用 wrangler migrations——
+# 后者要求云账号才能校验，会让"干净检出后验证 schema"这件事在 CI 里做不了。

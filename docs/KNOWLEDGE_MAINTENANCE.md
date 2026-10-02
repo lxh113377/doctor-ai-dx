@@ -15,15 +15,21 @@
 - 撤回：从 `entries` 删除对应项后同样走导出与邻接重建；过期撤回流程以本节为准，结论使用前请核对来源年份。
 - 加权词规矩：加权词一律取指南侧写法（医生口语侧由同义词表桥接）；每个加权词必须在语料正文真出现，否则恒零分并被零豁免判据拦。
 
-## 3. Provider 重试与熔断矩阵（行为文档化，不改行为）
+## 3. Provider 失败归因与处置矩阵（实现事实：单次调用、零重试、无熔断）
 
-> 实现唯一源为 `frontend/functions/lib/engine.js` 内的调用与归因函数；下表逐行对得上该实现，改实现须同步改表。
+> 实现唯一源为 `frontend/functions/lib/engine.js` 内的 `callLLM` 与 `llmCauseOf`。本表只陈述**已实现**的行为，且每行给出机器可核的回执锚点：形状是「回执」二字后接仓根相对路径、双冒号、该文件里真实存在的标识，整体用六角括号包住（表下即实例）。由 `docs_link_guard` 逐条核"路径可解析 + 标识在该文件里在场"，指向不存在的实现即判红。
+>
+> **本节曾有假承诺（2026-10-01 立，2026-10-02 自纠）**：上一版这里写的是「`timeout`／`net_error`／服务端错误类 至多重试一次」，而实测 `engine.js` 全文只有**一处** `fetch` 调用点、无重试环、无熔断——那句话是文档造出来的第二个真值，代码里并不存在。改法是把话降级成事实，而不是把代码改成话：重试会把单次窗口翻倍，与 `docs/EVAL_CARD.md` 现役行的 P95 上限约束直接冲突（读数只认那一行，本文件不抄数值），且线上失败面已由 `fallback_cause` 闭集做到可归因，重试并不能提高"能不能查出来"。
 
-| 失败归因 | 处置 | 说明 |
+| 失败归因 | 处置 | 回执 |
 |---|---|---|
-| `no_key` | 直接降级，不重试 | 无密钥时规则引擎即答案 |
-| `timeout`、`net_error`、服务端错误类 | 至多重试一次，且单次硬超时与总额预算不变 | 超预算即降级，不延长链路 |
-| `bad_json`、`schema`、`empty`、`truncated`、`content_filter` 及未知完成态 | 直接降级，不重试 | 输出非法或被截断/过滤时重试只会再花一次窗口 |
-| 入站越界与坏请求 | 在契约层直接拒收，不进引擎 | 不消耗模型窗口；客户端错误记 warn 级 |
+| `no_key` | 不外呼，规则引擎直接出答案 | 〔回执：frontend/tests/live_path_guard.mjs::无 Key 零外呼并降级〕 |
+| `timeout`／`net_error` | 一次外呼失败即降级，不重试 | 〔回执：frontend/tests/live_path_guard.mjs::单次调用零重试〕 |
+| `http_5xx`／`http_429` 等服务端类 | 同上：单次调用零重试；4xx 按坏请求处理不进引擎 | 〔回执：frontend/tests/live_path_guard.mjs::单次调用零重试〕 |
+| `bad_json`／`schema`／`empty`／`truncated`／`content_filter`／未知完成态 | 单次调用零重试后降级（输出非法时重试只会再花一次窗口） | 〔回执：frontend/tests/live_path_guard.mjs::单次调用零重试〕 |
+| 归因本身的可信度 | 原因取闭集枚举，塌成一句即判红 | 〔回执：frontend/tests/fixtures/llm_fallback_causes.json::causes〕 |
+| 入站越界与坏请求 | 契约层直接拒收，不消耗模型窗口 | 〔回执：frontend/functions/api/[[route]].js::413〕 |
+
+**若将来真要实现重试**：先让 `单次调用零重试` 那组断言变红并改其期望值，同时把本节改写成带预算数字的矩阵（重试次数、总额预算、与 P95 上限的算术关系），两端 `engine.js`／`llm.py` 同改否则 `test:contract` 判红——不许只改文档。
 
 配套纪律：对外响应只给医生可理解文案与 `fallback_reason`；归因闭集只用于内部排障；慢请求阈值与日志脱敏口径见 `docs/ARCHITECTURE.md` 可观测性节。

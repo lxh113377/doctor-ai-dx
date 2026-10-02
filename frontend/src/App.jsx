@@ -9,6 +9,9 @@ const Intake = lazy(() => import('./views/Intake.jsx'))
 const Dx = lazy(() => import('./views/Dx.jsx'))
 const Workup = lazy(() => import('./views/Workup.jsx'))
 const Report = lazy(() => import('./views/Report.jsx'))
+// 对话入口与管理后台是**旁路**：它们不依赖病例向导的 0-4 步，走廊五步后可直接进入。
+const ChatView = lazy(() => import('./views/ChatView.jsx'))
+const AdminView = lazy(() => import('./views/AdminView.jsx'))
 
 const STEPS = [
   { key: 'cases', label: '选择病例' },
@@ -16,6 +19,8 @@ const STEPS = [
   { key: 'dx', label: '辅助诊断' },
   { key: 'workup', label: '检查建议' },
   { key: 'report', label: '病历报告' },
+  { key: 'chat', label: '对话入口' },
+  { key: 'admin', label: '管理后台' },
 ]
 
 const ViewLoading = () => (
@@ -60,7 +65,7 @@ export default function App() {
     return () => ctrl.abort()
   }, [])
 
-  const go = (n) => { if (n <= reached) setStep(n) }
+  const go = (n) => { if (n <= reached || n >= 5) setStep(n) }
 
   const startCase = (c) => {
     setPatient(c)
@@ -98,6 +103,8 @@ export default function App() {
       case 2: return <Dx dx={intake.dx} patient={patient} onRestart={() => startCase(patient)} onNext={goWorkup} />
       case 3: return <Workup workup={workup} onNext={goReport} />
       case 4: return <Report report={report} patient={patient} />
+      case 5: return <ChatView />
+      case 6: return <AdminView />
       default: return null
     }
   }
@@ -127,7 +134,7 @@ export default function App() {
               type="button"
               className={'step' + (i === step ? ' active' : i < reached ? ' done' : '')}
               onClick={() => go(i)}
-              disabled={i > reached}
+              disabled={i > reached && i < 5}
               aria-current={i === step ? 'step' : undefined}
             >
               <span className="step-dot">{i + 1}</span>

@@ -1,0 +1,49 @@
+/**
+ * agent-service 自检（面3 侧会红的判据）：断言「降级契约」在任何环境下都成立。
+ *
+ * 为什么不是简单断言 SDK 可用：本机 / CI 很可能没登录 CodeBuddy，那种情况下判红没有意义。
+ * 真正必须恒成立的是**不得谎报** —— 只有 CLI 可执行且有 Key 时才允许 mode=live；
+ * 其余一切情况都必须落到 mock-fallback。这条契约一破就是「静默假装 live」，正是本项目最在意的那类假绿。
+ *
+ * 用法：npm run probe（退出码 0/1）
+ */
+import { probeSdk, cliCandidates } from "./sdk_status.js";
+import { AGENT_TIMEOUT_MS } from "./agent.js";
+
+let pass = 0;
+let fail = 0;
+const check = (name: string, ok: boolean, detail = ""): void => {
+if (ok) { pass++; console.log("  PASS", name); }
+else { fail++; console.log("  FAIL", name + (detail ? " :: " + detail : "")); }
+};
+
+const STATES = ["ready", "no-cli", "no-auth", "disabled"];
+const MODES = ["live", "mock-fallback"];
+
+console.log("== SDK 可用性实测 ==");
+const st = await probeSdk();
+console.log("  state=" + st.state + " mode=" + st.mode + " cli=" + (st.cli_path || "(none)") + " version=" + (st.cli_version || "(none)") + " has_key=" + st.has_api_key);
+
+console.log("== 降级契约判据 ==");
+check("N1 state 落在四态枚举内", STATES.includes(st.state), st.state);
+check("N2 mode 落在两值枚举内（与既有 llm 口径一致）", MODES.includes(st.mode), st.mode);
+check("N3 mode=live 当且仅当 state=ready（不得谎报 live）", (st.mode === "live") === (st.state === "ready"), "state=" + st.state + " mode=" + st.mode);
+check("N4 state=ready 时 cli_path 与 cli_version 均非空", st.state !== "ready" || (!!st.cli_path && !!st.cli_version), "path=" + (st.cli_path || "(null)") + " version=" + (st.cli_version || "(null)"));
+check("N5 path 与 version 不矛盾", !!st.cli_version === !!st.cli_path, "path=" + (st.cli_path || "(null)") + " version=" + (st.cli_version || "(null)"));
+check("N6 reason 非空（任何状态都必须能解释自己）", st.reason.trim().length > 0, st.reason);
+check("N7 探测结果不含密钥值", !JSON.stringify(st).includes(String(process.env.CODEBUDDY_API_KEY || "@@none@@")));
+check("N8 CLI 候选列表无空串", cliCandidates().every((c) => c.trim().length > 0), JSON.stringify(cliCandidates()));
+check("N9 表达层硬超时为正且有上界", AGENT_TIMEOUT_MS > 0 && AGENT_TIMEOUT_MS <= 30000, String(AGENT_TIMEOUT_MS));
+
+console.log("== 反向对照（变异：强制关闭 Agent 编排）==");
+const prev = process.env.AGENT_SDK_ENABLED;
+process.env.AGENT_SDK_ENABLED = "0";
+const forced = await probeSdk();
+check("M1 变异后 state=disabled", forced.state === "disabled", forced.state);
+check("M2 变异后 mode=mock-fallback", forced.mode === "mock-fallback", forced.mode);
+check("M3 变异后仍满足 live⟺ready", (forced.mode === "live") === (forced.state === "ready"));
+if (prev === undefined) delete process.env.AGENT_SDK_ENABLED;
+else process.env.AGENT_SDK_ENABLED = prev;
+
+console.log("`nAGENT-SERVICE PROBE: " + pass + " pass / " + fail + " fail");
+process.exit(fail ? 1 : 0);

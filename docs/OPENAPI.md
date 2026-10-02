@@ -6,6 +6,78 @@
 
 > 合规声明：演示仅脱敏合成病例；evidence_ids 仅限知识库白名单 kb-001~055；红旗规则层独立于 LLM 不可被模型覆盖
 
+## GET /cds-services
+
+CDS Hooks 服务发现（规范 2.0 Discovery；固定路径，响应无 {code,data} 信封）
+
+tags: cds-hooks
+
+响应码: 200 / 400 / 404 / 413 / 500
+
+## POST /cds-services/{service}
+
+CDS Hooks 调用端点（规范 2.0 Calling a CDS Service；本服务不访问 FHIR 服务器、不消费 prefetch）
+
+tags: cds-hooks
+
+响应码: 200 / 400 / 404 / 413 / 422 / 500
+
+## POST /api/chat
+
+对话入口：红旗闸门 → 意图识别 → FAQ 检索 → 转人工判定 → 脱敏落库
+
+tags: chat
+
+响应码: 200 / 400 / 404 / 413 / 422 / 500
+
+## GET /api/chat/{conversationId}
+
+取单个会话详情（脱敏视图）
+
+tags: chat
+
+响应码: 200 / 404 / 500
+
+## POST /api/chat/{conversationId}/feedback
+
+会话满意度打分（1-5，越界拒绝不静默截断）
+
+tags: chat
+
+响应码: 200 / 400 / 404 / 413 / 422 / 500
+
+## GET /api/admin/conversations
+
+管理后台：会话列表（需 x-admin-token）
+
+tags: admin
+
+响应码: 200 / 401 / 403 / 500 / 503
+
+## GET /api/admin/conversations/{conversationId}
+
+管理后台：单会话详情（需 x-admin-token）
+
+tags: admin
+
+响应码: 200 / 401 / 403 / 500 / 503
+
+## GET /api/admin/handoffs
+
+管理后台：转人工队列（需 x-admin-token）
+
+tags: admin
+
+响应码: 200 / 401 / 403 / 500 / 503
+
+## GET /api/admin/stats
+
+管理后台：满意度与意图统计（需 x-admin-token）
+
+tags: admin
+
+响应码: 200 / 401 / 403 / 500 / 503
+
 ## GET /api/cases
 
 脱敏演示病例列表（3 例合成数据）

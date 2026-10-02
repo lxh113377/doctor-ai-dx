@@ -17,6 +17,603 @@
     }
   ],
   "paths": {
+      "/cds-services": {
+        "get": {
+          "tags": [
+            "cds-hooks"
+          ],
+          "summary": "CDS Hooks 服务发现（规范 2.0 Discovery；固定路径，响应无 {code,data} 信封）",
+          "responses": {
+            "200": {
+              "description": "发现文档",
+              "headers": {
+                "x-request-id": {
+                  "$ref": "#/components/headers/RequestId"
+                }
+              },
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "object"
+                  }
+                }
+              }
+            },
+            "400": {
+              "$ref": "#/components/responses/BadJson"
+            },
+            "404": {
+              "$ref": "#/components/responses/NotFound"
+            },
+            "413": {
+              "$ref": "#/components/responses/PayloadTooLarge"
+            },
+            "500": {
+              "$ref": "#/components/responses/InternalError"
+            }
+          }
+        }
+      },
+      "/cds-services/{service}": {
+        "post": {
+          "tags": [
+            "cds-hooks"
+          ],
+          "summary": "CDS Hooks 调用端点（规范 2.0 Calling a CDS Service；本服务不访问 FHIR 服务器、不消费 prefetch）",
+          "parameters": [
+            {
+              "name": "service",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "hook": {
+                      "type": "string",
+                      "description": "hook 类型，如 patient-view"
+                    },
+                    "hookInstance": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "context": {
+                      "type": "object",
+                      "description": "本服务支持的最小上下文"
+                    },
+                    "prefetch": {
+                      "type": "object",
+                      "nullable": true,
+                      "description": "声明但不消费"
+                    },
+                    "fhirServer": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "fhirAuthorization": {
+                      "type": "object",
+                      "nullable": true
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "CDS 卡片响应（无 {code,data} 信封）",
+              "headers": {
+                "x-request-id": {
+                  "$ref": "#/components/headers/RequestId"
+                }
+              },
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "object"
+                  }
+                }
+              }
+            },
+            "400": {
+              "$ref": "#/components/responses/BadJson"
+            },
+            "404": {
+              "$ref": "#/components/responses/NotFound"
+            },
+            "413": {
+              "$ref": "#/components/responses/PayloadTooLarge"
+            },
+            "422": {
+              "$ref": "#/components/responses/BadShape"
+            },
+            "500": {
+              "$ref": "#/components/responses/InternalError"
+            }
+          }
+        }
+      },
+      "/api/chat": {
+        "post": {
+          "tags": [
+            "chat"
+          ],
+          "summary": "对话入口：红旗闸门 → 意图识别 → FAQ 检索 → 转人工判定 → 脱敏落库",
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "text"
+                  ],
+                  "properties": {
+                    "text": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 2000
+                    },
+                    "history": {
+                      "type": "array",
+                      "maxItems": 64,
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "role": {
+                            "type": "string"
+                          },
+                          "content": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "conversation_id": {
+                      "type": "string",
+                      "nullable": true
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "对话结果；mode=deterministic（判定全在确定性代码，红旗不经模型）",
+              "headers": {
+                "x-request-id": {
+                  "$ref": "#/components/headers/RequestId"
+                }
+              },
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "allOf": [
+                      {
+                        "$ref": "#/components/schemas/Envelope"
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "data": {
+                            "$ref": "#/components/schemas/ChatResult"
+                          }
+                        }
+                      }
+                    ]
+                  }
+                }
+              }
+            },
+            "400": {
+              "$ref": "#/components/responses/BadJson"
+            },
+            "404": {
+              "$ref": "#/components/responses/NotFound"
+            },
+            "413": {
+              "$ref": "#/components/responses/PayloadTooLarge"
+            },
+            "422": {
+              "$ref": "#/components/responses/BadShape"
+            },
+            "500": {
+              "$ref": "#/components/responses/InternalError"
+            }
+          }
+        }
+      },
+      "/api/chat/{conversationId}": {
+        "get": {
+          "tags": [
+            "chat"
+          ],
+          "summary": "取单个会话详情（脱敏视图）",
+          "parameters": [
+            {
+              "name": "conversationId",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "成功",
+              "headers": {
+                "x-request-id": {
+                  "$ref": "#/components/headers/RequestId"
+                }
+              },
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "allOf": [
+                      {
+                        "$ref": "#/components/schemas/Envelope"
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "data": {
+                            "$ref": "#/components/schemas/ConversationDetail"
+                          }
+                        }
+                      }
+                    ]
+                  }
+                }
+              }
+            },
+            "404": {
+              "$ref": "#/components/responses/NotFound"
+            },
+            "500": {
+              "$ref": "#/components/responses/InternalError"
+            }
+          }
+        }
+      },
+      "/api/chat/{conversationId}/feedback": {
+        "post": {
+          "tags": [
+            "chat"
+          ],
+          "summary": "会话满意度打分（1-5，越界拒绝不静默截断）",
+          "parameters": [
+            {
+              "name": "conversationId",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "score"
+                  ],
+                  "properties": {
+                    "score": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 5
+                    },
+                    "tag": {
+                      "type": "string",
+                      "maxLength": 40
+                    },
+                    "comment": {
+                      "type": "string",
+                      "maxLength": 200
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "已记录",
+              "headers": {
+                "x-request-id": {
+                  "$ref": "#/components/headers/RequestId"
+                }
+              },
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "allOf": [
+                      {
+                        "$ref": "#/components/schemas/Envelope"
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "data": {
+                            "type": "object"
+                          }
+                        }
+                      }
+                    ]
+                  }
+                }
+              }
+            },
+            "400": {
+              "$ref": "#/components/responses/BadJson"
+            },
+            "404": {
+              "$ref": "#/components/responses/NotFound"
+            },
+            "413": {
+              "$ref": "#/components/responses/PayloadTooLarge"
+            },
+            "422": {
+              "$ref": "#/components/responses/BadShape"
+            },
+            "500": {
+              "$ref": "#/components/responses/InternalError"
+            }
+          }
+        }
+      },
+      "/api/admin/conversations": {
+        "get": {
+          "tags": [
+            "admin"
+          ],
+          "summary": "管理后台：会话列表（需 x-admin-token）",
+          "parameters": [
+            {
+              "name": "limit",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 100
+              }
+            },
+            {
+              "name": "offset",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "integer",
+                "minimum": 0
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "成功",
+              "headers": {
+                "x-request-id": {
+                  "$ref": "#/components/headers/RequestId"
+                }
+              },
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "allOf": [
+                      {
+                        "$ref": "#/components/schemas/Envelope"
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "data": {
+                            "type": "object"
+                          }
+                        }
+                      }
+                    ]
+                  }
+                }
+              }
+            },
+            "401": {
+              "description": "未提供管理令牌"
+            },
+            "403": {
+              "description": "管理令牌不正确"
+            },
+            "500": {
+              "$ref": "#/components/responses/InternalError"
+            },
+            "503": {
+              "description": "服务器未配置 ADMIN_TOKEN"
+            }
+          }
+        }
+      },
+      "/api/admin/conversations/{conversationId}": {
+        "get": {
+          "tags": [
+            "admin"
+          ],
+          "summary": "管理后台：单会话详情（需 x-admin-token）",
+          "parameters": [
+            {
+              "name": "conversationId",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "成功",
+              "headers": {
+                "x-request-id": {
+                  "$ref": "#/components/headers/RequestId"
+                }
+              },
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "allOf": [
+                      {
+                        "$ref": "#/components/schemas/Envelope"
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "data": {
+                            "type": "object"
+                          }
+                        }
+                      }
+                    ]
+                  }
+                }
+              }
+            },
+            "401": {
+              "description": "未提供管理令牌"
+            },
+            "403": {
+              "description": "管理令牌不正确"
+            },
+            "500": {
+              "$ref": "#/components/responses/InternalError"
+            },
+            "503": {
+              "description": "服务器未配置 ADMIN_TOKEN"
+            }
+          }
+        }
+      },
+      "/api/admin/handoffs": {
+        "get": {
+          "tags": [
+            "admin"
+          ],
+          "summary": "管理后台：转人工队列（需 x-admin-token）",
+          "parameters": [
+            {
+              "name": "limit",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 100
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "成功",
+              "headers": {
+                "x-request-id": {
+                  "$ref": "#/components/headers/RequestId"
+                }
+              },
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "allOf": [
+                      {
+                        "$ref": "#/components/schemas/Envelope"
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "data": {
+                            "type": "object"
+                          }
+                        }
+                      }
+                    ]
+                  }
+                }
+              }
+            },
+            "401": {
+              "description": "未提供管理令牌"
+            },
+            "403": {
+              "description": "管理令牌不正确"
+            },
+            "500": {
+              "$ref": "#/components/responses/InternalError"
+            },
+            "503": {
+              "description": "服务器未配置 ADMIN_TOKEN"
+            }
+          }
+        }
+      },
+      "/api/admin/stats": {
+        "get": {
+          "tags": [
+            "admin"
+          ],
+          "summary": "管理后台：满意度与意图统计（需 x-admin-token）",
+          "responses": {
+            "200": {
+              "description": "成功",
+              "headers": {
+                "x-request-id": {
+                  "$ref": "#/components/headers/RequestId"
+                }
+              },
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "allOf": [
+                      {
+                        "$ref": "#/components/schemas/Envelope"
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "data": {
+                            "type": "object"
+                          }
+                        }
+                      }
+                    ]
+                  }
+                }
+              }
+            },
+            "401": {
+              "description": "未提供管理令牌"
+            },
+            "403": {
+              "description": "管理令牌不正确"
+            },
+            "500": {
+              "$ref": "#/components/responses/InternalError"
+            },
+            "503": {
+              "description": "服务器未配置 ADMIN_TOKEN"
+            }
+          }
+        }
+      },
     "/api/cases": {
       "get": {
         "tags": [
@@ -398,6 +995,153 @@
       }
     },
     "schemas": {
+      "ChatResult": {
+        "type": "object",
+        "properties": {
+          "conversation_id": {
+            "type": "string",
+            "nullable": true
+          },
+          "intent": {
+            "type": "string",
+            "enum": [
+              "red_flag",
+              "general_medical",
+              "refund",
+              "order_query",
+              "tech_support",
+              "out_of_scope"
+            ]
+          },
+          "confidence": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 0.95
+          },
+          "answer": {
+            "type": "object",
+            "properties": {
+              "text": {
+                "type": "string"
+              },
+              "citations": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "evidence_id": {
+                      "type": "string"
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "source": {
+                      "type": "string"
+                    },
+                    "year": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "red_flag": {
+            "type": "object",
+            "nullable": true,
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "severity": {
+                "type": "string"
+              },
+              "advice": {
+                "type": "string"
+              }
+            }
+          },
+          "handoff": {
+            "type": "object",
+            "nullable": true,
+            "properties": {
+              "reason_code": {
+                "type": "string"
+              },
+              "reason_text": {
+                "type": "string"
+              },
+              "ticket_id": {
+                "type": "string"
+              }
+            }
+          },
+          "abstain": {
+            "type": "boolean"
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "deterministic",
+              "live",
+              "mock-fallback"
+            ]
+          },
+          "answer_source": {
+            "type": "string",
+            "enum": [
+              "deterministic",
+              "agent"
+            ]
+          },
+          "persisted": {
+            "type": "boolean"
+          },
+          "persist_reason": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          }
+        }
+      },
+      "ConversationDetail": {
+        "type": "object",
+        "properties": {
+          "available": {
+            "type": "boolean"
+          },
+          "found": {
+            "type": "boolean"
+          },
+          "conversation": {
+            "type": "object",
+            "nullable": true
+          },
+          "messages": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          },
+          "intent_events": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          },
+          "handoffs": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          },
+          "feedback": {
+            "type": "object",
+            "nullable": true
+          }
+        }
+      },
       "Envelope": {
         "type": "object",
         "required": [

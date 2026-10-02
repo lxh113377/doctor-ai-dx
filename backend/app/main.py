@@ -11,7 +11,7 @@ from . import limits
 from .config import current_api_key, get_settings
 from .limits import RequestTooLarge
 from .observe import SLOW_MS, log_event, new_request_id, redact
-from .routers import api
+from .routers import api, cds
 from .version import APP_VERSION
 
 app = FastAPI(
@@ -30,6 +30,8 @@ app.add_middleware(
 )
 
 app.include_router(api.router)
+# CDS Hooks 面挂在根路径（/cds-services），不带 /api 前缀：规范把发现端点的路径钉死了
+app.include_router(cds.router)
 
 
 @app.middleware("http")

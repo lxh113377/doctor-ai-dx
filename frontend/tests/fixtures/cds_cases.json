@@ -1,0 +1,74 @@
+{
+  "_source": "CDS Hooks 适配层的双端共用探针输入清单（第八十五轮）。权威面 cds_hooks_guard.mjs 与镜像面 backend/tests/cds_dump.py 都读这一份，禁在任一侧另列第二份输入。",
+  "_why": "对账要成对：两端各写一套输入时，「双端一致」可以在双方都错的情况下成立。同一份夹具驱动两端，比较才有判定力。",
+  "_expectation_note": "expect 是本层对外的行为承诺，不是实跑的副产品：card_count 由规则表命中数决定（红旗表 danger 13 条＋combo 4 条、范围表 3 条，均可复算），indicator 由 data/cds_services.json 的 indicatorMap 派生。改期望值前先确认规则表本身确实变了。",
+  "services": ["red-flag-screen", "scope-boundary"],
+  "cases": [
+    {
+      "id": "acs-critical",
+      "service": "red-flag-screen",
+      "context": { "patientId": "c1", "symptoms": ["压榨样胸痛向左肩放射", "出冷汗"] },
+      "expect": { "card_count": 1, "indicators": ["critical"], "name_contains": "冠脉综合征" }
+    },
+    {
+      "id": "gi-bleed",
+      "service": "red-flag-screen",
+      "context": { "symptoms": ["呕血", "柏油样黑便三天"] },
+      "expect": { "card_count": 1, "indicators": ["critical"], "name_contains": "消化道出血" }
+    },
+    {
+      "id": "dyspnoea-warning",
+      "service": "red-flag-screen",
+      "context": { "symptoms": ["活动后呼吸困难，没有胸痛"] },
+      "expect": { "card_count": 1, "indicators": ["warning"], "name_contains": "呼吸困难" }
+    },
+    {
+      "id": "bp-crisis",
+      "service": "red-flag-screen",
+      "context": { "symptoms": ["血压 190/125，伴视物模糊"] },
+      "expect": { "card_count": 1, "indicators": ["critical"], "name_contains": "高血压急症" }
+    },
+    {
+      "id": "no-flag",
+      "service": "red-flag-screen",
+      "context": { "symptoms": ["发热三天，咽痛，咳嗽一天"] },
+      "expect": { "card_count": 0, "indicators": [], "name_contains": null }
+    },
+    {
+      "id": "case-c1-chief-only",
+      "service": "red-flag-screen",
+      "context": { "patientId": "c1" },
+      "expect": { "card_count": 0, "indicators": [], "name_contains": null }
+    },
+    {
+      "id": "scope-imaging",
+      "service": "scope-boundary",
+      "context": { "symptoms": ["帮我看看这张CT片子上的结节"] },
+      "expect": { "card_count": 1, "indicators": ["warning"], "name_contains": "影像与检查报告解读" }
+    },
+    {
+      "id": "scope-dosing",
+      "service": "scope-boundary",
+      "context": { "symptoms": ["这个药每公斤吃多少毫升"] },
+      "expect": { "card_count": 1, "indicators": ["warning"], "name_contains": "给药剂量与处方方案" }
+    },
+    {
+      "id": "scope-none",
+      "service": "scope-boundary",
+      "context": { "symptoms": ["发热三天，咽痛，咳嗽一天"] },
+      "expect": { "card_count": 0, "indicators": [], "name_contains": null }
+    }
+  ],
+  "rejects": [
+    { "id": "missing-hook", "service": "red-flag-screen", "body": { "hookInstance": "r-1", "context": { "symptoms": ["呕血"] } }, "status": 422 },
+    { "id": "missing-hook-instance", "service": "red-flag-screen", "body": { "hook": "patient-view", "context": { "symptoms": ["呕血"] } }, "status": 422 },
+    { "id": "missing-context", "service": "red-flag-screen", "body": { "hook": "patient-view", "hookInstance": "r-3" }, "status": 422 },
+    { "id": "context-not-object", "service": "red-flag-screen", "body": { "hook": "patient-view", "hookInstance": "r-4", "context": "呕血" }, "status": 422 },
+    { "id": "hook-mismatch", "service": "red-flag-screen", "body": { "hook": "order-sign", "hookInstance": "r-5", "context": { "symptoms": ["呕血"] } }, "status": 422 },
+    { "id": "empty-context", "service": "red-flag-screen", "body": { "hook": "patient-view", "hookInstance": "r-6", "context": { "symptoms": [] } }, "status": 422 },
+    { "id": "symptoms-not-array", "service": "red-flag-screen", "body": { "hook": "patient-view", "hookInstance": "r-7", "context": { "symptoms": "呕血" } }, "status": 422 },
+    { "id": "unknown-patient", "service": "red-flag-screen", "body": { "hook": "patient-view", "hookInstance": "r-8", "context": { "patientId": "P-真实患者-9527" } }, "status": 422 },
+    { "id": "blank-symptoms", "service": "red-flag-screen", "body": { "hook": "patient-view", "hookInstance": "r-10", "context": { "symptoms": ["", "   "] } }, "status": 422 },
+    { "id": "unknown-service", "service": "no-such-service", "body": { "hook": "patient-view", "hookInstance": "r-9", "context": { "symptoms": ["呕血"] } }, "status": 404 }
+  ]
+}

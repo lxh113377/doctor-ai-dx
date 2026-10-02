@@ -1,0 +1,20 @@
+# CDS Hooks 服务目录（构建期产物，禁手改）——由 scripts/export_cds_services.mjs 从 data/cds_services.json 生成。
+# schema_version=1；与 functions/lib/cds_services.js 同源同值，由 cds_guard.mjs 对账。
+from typing import Any
+
+CDS_SCHEMA: int = 1
+CDS_SPEC_VERSION: str = "2.0"
+CDS_SOURCE: dict[str, Any] = {"label": "基层AI辅助诊断 · AI 辅助参考，医生终审", "url": "https://doctor-ai-dx.pages.dev"}
+CDS_URGENCIES: list[str] = ["info", "warning", "critical"]
+CDS_INDICATOR_MAP: dict[str, Any] = {"高": "critical", "中": "warning", "低": "info"}
+CDS_SERVICES: list[dict[str, Any]] = [
+    {"id": "red-flag-screen", "hook": "patient-view", "title": "危险信号红旗筛查（规则层，不经大模型）", "description": "对传入的临床文字逐条比对红旗规则表，命中即出转诊提示卡。判定全部由 data/red_flag_rules.json 的规则表产出，不调用任何大模型，因此命中结果不可能被模型输出覆盖（产品红线一的机器形态）。", "usageRequirements": "本服务不访问任何 FHIR 服务器、不申请 prefetch：请把待判读的临床文字放进 context.symptoms（字符串数组），或用 context.patientId 指定本仓内置的脱敏演示病例（c1/c2/c3）。两者都缺时服务返回 422 而不是空卡数组——避免集成方把「没数据」读成「没风险」。"},
+    {"id": "scope-boundary", "hook": "patient-view", "title": "适用范围边界提示（范围外即转诊）", "description": "对同一段临床文字比对适用范围规则表（data/scope_rules.json），命中「超出适用范围」时出一张 warning 卡说明为什么本系统不该给结论、以及该找谁。未命中时返回空 cards 数组。", "usageRequirements": "输入字段与 red-flag-screen 相同（context.symptoms 或 context.patientId）。本服务不预测诊断，只声明边界，因此不需要大模型。"},
+]
+CDS_OVERRIDE_REASONS: list[dict[str, Any]] = [
+    {"code": "clinical_judgment", "system": "http://doctor-ai-dx.pages.dev/fhir/CodeSystem/override-reasons", "display": "接诊医生按临床判断不采纳"},
+    {"code": "history_insufficient", "system": "http://doctor-ai-dx.pages.dev/fhir/CodeSystem/override-reasons", "display": "病史信息不足，需先补充问诊"},
+    {"code": "already_managed", "system": "http://doctor-ai-dx.pages.dev/fhir/CodeSystem/override-reasons", "display": "已由上级医院处置"},
+]
+CDS_SUMMARY_TEMPLATES: dict[str, Any] = {"red_flag": "危险信号「{name}」：建议立即评估转诊", "scope": "本例超出系统适用范围：{title}"}
+CDS_DETAIL_TEMPLATES: dict[str, Any] = {"red_flag": "红旗规则「{name}」（严重度 {severity}）命中。\n\n处置建议：{advice}\n\n本卡由确定性规则层产出，未经大模型；最终判断由接诊医生作出。", "scope": "适用范围规则「{title}」命中（触发词 {matched}）。\n\n为什么本系统不该给结论：{rationale}\n\n给接诊医生的话：{doctor_note}"}

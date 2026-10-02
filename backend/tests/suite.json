@@ -10,8 +10,10 @@
     "tests/test_red_flag_rules.py",
     "tests/test_retriever_channels.py",
     "tests/test_api_observe.py",
+    "tests/test_cds_hooks.py",
     "tests/test_live_path.py",
-    "tests/test_limits.py"
+    "tests/test_limits.py",
+    "tests/test_chat.py"
   ],
   "_invariants": "suite_guard 会反向断言：本清单不得为空、每条必须真实存在、且 tests/ 下所有 test_*.py 与 smoke_engine.py 必须**全部**被本清单覆盖（新增测试文件忘记登记即判红）。"
 }

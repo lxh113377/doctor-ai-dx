@@ -14,6 +14,9 @@
 | `413` | 入站边界超限（body 64 KiB／history 64 条／单条 2000 字） | `请求内容超出可处理范围，请精简问诊记录后重试` | `TOO_LARGE_MESSAGE` / `TOO_LARGE_PUBLIC_MESSAGE` | 截断或分页后重试；阈值单一源见 `frontend/tests/fixtures/request_limits.json` |
 | `422` | JSON 合法但结构不合契约（`history` 非数组、元素非对象、`content`/`role` 非字符串、`dx` 非对象） | `请求参数不完整，请刷新后重试（故障编号 {id}）` | `BAD_SHAPE_MESSAGE` / `BAD_SHAPE_PUBLIC_MESSAGE` | 修参数后重试；带编号来咨询可直接定位日志 |
 | `500` | 未预期异常（**只留给真故障**，任何客户端可修正的错误都不落在这一档） | `服务暂时不可用，请稍后重试（故障编号 {id}）` | `main.py` / `frontend/functions/api/[[route]].js` 兜底 | 带 `X-Request-Id` 退避重试（指数退避，最多 2 次） |
+| `401` | 管理后台未提供令牌（仅 `/api/admin/*`） | `未提供管理令牌` | `AUTH_NO_TOKEN.message`（`frontend/functions/lib/admin_auth.js`） | 从 `x-admin-token` 请求头补齐；**不要**把令牌放进 query（会被日志与浏览器历史记录） |
+| `403` | 管理令牌不正确（仅 `/api/admin/*`） | `管理令牌不正确` | `AUTH_BAD_TOKEN.message`（`frontend/functions/lib/admin_auth.js`） | 不重试；找管理员重置。令牌比对走恒定时间比较，泄露的是"错"而不是"差多少" |
+| `503` | 管理后台未启用：服务器未配置 `ADMIN_TOKEN`（仅 `/api/admin/*`） | `管理后台未启用：服务器未配置 ADMIN_TOKEN` | `AUTH_MISSING.message`（`frontend/functions/lib/admin_auth.js`） | 运维问题，不是调用方问题；**没配令牌时一律拒绝而非放行**——装个样子比没有门更危险 |
 
 ## 三条通用约定
 

@@ -1,7 +1,9 @@
 """内置演示数据（脱敏模拟病例）——LLM 未配置时的降级数据源。
 结构契约与 services/engine 输出一致，前端 shape 不变。
 """
-CASES = [
+from typing import Any
+
+CASES: list[dict[str, Any]] = [
     {"id": "c1", "name": "张建国", "age": 56, "gender": "男", "occupation": "货车司机",
      "chief": "劳累后胸闷、胸痛 2 小时", "scene": "急症 · 心血管",
      "vitals": [{"key": "BP", "value": "158/96"}, {"key": "HR", "value": "96"}, {"key": "RR", "value": "20"},

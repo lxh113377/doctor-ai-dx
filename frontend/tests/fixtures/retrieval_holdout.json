@@ -27,6 +27,7 @@
     { "id": "ho-17", "scene": "眼科", "query": "眼睛突然钻心地疼，看灯泡周围一圈彩虹，头疼想吐", "relevant_ids": ["kb-042"], "red_flag": true },
     { "id": "ho-18", "scene": "耳鼻喉", "query": "耳朵里头疼，还流了些水出来，本身也有点发烧", "relevant_ids": ["kb-044"], "red_flag": false },
     { "id": "ho-19", "scene": "妇产", "query": "两个月没来例假，小肚子一侧突然疼得厉害，下面又出血，人发晕", "relevant_ids": ["kb-036"], "red_flag": true },
-    { "id": "ho-20", "scene": "感染", "query": "小腿伤口周围又红又肿还发烫，还打了寒战，人迷迷糊糊的", "relevant_ids": ["kb-041", "kb-054"], "red_flag": true }
+    { "id": "ho-20", "scene": "感染", "query": "小腿伤口周围又红又肿还发烫，还打了寒战，人迷迷糊糊的", "relevant_ids": ["kb-041", "kb-054"], "red_flag": true },
+    { "id": "ho-21", "scene": "急症", "query": "车祸后大出血叫不醒", "relevant_ids": ["kb-013"], "red_flag": true }
   ]
 }

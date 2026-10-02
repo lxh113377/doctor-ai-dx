@@ -5,6 +5,16 @@ import { getCases, nextIntakeQuestion, buildDiagnosis, buildWorkup, buildReport 
 import { newRequestId, redact, logEvent, withRequestId, SLOW_MS } from "../lib/observe.js"
 import { APP_VERSION } from "../lib/version.js"
 import { assertDeclaredSize, parseBoundedBody } from "../lib/limits.js"
+import { handleChat } from "../lib/chat.js"
+import { authorizeAdmin } from "../lib/admin_auth.js"
+import {
+  listConversations,
+  getConversationDetail,
+  listHandoffs,
+  satisfactionStats,
+  topUnresolved,
+  setFeedback,
+} from "../lib/chat_store.js"
 
 function json(data, status = 200, requestId) {
   return new Response(JSON.stringify({ code: 0, data }), {
@@ -49,8 +59,53 @@ export async function onRequest(context) {
     } else if (seg.length === 3 && seg[0] === "api" && seg[1] === "report" && method === "POST") {
       const body = await readBody(context)
       response = json(await buildReport(seg[2], body.history || [], env, body.dx || null), 200, requestId)
-    } else if ((seg.length === 1 && seg[0] === "health") || (seg.length === 2 && seg[0] === "api" && seg[1] === "health")) {
+    } else if (seg.length === 2 && seg[0] === "api" && seg[1] === "health") {
+      // 第八十五轮删掉了这里原有的 `seg.length === 1 && seg[0] === "health"` 分支：本文件在 Pages 里
+      // 只挂 /api/*（functions/api/[[route]].js ⇒ 路由 /api/*），裸 /health **永远到不了这里**。
+      // 一手取证（2026-10-01 现跑）：curl https://doctor-ai-dx.pages.dev/health 回 text/html 的 SPA
+      // 首页，/api/health 才回 JSON；而 route_guard 直调 onRequest 传 "/health" 是**构造出来的 URL**，
+      // 测得到那条走不到的分支＝守卫给假绿。镜像面 backend/app/main.py 的裸 /health 是真路由
+      // （容器 healthcheck 用），两端此处**刻意不对称**，口径写进 docs/ARCHITECTURE.md 的对账矩阵。
       response = json({ status: "ok", llm_mode: keyPresent(env) ? "live" : "mock-fallback", version: APP_VERSION }, 200, requestId)
+    } else if (seg.length === 2 && seg[0] === "api" && seg[1] === "chat" && method === "POST") {
+      const body = await readBody(context)
+      response = json(await handleChat({
+        text: body.text,
+        history: body.history || [],
+        conversation_id: body.conversation_id || null,
+        env,
+      }), 200, requestId)
+    } else if (seg.length === 4 && seg[0] === "api" && seg[1] === "chat" && seg[3] === "feedback" && method === "POST") {
+      // 满意度打分：越界由 store 层拒绝并回 422，不静默截断（静默截断会让统计失真而无人察觉）
+      const body = await readBody(context)
+      const r = await setFeedback(env, {
+        conversation_id: seg[2],
+        score: body.score,
+        tag: body.tag || "",
+        comment: body.comment || "",
+      })
+      response = r.persisted ? json({ conversation_id: seg[2], satisfaction: Number(body.score) }, 200, requestId) : fail(422, "评分无效或存储不可用，请稍后重试", requestId)
+    } else if (seg.length === 3 && seg[0] === "api" && seg[1] === "chat" && method === "GET") {
+      const detail = await getConversationDetail(env, seg[2])
+      if (!detail.available) response = json({ available: false, reason: detail.reason }, 200, requestId)
+      else if (!detail.found) response = fail(404, `not found: ${path}`, requestId)
+      else response = json(detail, 200, requestId)
+    } else if (seg.length === 4 && seg[0] === "api" && seg[1] === "admin" && seg[2] === "conversations" && method === "GET") {
+      const auth = authorizeAdmin(context.request, env)
+      response = auth.ok ? json(await getConversationDetail(env, seg[3]), 200, requestId) : fail(auth.status, auth.message, requestId)
+    } else if (seg.length === 3 && seg[0] === "api" && seg[1] === "admin" && seg[2] === "conversations" && method === "GET") {
+      const auth = authorizeAdmin(context.request, env)
+      response = auth.ok
+        ? json(await listConversations(env, { limit: url.searchParams.get("limit"), offset: url.searchParams.get("offset") }), 200, requestId)
+        : fail(auth.status, auth.message, requestId)
+    } else if (seg.length === 3 && seg[0] === "api" && seg[1] === "admin" && seg[2] === "handoffs" && method === "GET") {
+      const auth = authorizeAdmin(context.request, env)
+      response = auth.ok ? json(await listHandoffs(env, { limit: url.searchParams.get("limit") }), 200, requestId) : fail(auth.status, auth.message, requestId)
+    } else if (seg.length === 3 && seg[0] === "api" && seg[1] === "admin" && seg[2] === "stats" && method === "GET") {
+      const auth = authorizeAdmin(context.request, env)
+      response = auth.ok
+        ? json({ ...(await satisfactionStats(env)), top_unresolved: (await topUnresolved(env)).items || [] }, 200, requestId)
+        : fail(auth.status, auth.message, requestId)
     } else {
       response = fail(404, `not found: ${path}`, requestId)
     }

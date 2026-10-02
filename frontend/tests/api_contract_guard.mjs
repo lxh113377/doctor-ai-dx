@@ -4,6 +4,15 @@ import { readFileSync } from "node:fs"
 
 const spec = JSON.parse(readFileSync(new URL("../../docs/openapi.json", import.meta.url), "utf8"))
 const routeSrc = readFileSync(new URL("../functions/api/[[route]].js", import.meta.url), "utf8")
+// CDS Hooks 面（第八十五轮新增）：规范把发现端点路径钉死在 /cds-services，所以它不挂在 /api 前缀下，
+// 而是 Functions 的另一棵文件路由。守卫若只认 /api 那一棵，openapi 里的 CDS path 就会被判成"孤儿"——
+// 那是守卫的视野缺口，不是契约错。故此处把第二棵路由树也纳入同一把尺（同规格、同判据，不做例外）。
+const cdsDiscoverySrc = readFileSync(new URL("../functions/cds-services/index.js", import.meta.url), "utf8")
+const cdsServiceSrc = readFileSync(new URL("../functions/cds-services/[service].js", import.meta.url), "utf8")
+const cdsHttpSrc = readFileSync(new URL("../functions/lib/cds_http.js", import.meta.url), "utf8")
+// 该面的 4xx 分流在 cds_http.js，不在分发文件里 ⇒ 判"实现发得出这些码"要把它一并纳入视野
+const cdsSrc = `${cdsDiscoverySrc}\n${cdsServiceSrc}\n${cdsHttpSrc}`
+const srcFor = (p) => (p.startsWith("/cds-services") ? cdsSrc : routeSrc)
 
 // 每条 = [spec path, method, 源码必须存在的分发断言]
 const CONTRACT = [
@@ -13,12 +22,22 @@ const CONTRACT = [
   ["/api/workup/{caseId}", "post", "seg[1] === \"workup\" && method === \"POST\""],
   ["/api/report/{caseId}", "post", "seg[1] === \"report\" && method === \"POST\""],
   ["/api/health", "get", "seg[1] === \"health\""],
+  // 对话面（round90）：判定全在确定性代码，mode 恒为 deterministic；admin 面额外带 401/403/503 三态鉴权。
+  ["/api/chat", "post", "seg[1] === \"chat\" && method === \"POST\""],
+  ["/api/chat/{conversationId}", "get", "seg[1] === \"chat\" && method === \"GET\""],
+  ["/api/chat/{conversationId}/feedback", "post", "seg[3] === \"feedback\" && method === \"POST\""],
+  ["/api/admin/conversations", "get", "seg[2] === \"conversations\" && method === \"GET\""],
+  ["/api/admin/conversations/{conversationId}", "get", "seg[1] === \"admin\" && seg[2] === \"conversations\" && method === \"GET\""],
+  ["/api/admin/handoffs", "get", "seg[2] === \"handoffs\" && method === \"GET\""],
+  ["/api/admin/stats", "get", "seg[2] === \"stats\" && method === \"GET\""],
+  ["/cds-services", "get", "method !== \"GET\""],
+  ["/cds-services/{service}", "post", "seg[0] !== \"cds-services\""],
 ]
 
 let fail = 0
 for (const [path, method, srcAssert] of CONTRACT) {
   const inSpec = spec.paths[path]?.[method] != null
-  const inSrc = routeSrc.includes(srcAssert)
+  const inSrc = srcFor(path).includes(srcAssert)
   const ok = inSpec && inSrc
   if (!ok) { console.log(`FAIL ${method.toUpperCase()} ${path}  spec=${inSpec} src=${inSrc}`); fail++ }
   else console.log(`PASS ${method.toUpperCase()} ${path}`)
@@ -42,9 +61,10 @@ const produced = new Set([limits.STATUS_BAD_JSON, limits.STATUS_TOO_LARGE, limit
 if (produced.size !== GUARD_STATUSES.length) {
   console.log(`FAIL limits.js 产出的 4xx 状态码数(${produced.size}) 与声明数(${GUARD_STATUSES.length})不符`); fail++
 }
-const routeHasGuard = /e\.status >= 400 && e\.status < 500/.test(routeSrc)
+const GUARD_RE = /e\.status >= 400 && e\.status < 500/
 for (const [path, method] of Object.entries(spec.paths)) {
   if (!method.post) continue
+  const routeHasGuard = GUARD_RE.test(srcFor(path))
   for (const code of GUARD_STATUSES) {
     const declared = method.post.responses?.[code] != null
     const ok = declared && produced.has(Number(code)) && routeHasGuard
@@ -54,7 +74,7 @@ for (const [path, method] of Object.entries(spec.paths)) {
     }
   }
 }
-if (fail === 0) console.log(`PASS 入站边界响应码：4 个 POST 均声明并由 limits 常量产出 ${GUARD_STATUSES.join("/")}`)
+if (fail === 0) console.log(`PASS 入站边界响应码：${Object.values(spec.paths).filter((m) => m.post).length} 个 POST 均声明并由 limits 常量产出 ${GUARD_STATUSES.join("/")}`)
 
 // 错误目录（docs/ERRORS.md）↔ 契约 ↔ 实现三方对账（v1.20.0 第二十二轮）。
 // 为什么值得单独立判据：集成方（HIS、脚本、AI Agent）写重试分支时只看文档，不看 openapi 的 $ref；

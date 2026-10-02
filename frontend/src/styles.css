@@ -183,3 +183,79 @@ b{font-weight:600}
 @media (prefers-reduced-motion: reduce){
   *,*::before,*::after{animation:none!important;transition:none!important}
 }
+/* ============================================================
+   对话面与管理后台（round90）
+   沿用既有色板与圆角（--primary teal、--r-md 10px、--r-lg 14px），
+   不引新组件库：bundle_size_guard 会判红，且新库会带来设计漂移。
+   ============================================================ */
+.chat-wrap{display:flex;flex-direction:column;gap:12px;max-width:1080px;margin:0 auto;padding:16px 20px 40px;min-width:0}
+.chat-topbar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;position:sticky;top:0;z-index:5;background:var(--bg);padding:8px 0}
+.chat-title{font-size:18px;font-weight:600;color:var(--text)}
+.chat-compliance{font-size:12px;color:var(--text-sub);border:1px solid var(--border);border-radius:999px;padding:2px 10px;background:var(--surface)}
+.mode-badge{font-size:12px;border-radius:999px;padding:2px 10px;margin-left:auto}
+.mode-det{background:var(--warning-soft);color:var(--warning);border:1px solid var(--warning)}
+.mode-live{background:var(--primary-soft);color:var(--primary);border:1px solid var(--primary)}
+.chat-hint{font-size:14px;color:var(--text-sub);line-height:1.7}
+.chat-hint ul{margin:8px 0 0;padding-left:18px}
+.chat-stream{display:flex;flex-direction:column;gap:14px;min-height:200px}
+.msg{display:flex;min-width:0}
+.msg-user{justify-content:flex-end}
+.bubble{max-width:min(78%,720px);padding:10px 14px;border-radius:var(--r-md);box-shadow:var(--shadow-sm);min-width:0}
+.bubble-user{background:var(--surface-muted);border:1px solid var(--border);border-bottom-right-radius:4px}
+.bubble-assistant{background:var(--surface);border:1px solid var(--border);border-bottom-left-radius:4px}
+.bubble-text{margin:0;white-space:pre-wrap;word-break:break-word;font:inherit;line-height:1.65;color:var(--text)}
+.cites{margin-top:8px;padding-top:8px;border-top:1px dashed var(--border);font-size:12px;color:var(--text-sub);display:flex;flex-wrap:wrap;gap:6px}
+.cite{background:var(--primary-soft);color:var(--primary);border-radius:var(--r-md);padding:1px 8px}
+.handoff-bar{margin-top:10px;padding:8px 10px;border-radius:var(--r-md);background:var(--warning-soft);border:1px solid var(--warning);color:var(--warning);font-size:13px}
+.redflag-card{max-width:min(86%,760px);border-radius:var(--r-md);background:var(--danger-soft);border:1px solid var(--danger);border-left:5px solid var(--danger);padding:12px 14px;box-shadow:var(--shadow-md)}
+.redflag-head{font-weight:600;color:var(--danger);margin-bottom:4px}
+.redflag-advice{font-size:14px;color:var(--text);margin-bottom:8px}
+.redflag-text{margin:0;white-space:pre-wrap;word-break:break-word;font:inherit;color:var(--text-sub);line-height:1.6}
+.chat-typing{font-size:13px;color:var(--text-sub);align-self:flex-start}
+.chat-chips{display:flex;flex-wrap:wrap;gap:8px}
+.chat-inputrow{display:flex;gap:10px;align-items:flex-end}
+.chat-input{flex:1;min-width:0;resize:vertical;border:1px solid var(--border-strong);border-radius:var(--r-md);padding:10px 12px;font:inherit;font-size:14px;background:var(--surface);color:var(--text)}
+.chat-input:focus{outline:2px solid var(--primary-soft);border-color:var(--primary)}
+.chat-rating{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--text-sub)}
+.star{background:none;border:none;cursor:pointer;font-size:20px;color:var(--warning);padding:0 2px}
+.chat-rating-done{font-size:13px;color:var(--success)}
+
+.admin-wrap{display:flex;gap:16px;max-width:1080px;margin:0 auto;padding:16px 20px 40px;min-width:0}
+.admin-nav{width:200px;flex:0 0 200px;display:flex;flex-direction:column;gap:4px}
+.admin-nav-title{font-size:15px;font-weight:600;color:var(--text);margin-bottom:6px}
+.admin-nav-item{display:flex;align-items:center;gap:8px;background:none;border:1px solid transparent;border-radius:var(--r-md);padding:8px 10px;font:inherit;font-size:14px;color:var(--text-sub);cursor:pointer;text-align:left}
+.admin-nav-item:hover{background:var(--surface);border-color:var(--border)}
+.admin-nav-item.active{background:var(--surface);border-color:var(--primary);color:var(--primary);font-weight:500}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--border-strong)}
+.admin-nav-item.active .dot{background:var(--primary)}
+.admin-nav-foot{margin-top:auto;font-size:11px;color:var(--text-faint)}
+.admin-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:12px}
+.admin-login h3{margin:0 0 6px;font-size:16px}
+.admin-token{flex:1;min-width:0;border:1px solid var(--border-strong);border-radius:var(--r-md);padding:8px 10px;font:inherit;margin:8px 0}
+.admin-token:focus{outline:2px solid var(--primary-soft);border-color:var(--primary)}
+.metric-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
+.metric-k{font-size:12px;color:var(--text-sub)}
+.metric-v{font-size:24px;font-weight:600;color:var(--text);margin-top:4px}
+.admin-stats{display:flex;flex-direction:column;gap:12px}
+.admin-stats h3{margin:0 0 8px;font-size:15px;color:var(--text)}
+.bar-row{display:grid;grid-template-columns:120px 1fr 48px;align-items:center;gap:8px;margin-bottom:6px;font-size:13px}
+.bar-label{color:var(--text-sub);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bar-track{background:var(--surface-muted);border-radius:999px;height:10px;overflow:hidden}
+.bar-fill{display:block;height:100%;background:var(--primary);border-radius:999px;transition:width .4s ease}
+.bar-fill.warn{background:var(--warning)}
+.bar-n{text-align:right;color:var(--text-faint)}
+.unresolved-row{font-size:13px;color:var(--text-sub);padding:4px 0;border-bottom:1px dashed var(--border)}
+.table-card{overflow-x:auto}
+.admin-table{width:100%;border-collapse:collapse;font-size:13px}
+.admin-table th,.admin-table td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--border);white-space:nowrap}
+.admin-table th{color:var(--text-sub);font-weight:500}
+.muted{color:var(--text-sub);font-size:13px}
+
+@media (max-width:767px){
+  .admin-wrap{flex-direction:column;padding:12px 14px 32px}
+  .admin-nav{width:auto;flex:none;flex-direction:row;overflow-x:auto;gap:6px}
+  .admin-nav-title,.admin-nav-foot{display:none}
+  .bubble{max-width:92%}
+  .bar-row{grid-template-columns:92px 1fr 36px}
+  .metric-grid{grid-template-columns:repeat(2,1fr)}
+}
