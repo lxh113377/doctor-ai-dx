@@ -48,6 +48,8 @@
 /frontend/functions/lib/observe.js    @lxh113377
 /scripts/observe_slo_check.mjs        @lxh113377
 /scripts/load_probe.mjs               @lxh113377
+/scripts/gen_modules_manifest.py       @lxh113377
+/docs/MODULES.md                      @lxh113377
 /scripts/perf_gate.mjs                @lxh113377
 /docs/OBSERVABILITY.md                @lxh113377
 

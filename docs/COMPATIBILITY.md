@@ -102,6 +102,25 @@ E2E 跑的是**生产构建 + `wrangler pages dev`**（不用 vite dev server，
 > §1 从**集成方**视角声明浏览器边界，本节从**实际使用者**视角补另外三面；刻意不合并。
 > 变更纪律：状态变化时**先改收据再改本表**，只改本表会被 `docs_surface_guard.mjs` 判为无源声明。
 
+## 7.6 社区与维护响应（第 98 轮对标补，否定回算）
+
+> 为什么写这一节。对标取读时发现：公开仓的这两个数实测为「星 0 / 近 30 天零个已关闭 issue」。
+> 直写「响应快」或「响应慢」**都是虚报**：前者无样本，后者也无样本。
+> 口径：**不可测 ≠ 零**，本节只声明什么可测与什么不可测。
+
+| 面 | 当前情况 | **明确未提供 / 未验证** | 复算命令 |
+|---|---|---|---|
+| 贡献派双号 | 已公开，但**本仓开发者基数极小** | 不以「多人协作」作为宣称依据 | `gh api repos/<owner>/<repo>/contributors?per_page=100&anon=0` |
+| Star 数 | 近期新仓，读数低 | **不声称社区活跃度**；星数不是质量指标 | `gh api repos/<owner>/<repo>` → `stargazers_count` |
+| Issue 响应速度 | 近 30 天**零个已关闭 issue** | **不可测**（N=0）——无样本就不存在中位时长；**禁填模拟值** | `gh api "search/issues?q=repo:<owner>/<repo>+is:issue+is:closed+closed:>=<date>"` |
+| 贡献响应首响 | 同上，无可引用的对外响应面 | **未验证** | 需先有已关闭的对外 issue，再取首条评论时间差 |
+| 投质入口 | `.github/ISSUE_TEMPLATE/`、`PULL_REQUEST_TEMPLATE`、`SECURITY.md`、`CONTRIBUTING.md`、`CODEOWNERS` 均在位 | 无受理人工确认的 SLA 承诺（不写无人执行的时效） | 目录存在性已由提交链看守覆盖 |
+
+> 对标取读（第 98 轮）：同域仓的关闭时长中位数 `samply/blaze` 9.72h（N=44）、
+> `openmrs/openmrs-core` 26.91h（N=19）、`openemr/openemr` 101.76h（N=33）。本仓不与它们比“快慢”——分母不同，比了就是虚报。
+> 同轮取读还得到一条反例：该组内 `synthea` / `MedAgentBench` / `OpenOE-Lite` 均近 30 天**零提交**，
+> 即「星高但已停更」是该组最常见的形态，选型时须计入。
+
 ## 8. 复算本文件自身的命令
 
 ```powershell
