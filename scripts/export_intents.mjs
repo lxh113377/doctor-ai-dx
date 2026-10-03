@@ -20,7 +20,9 @@ const INTENT_FIELDS = [
   "id", "label", "keywords", "negative_terms", "reply_policy", "confidence_floor", "handoff_policy",
 ]
 const ID_RE = /^[a-z][a-z0-9_]{2,31}$/
-const POLICY_RE = /^(route_dx|service_refund|service_order_query|service_tech_support|abstain_and_handoff)$/
+// r96：新增 service_flow（缴费/报销/预约**流程**咨询）。它刻意**不等于** route_dx——
+// 流程类问题检索临床知识库只会得到驴唇不对马嘴的引用（见 intent.js shouldRetrieveFaq 的注释口径）。
+const POLICY_RE = /^(route_dx|service_flow|service_refund|service_order_query|service_tech_support|abstain_and_handoff)$/
 const HANDOFF_POLICY_RE = /^(always_handoff|escalate_if_missing_slot|escalate_if_repeated|abstain_or_low_confidence)$/
 
 // 必须存在的五类（缺任一类 ⇒ 语义面残缺，比数据半空更严重）。红旗优先级不在此列：

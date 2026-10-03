@@ -8,8 +8,9 @@
 // 覆盖率统计因此错位（判据自己把被测对象改了），那种"红"与"绿"都不可信。
 import { execFileSync } from "node:child_process"
 import { fileURLToPath } from "node:url"
-import { INTENTS, REQUIRED_INTENT_IDS, INTENT_BY_ID } from "../functions/lib/intents.js"
-import { detectIntent, SERVICE_INTENT_IDS, RED_FLAG_INTENT } from "../functions/lib/intent.js"
+import { INTENTS, REQUIRED_INTENT_IDS, INTENT_BY_ID, MIN_INTENTS } from "../functions/lib/intents.js"
+import { detectIntent, SERVICE_INTENT_IDS, RED_FLAG_INTENT, shouldRetrieveFaq, replyPolicyOf } from "../functions/lib/intent.js"
+import { synthesize } from "../functions/lib/chat_synth.js"
 
 const REPO = fileURLToPath(new URL("../../", import.meta.url))
 let pass = 0
@@ -77,6 +78,64 @@ check("F1 无任何关键词命中 => out_of_scope（不猜成医疗结论）", 
 check("F2 无命中时 confidence 恒为 0", detectIntent("你好").confidence === 0)
 check("F3 空输入不得凭空命中客服意图", detectIntent("").intent === "out_of_scope")
 check("F4 超长输入被截断到上限而非抛错", detectIntent("退费".repeat(2000)).intent === RED_FLAG_INTENT || detectIntent("退费".repeat(2000)).intent === "refund")
+
+// ==================== r96 医学域双档（新增四类，保留三类客服兼容档） ====================
+// 立这批判据的理由：双档并存最容易出的错是「新类把旧类的输入抢走」。因此每条都配
+// ①新类正向命中 ②旧类反向对照（同语义的旧措辞必须仍判旧类）③跨类关键词零重叠。
+console.log("== r96 双档：类数与唯一性 ==")
+const MEDICAL_NEW = ["symptom_consult", "report_interp", "fee_flow", "med_ref_referral"]
+check(`意图总数 9（5 必需 + 4 医学域）`, INTENTS.length === 9, `实得 ${INTENTS.length}`)
+check("min_intents 声明与实际条数一致（调低声明值绕过止闸已被生成器中止面覆盖）", MIN_INTENTS === 9, `MIN_INTENTS=${MIN_INTENTS}`)
+for (const id of MEDICAL_NEW) check(`新增 ${id} 在注册表内`, INTENT_BY_ID.has(id))
+check("客服三类兼容档仍在（未被医学域吞掉）", SERVICE_INTENT_IDS.every((id) => INTENT_BY_ID.has(id)))
+
+console.log("== r96 双档：不得互相抢词（跨类零重叠）==")
+const kw = (id) => INTENT_BY_ID.get(id).keywords
+for (const [a, b] of [
+  ["general_medical", "symptom_consult"],
+  ["order_query", "report_interp"],
+  ["refund", "fee_flow"],
+]) {
+  const dup = kw(a).filter((k) => kw(b).includes(k))
+  check(`${a} 与 ${b} 关键词零重叠（避免同句竞抢）`, dup.length === 0, `重叠=${JSON.stringify(dup)}`)
+}
+
+console.log("== r96 双档：路由正向 + 旧类反向对照 ==")
+for (const [text, want] of [
+  ["血压有点高，该挂什么科", "symptom_consult"],
+  ["化验单这个指标偏高，参考范围怎么看", "report_interp"],
+  ["医保怎么报销，报销流程是什么", "fee_flow"],
+  ["这个药能和降压药一起吃吗", "med_ref_referral"],
+]) {
+  const got = detectIntent(text).intent
+  check(`M+ 「${text}」判 ${want}`, got === want, `实得 ${got}`)
+}
+// 反向对照：语义相邻但措辞属旧类的输入，必须仍落旧类——否则上面四条可能只是「新类抢赢了」
+for (const [text, want] of [
+  ["浑身没劲还失眠", "general_medical"],
+  ["检查报告在哪看", "order_query"],
+  ["我要退挂号费", "refund"],
+  ["页面打不开", "tech_support"],
+]) {
+  const got = detectIntent(text).intent
+  check(`M- 反向对照：「${text}」仍判 ${want}`, got === want, `实得 ${got}`)
+}
+
+console.log("== r96 双档：检索与否的口径（错配就会给假引用）==")
+check("三个临床类走 FAQ 检索", ["symptom_consult", "report_interp", "med_ref_referral"].every((i) => shouldRetrieveFaq(i)))
+check("fee_flow 是流程类 ⇒ 不检索临床知识库", shouldRetrieveFaq("fee_flow") === false)
+check("fee_flow 的 reply_policy 是新增的 service_flow", replyPolicyOf("fee_flow") === "service_flow", replyPolicyOf("fee_flow"))
+
+console.log("== r96 双档：话术模板不缺 + 红线不被绕过 ==")
+const flow = synthesize({ intent: "fee_flow" })
+check("S+ fee_flow 有专用话术模板（不是兜底转人工）", !flow.text.includes("无法给出可靠答复"), flow.text.slice(0, 40))
+check("S+ 流程话术仍带合规声明（红线 2）", flow.text.includes("AI 辅助参考 · 医生终审"))
+check("R4 医学域新类叠加红旗 ⇒ 仍判 red_flag（闸门不因加类而后移）",
+  detectIntent("这个指标偏高，另外我压榨样胸痛还冒冷汗").intent === RED_FLAG_INTENT,
+  detectIntent("这个指标偏高，另外我压榨样胸痛还冒冷汗").intent)
+check("R5 反向对照：去掉红旗词后回到 report_interp",
+  detectIntent("这个指标偏高，另外我想问下参考范围").intent === "report_interp",
+  detectIntent("这个指标偏高，另外我想问下参考范围").intent)
 
 console.log(`\nINTENTS GUARD SUMMARY: ${pass} pass / ${fail} fail`)
 process.exit(fail ? 1 : 0)
