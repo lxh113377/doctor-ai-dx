@@ -109,8 +109,10 @@ export async function onRequest(context) {
         response = fail(auth.status, auth.message, requestId)
       } else {
         const body = await readBody(context)
-        const r = await updateHandoffStatus(env, { id: seg[3], status: body.status })
-        if (r.ok) response = json({ id: r.id, status: r.status }, 200, requestId)
+        // r96：关闭工单时把分数一并交给存储层——「关闭 + 回收评分」在存储层同一 batch 内完成，
+        // 路由层不做二次写，避免出现「工单已关闭但评分没存上」的半完成态。
+        const r = await updateHandoffStatus(env, { id: seg[3], status: body.status, score: body.score, tag: body.tag, comment: body.comment })
+        if (r.ok) response = json({ id: r.id, status: r.status, feedback_collected: !!r.feedback_collected }, 200, requestId)
         else if (r.code === 404) response = fail(404, `not found: ${path}`, requestId)
         else if (r.code === 409) response = fail(409, r.reason, requestId)
         else if (r.code === 503) response = fail(503, r.reason, requestId)

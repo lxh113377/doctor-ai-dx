@@ -21,7 +21,10 @@ const rel = (p) => fileURLToPath(new URL(p, ROOT))
 const read = (p) => (existsSync(rel(p)) ? readFileSync(rel(p), "utf8") : "")
 
 // 判据本体：喂"文件名 → 内容"的表，返回违规清单（正样本应为空，反样本必须非空）
-const PERSISTENCE = [/localStorage/, /sessionStorage/, /indexedDB/i, /document\.cookie/, /openDatabase/, /\bfs\.writeFile/, /\bwriteFileSync\b/, /createConnection/, /\bsqlite3\b/i, /pymysql/, /SQLAlchemy/i, /mongoose/, /redis/i]
+// 2026-10-04 修：`/redis/i` 会命中 `scoreDist`（sco**reDis**t）——子串误伤。
+// 同族判据一律带词边界（`\bsqlite3\b`、`\bfs\.writeFile` 就是这么写的），此处对齐。
+// 修判据而不是改数据：数据名 scoreDist 是正常业务命名，为它改生产代码才是本末倒置。
+const PERSISTENCE = [/localStorage/, /sessionStorage/, /indexedDB/i, /document\.cookie/, /openDatabase/, /\bfs\.writeFile/, /\bwriteFileSync\b/, /createConnection/, /\bsqlite3\b/i, /pymysql/, /SQLAlchemy/i, /mongoose/, /\bredis\b/i]
 const TELEMETRY = [/sentry\.io/, /@sentry\//, /\bSentry\.init\b/, /\bdsn\s*:/, /googletagmanager/, /gtag\(/,
   /google-analytics/, /navigator\.sendBeacon/, /posthog/, /matomo/, /clarity\.ms/, /fbq\(/, /connect\.facebook\.net/]
 // 反例驱动的补全（2026-09-25）：初版只认 sentry.io 域名，反例 '@sentry/browser' 零命中——

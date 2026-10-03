@@ -79,7 +79,9 @@ function scoreIntents(text) {
 /**
  * 识别主入口。返回形状固定（守卫按字段断言，勿随意增删）：
  *   { intent, confidence, matched, negations, flags, need_human }
- * - intent：red_flag | general_medical | refund | order_query | tech_support | out_of_scope
+ * - intent：red_flag | general_medical | symptom_consult | report_interp | fee_flow | med_ref_referral
+ *            | refund | order_query | tech_support | out_of_scope
+ *            （前四项医学域意图为 r96 双档之一；refund/order_query/tech_support 为客服兼容档）
  * - confidence：0..0.95；0 表示「一个关键词都没命中」，此时不做任何医疗断言
  * - flags：红旗明细（仅 red_flag 时非空），形状同 rules.js 的 scanFlagDetails
  * - need_human：用户是否显式要人工（供 handoff.js 判定 reason_code）
