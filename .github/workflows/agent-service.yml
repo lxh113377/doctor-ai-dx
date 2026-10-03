@@ -1,0 +1,45 @@
+name: agent-service self-check
+
+# 第九十六轮新增。面3（agent-service）的自检此前**从未进过任何工作流**——
+# 一手实测 11 份 workflow 里 agent-service / npm run probe 零命中，
+# 即「判据注册了但没人执行」（本仓 #222 同族）。代价已付出来过：服务端 6 处 +
+# 前端 5 处 TypeScript 错误长期无人发现，因为没有任何作业跑 typecheck。
+#
+# 单独一个工作流而不并进 ci.yml：ci.yml 的 all-checks-passed 聚合与仓库侧
+# required checks 是手工维护的字符串列表（本仓实测已脱节），往里加作业必须
+# 同步改那两处，否则「新作业红了但没人看」。拆出来则每次 push/PR 都真的执行。
+#
+# 零网络零密钥是设计要求：CI 上必然没有 CodeBuddy 登录态，探针断言的正是
+# 「mode 恒为 mock-fallback、不得谎报 live」。
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: agent-service-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  probe:
+    name: 降级契约 + 降级链四段 + 并发闸
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: agent-service
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - name: 记录 Node 版本
+        run: node -v
+      - name: Install（锁文件安装，与本地同一份依赖面）
+        run: npm ci --no-audit --no-fund
+      - name: 两份探针（probe=SDK 契约；probe:chain=降级链四段/并发闸）
+        run: npm test

@@ -9,7 +9,10 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "server": "tsx server/index.ts",
-    "probe": "tsx server/probe.ts"
+    "probe": "tsx server/probe.ts",
+    "probe:chain": "tsx server/probe_chain.ts",
+    "test": "npm run probe && npm run probe:chain",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.node.json --noEmit"
   },
   "dependencies": {
     "@tdesign-react/aigc": "^0.1.0-alpha.1",

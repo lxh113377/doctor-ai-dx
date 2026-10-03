@@ -22,6 +22,7 @@ import {
   type PhraseInput,
   type ProbeResult,
 } from "./providers.js";
+import { limiter, type LimiterStats } from "./concurrency_limiter.js";
 
 /** 单次模型硬超时：与既有面 SLOW_MS=8000 同族口径，医生关键路径上不允许无限等。 */
 export const AGENT_TIMEOUT_MS = Number(process.env.AGENT_TIMEOUT_MS || 8000);
@@ -84,26 +85,36 @@ const codebuddyProvider: ExpressionProvider = {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), AGENT_TIMEOUT_MS);
 
-    try {
-      const session = await unstable_v2_createSession({
-        systemPrompt: SYSTEM_PROMPT,
-        maxTurns: 1,
-        ...cliPathOption(status),
-      } as Record<string, unknown>);
+    // 2026-10-04 修（agent-sdk-verifier 核验发现，三处叠加缺陷让真实模型路径从未跑通）：
+    // ① `session.sendMessage()` **不存在**——SessionImpl 只有 send()/stream()（session.d.ts:57/65），
+    //    旧写法在真实调用时会 100% 抛 TypeError，此前从未被任何测试覆盖。
+    // ② 缺 `session.close()` ⇒ CLI 子进程不被 kill（process-transport 的 close 才 kill），
+    //    每请求泄漏一个进程；并发闸只管「在飞数」管不住「存活数」。
+    // ③ 缺工具白名单：表达层只做措辞改写，却把 Bash/Write 类工具留在了可达范围。
+    //    提示词不是防线——项目红线「红旗层独立于 LLM」会被表达层之外的手段绕过，故显式清空。
+    const session = unstable_v2_createSession({
+      systemPrompt: SYSTEM_PROMPT,
+      maxTurns: 1,
+      // tools: [] ＝ 禁用全部内置工具（表达层只做措辞改写，一个工具都不需要）。
+      // 刻意**不**再叠 canUseTool：tools 为空时它根本不会被调用，而它的签名随版本变动，
+      // 写一个猜的实现在类型检查下是红、在运行期是假安全感——两样都比没有更糟。
+      tools: [],
+      requestTimeoutMs: AGENT_TIMEOUT_MS,
+      ...cliPathOption(status),
+    });
 
+    try {
+      await session.send(prompt);
       let acc = "";
-      for await (const msg of session.sendMessage(prompt)) {
+      for await (const msg of session.stream()) {
         if (controller.signal.aborted) break;
         const chunk = extractText(msg);
         if (chunk) acc += chunk;
       }
-
-      clearTimeout(timer);
       const text = acc.trim();
       if (!text) return { ok: false, text: "", error_code: "sdk-error", detail: "Agent 返回空文本" };
       return { ok: true, text, error_code: null, detail: "" };
     } catch (e) {
-      clearTimeout(timer);
       const aborted = controller.signal.aborted;
       const detail = String((e as Error)?.message || e).slice(0, 200);
       console.error("[agent] " + (aborted ? "超时" : "失败") + ": " + detail);
@@ -113,6 +124,14 @@ const codebuddyProvider: ExpressionProvider = {
         error_code: aborted ? "sdk-timeout" : "sdk-error",
         detail,
       };
+    } finally {
+      clearTimeout(timer);
+      // 先 interrupt 再 close：让 CLI 有机会优雅收尾；即便 interrupt 失败，close 也必须执行。
+      if (controller.signal.aborted) {
+        console.error("[agent] 超时中断：先发 interrupt 再 close");
+        await session.interrupt().catch((e) => console.error("[agent] interrupt 失败: " + String((e as Error)?.message || e).slice(0, 120)));
+      }
+      session.close();
     }
   },
 };
@@ -134,7 +153,21 @@ export async function phraseWithAgent(input: PhraseInput): Promise<AgentOutcome>
   if (!probe.ready) {
     return { ok: false, text: "", error_code: "sdk-unavailable", detail: probe.reason };
   }
-  return provider.phrase(input, probe);
+  // 并发闸：CLI 子进程不能按请求数无上限地拉起（见 concurrency_limiter.ts 的why）。
+  // 队列满时把 QueueFullError 归一成 sdk-unavailable，让上层照常走确定性降级——
+  // 表达层不可用不是错误路径，它是设计路径之一。
+  try {
+    return await limiter.run(() => provider.phrase(input, probe));
+  } catch (e) {
+    const detail = String((e as Error)?.message || e).slice(0, 200);
+    console.error("[agent] 表达层闸拒绝: " + detail);
+    return { ok: false, text: "", error_code: "sdk-unavailable", detail };
+  }
+}
+
+/** 表达层并发闸的实时读数（供 /api/medchat/status 如实回报，队列堆积要看得见）。 */
+export function limiterStats(): LimiterStats {
+  return { ...limiter.stats };
 }
 
 /** 当前生效 provider id（供 /api/medchat/status 如实回报）。 */
@@ -148,21 +181,42 @@ export function listProviderIds(): string[] {
   return providerIds();
 }
 
-/** SDK 消息结构随版本变动，这里只做宽容提取：拿到文本即用，拿不到就当空。 */
-function extractText(msg: unknown): string {
+/** SDK 消息结构随版本变动，这里只做宽容提取：拿到文本即用，拿不到就当空。
+ *
+ *  2026-10-04 修：真实结构里助手文本在 **`msg.message.content`**（多一层嵌套，types.d.ts 的
+ *  AssistantMessage），而旧实现只探 `msg.text` / `msg.content` ⇒ 即使把 sendMessage 改成
+ *  send+stream，文本仍会恒为空并静默降级。现在按「顶层 → message → result」三层依次取，
+ *  顺序即优先级：结构再变也退化成空串（降级），不会崩。 */
+export function extractText(msg: unknown): string {
   if (typeof msg === "string") return msg;
   if (!msg || typeof msg !== "object") return "";
   const m = msg as Record<string, unknown>;
+  const pick = (v: unknown): string => {
+    if (typeof v === "string") return v;
+    if (Array.isArray(v)) {
+      return v
+        .map((c) =>
+          c && typeof c === "object" && typeof (c as Record<string, unknown>).text === "string"
+            ? String((c as Record<string, unknown>).text)
+            : typeof c === "string" ? c : "",
+        )
+        .join("");
+    }
+    if (v && typeof v === "object") {
+      const inner = v as Record<string, unknown>;
+      if (typeof inner.text === "string") return inner.text;
+      if ("content" in inner) return pick(inner.content);
+    }
+    return "";
+  };
   if (typeof m.text === "string") return m.text;
-  if (typeof m.content === "string") return m.content;
-  if (Array.isArray(m.content)) {
-    return m.content
-      .map((c) =>
-        c && typeof c === "object" && typeof (c as Record<string, unknown>).text === "string"
-          ? String((c as Record<string, unknown>).text)
-          : "",
-      )
-      .join("");
+  if ("message" in m) {
+    const t = pick(m.message);
+    if (t) return t;
   }
-  return "";
+  if ("result" in m) {
+    const t = pick(m.result);
+    if (t) return t;
+  }
+  return pick(m.content);
 }

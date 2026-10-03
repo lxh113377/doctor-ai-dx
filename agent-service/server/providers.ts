@@ -63,8 +63,60 @@ export const echoProvider: ExpressionProvider = {
   },
 };
 
+/**
+ * 规则答复 provider（r96）：**不调任何模型**，把面2 的确定性答复正文与引用条目拼成一段
+ * 带来源标签的回复。存在的理由不是「省一次调用」，而是给三类场景一个可用的表达路：
+ *   ① 生产环境无 Node / 无登录态（Agent SDK 必然拿不到）；
+ *   ② 评审现场要演示「引用可溯源」而不能等待模型；
+ *   ③ 模型超时后的降级目标——比直接抛错给医生看空白页好。
+ * 它与 echo 的区别：echo 逐字回显（接线验证用），rule 会**组织**引用标签（可用输出）。
+ */
+export const ruleProvider: ExpressionProvider = {
+  id: "rule",
+  description: "知识库规则答复（不调模型，引用条目拼成带来源标签的回复）",
+  async probe() {
+    return { ready: true, reason: "rule provider 恒可用（纯确定性拼装，不依赖 CLI/密钥）", sdk: null };
+  },
+  async phrase(input: PhraseInput): Promise<AgentOutcome> {
+    const parts: string[] = [input.plan.answer_text];
+    if (input.plan.citations.length > 0) {
+      parts.push("依据：" + input.plan.citations.map((c) => c.title + (c.source ? `（${c.source}）` : "")).join("；"));
+    }
+    if (input.plan.handoff_reason) parts.push(input.plan.handoff_reason);
+    if (input.plan.abstain) parts.push("以上证据有限，建议由执业医生面诊确认。");
+    return { ok: true, text: parts.join("\n"), error_code: null, detail: "rule provider：确定性拼装" };
+  },
+};
+
+/**
+ * 降级链的四段形态（r96）。**这是「回答是谁给的」那四个取值的唯一真相源**，
+ * 与面2 chat_store.js 的 PROVIDERS 枚举同口径；两处必须同步改，否则后台统计会把
+ * rule 记成 codebuddy，而没人能从数字上看出来。
+ */
+export const FALLBACK_CHAIN = Object.freeze([
+  Object.freeze({ kind: "codebuddy", when: "CodeBuddy CLI 可执行且已登录，Agent 表达成功" }),
+  Object.freeze({ kind: "llm", when: "换成非 CodeBuddy 的模型通道表达成功" }),
+  Object.freeze({ kind: "rule", when: "红旗旁路 / 弃权 / 选用 rule provider ⇒ 确定性话术直出" }),
+  Object.freeze({ kind: "fallback", when: "表达层不可用或超时 ⇒ 回落确定性文本，标记 fallback" }),
+] as const);
+
+export type AttributionKind = (typeof FALLBACK_CHAIN)[number]["kind"];
+
+/** 表达层 provider id → 归因 provider 形态。echo/rule 都属「不调模型的确定性输出」⇒ 记 rule。 */
+const ATTRIBUTION_BY_PROVIDER: Record<string, AttributionKind> = {
+  codebuddy: "codebuddy",
+  llm: "llm",
+  echo: "rule",
+  rule: "rule",
+};
+
+export function providerAttributionKind(providerId: string): AttributionKind {
+  return ATTRIBUTION_BY_PROVIDER[providerId] || "fallback";
+}
+
 const REGISTRY: Record<string, ExpressionProvider> = {
   echo: echoProvider,
+  rule: ruleProvider,
 };
 
 export function registerProvider(p: ExpressionProvider): void {

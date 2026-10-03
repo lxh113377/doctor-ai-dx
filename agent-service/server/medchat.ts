@@ -9,7 +9,8 @@
  * 危险信号提示与急诊/转诊建议逐字直出面2，不经任何模型改写。这比"在提示里要求模型别改"强一个量级。
  */
 import type { Request, Response } from "express";
-import { phraseWithAgent, AGENT_TIMEOUT_MS, activeProviderId, listProviderIds } from "./agent.js";
+import { phraseWithAgent, AGENT_TIMEOUT_MS, activeProviderId, listProviderIds, limiterStats } from "./agent.js";
+import { providerAttributionKind } from "./providers.js";
 import { probeSdk } from "./sdk_status.js";
 
 /** 面2 基址：本地 wrangler pages dev 用 http://127.0.0.1:8788，线上用已部署的 Pages。 */
@@ -27,6 +28,20 @@ type ClinicalChatData = {
   handoff?: { reason_code?: string; reason_text?: string; ticket_id?: string } | null;
   mode?: string;
   version?: string;
+};
+
+/** provider 枚举：与面2 chat_store.js 的 PROVIDERS 同口径，跨面统计才对得上。 */
+export type ProviderId = "codebuddy" | "llm" | "rule" | "fallback";
+
+/**
+ * 消息归因（r96）：回答「这条回复是谁给的、依据哪几条知识、花了多久」。
+ * kb_hits = 命中的知识条目名（界面做来源标签）；source_refs = 可点开溯源到条目原文。
+ */
+export type Attribution = {
+  kb_hits: string[];
+  source_refs: Array<{ title: string; source?: string; year?: string }>;
+  provider: ProviderId;
+  latency_ms: number;
 };
 
 export type MedChatResponse = ClinicalChatData & {
@@ -66,6 +81,24 @@ async function callClinicalChat(payload: Record<string, unknown>): Promise<Clini
   }
 }
 
+/**
+ * 面2 的检索命中 → 归因字段。
+ * 检索发生在**面2**（faq.js + rag.js + retriever.js 的 BM25/RRF），本面不重写检索器，
+ * 只把面2 随 /api/chat 回传的 citations 落成 kb_hits / source_refs。
+ * 这样「命中可溯源」仍然只有一处真相源（面2 的引用白名单），面3 不会另产一套引用。
+ */
+function attributionFromPlan(plan: ClinicalChatData): Attribution {
+  const citations = plan.answer?.citations || [];
+  return {
+    kb_hits: citations.map((c) => String(c.title || "")).filter(Boolean),
+    source_refs: citations
+      .filter((c) => c.title || c.source)
+      .map((c) => ({ title: String(c.title || ""), source: c.source, year: c.year })),
+    provider: "rule",
+    latency_ms: 0,
+  };
+}
+
 /** 确定性话术直出时的兜底文案：面2 没给正文时用，绝不凭空编造医学内容。 */
 function deterministicFallbackText(d: ClinicalChatData): string {
   if (d.red_flag?.advice) return d.red_flag.advice;
@@ -79,9 +112,17 @@ function deterministicFallbackText(d: ClinicalChatData): string {
  * mode 字段沿用既有 llm 口径（live / mock-fallback），新增 answer_source / red_flag_bypassed 给出细节。
  */
 export async function orchestrateMedChat(payload: Record<string, unknown>): Promise<MedChatResponse> {
+  const startedAt = Date.now();
   const plan = await callClinicalChat(payload);
 
   const base = { ...plan, mode: plan.mode || "mock-fallback" } as MedChatResponse;
+  const attr = attributionFromPlan(plan);
+  /** 归因四件套随每条回复落库：provider 按实际产出路径定，latency_ms 从入站算到出站。 */
+  const attributionWith = (provider: ProviderId): Attribution => ({
+    ...attr,
+    provider,
+    latency_ms: Date.now() - startedAt,
+  });
 
   // ---- 红旗旁路：命中即整条绕过 Agent，危险信号提示逐字直出 ----
   if (plan.red_flag && (plan.red_flag.name || plan.red_flag.advice)) {
@@ -92,6 +133,7 @@ export async function orchestrateMedChat(payload: Record<string, unknown>): Prom
       red_flag_bypassed: true,
       agent_error_code: null,
       agent_error_detail: "红旗命中，按红线要求不经模型改写",
+      ...attributionWith("rule"),
     };
   }
 
@@ -121,9 +163,13 @@ export async function orchestrateMedChat(payload: Record<string, unknown>): Prom
       red_flag_bypassed: false,
       agent_error_code: outcome.error_code,
       agent_error_detail: outcome.detail,
+      ...attributionWith("fallback"),
     };
   }
 
+  // Agent 成功：归因 provider 由「当前生效的表达层」经单一映射表决定（providers.providerAttributionKind），
+  // 不在这里另写 if/else —— 两处各写一份映射，迟早会把 rule 记成 codebuddy，而数字上看不出来。
+  const provider: ProviderId = providerAttributionKind(activeProviderId());
   return {
     ...base,
     mode: "live",
@@ -132,6 +178,7 @@ export async function orchestrateMedChat(payload: Record<string, unknown>): Prom
     red_flag_bypassed: false,
     agent_error_code: null,
     agent_error_detail: "",
+    ...attributionWith(provider),
   };
 }
 
@@ -167,6 +214,8 @@ export async function handleMedStatus(_req: Request, res: Response): Promise<voi
       // S7：当前生效的表达层 provider 与在册清单（换供应商不改编排层的实证面）。
       provider: activeProviderId(),
       providers: listProviderIds(),
+      // r96：并发闸实时读数。队列堆积必须能被看见——「越忙看起来越正常」正是无上限并发的假象。
+      limiter: limiterStats(),
     },
   });
 }

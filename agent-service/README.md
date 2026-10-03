@@ -157,7 +157,7 @@ npm run dev:client
 npm run build
 
 # 运行生产版本
-npm start
+npm run server
 ```
 
 ## 二次开发

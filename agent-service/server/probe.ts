@@ -9,10 +9,13 @@
  */
 import { probeSdk, cliCandidates } from "./sdk_status.js";
 import { AGENT_TIMEOUT_MS, activeProviderId, listProviderIds } from "./agent.js";
-import { getActiveProvider } from "./providers.js";
+import { getActiveProvider, FALLBACK_CHAIN, providerAttributionKind } from "./providers.js";
+
+import { MAX_CONCURRENT, MAX_QUEUE, createLimiter } from "./concurrency_limiter.js";
 
 let pass = 0;
 let fail = 0;
+// r96 追加判据：降级链四段归因映射、rule provider、并发闸。
 const check = (name: string, ok: boolean, detail = ""): void => {
 if (ok) { pass++; console.log("  PASS", name); }
 else { fail++; console.log("  FAIL", name + (detail ? " :: " + detail : "")); }
@@ -65,5 +68,16 @@ check("P6 点名不存在的 provider ⇒ fail-closed 回 codebuddy 且给告警
 if (prevProvider === undefined) delete process.env.AGENT_PROVIDER;
 else process.env.AGENT_PROVIDER = prevProvider;
 
-console.log("`nAGENT-SERVICE PROBE: " + pass + " pass / " + fail + " fail");
+console.log("== 降级链四段与归因映射（r96）==");
+check("P7 在册 provider 至少三路（codebuddy / echo / rule）", ["codebuddy", "echo", "rule"].every((id) => ids.includes(id)), JSON.stringify(ids));
+check("P8 降级链四段齐备且顺序稳定", FALLBACK_CHAIN.length === 4 && FALLBACK_CHAIN[0].kind === "codebuddy"
+  && FALLBACK_CHAIN[1].kind === "llm" && FALLBACK_CHAIN[2].kind === "rule" && FALLBACK_CHAIN[3].kind === "fallback",
+  JSON.stringify(FALLBACK_CHAIN.map((s) => s.kind)));
+check("P9 每段降级形态都有触发条件说明（不许只列名字）", FALLBACK_CHAIN.every((s) => s.when && s.when.trim().length > 6));
+check("P10 归因映射五个入口全部有定义", providerAttributionKind("codebuddy") === "codebuddy"
+  && providerAttributionKind("llm") === "llm" && providerAttributionKind("echo") === "rule"
+  && providerAttributionKind("rule") === "rule" && providerAttributionKind("who-knows") === "fallback");
+check("P11 归因映射取值全部落在降级链枚举内（两套口径不许漂）", FALLBACK_CHAIN.some((s) => s.kind === providerAttributionKind("echo")));
+
+console.log("AGENT-SERVICE PROBE:" + pass + " pass / " + fail + " fail");
 process.exit(fail ? 1 : 0);
