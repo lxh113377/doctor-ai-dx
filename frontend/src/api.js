@@ -112,6 +112,12 @@ export function adminConversations(token) {
   return req('/api/admin/conversations?limit=50', adminGet('', token))
 }
 
+/** 会话详情（回放用）：消息逐条带 intent/confidence/kb_hits/provider/latency_ms 归因字段。
+ *  端点本身早已存在（[[route]].js 的 admin/conversations/{id} 分支），此处只是补上前端调用口。 */
+export function adminConversationDetail(conversationId, token) {
+  return req(`/api/admin/conversations/${encodeURIComponent(conversationId)}`, adminGet('', token))
+}
+
 export function adminHandoffs(token) {
   return req('/api/admin/handoffs?limit=50', adminGet('', token))
 }

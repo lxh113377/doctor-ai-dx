@@ -251,6 +251,42 @@ b{font-weight:600}
 .admin-table th{color:var(--text-sub);font-weight:500}
 .muted{color:var(--text-sub);font-size:13px}
 
+/* ===== r96：管理后台三栏看板 =====
+   分栏用 grid 而不是 float/table：三栏宽度必须可控，且 ≤1024px 要能收成两栏、≤767px 收成单列。
+   min-width:0 是关键：grid 子项默认 min-width:auto，长会话 id 会把整栏撑破导致横向溢出。 */
+.admin-wrap.wide{max-width:1440px}
+.dash{display:grid;grid-template-columns:260px minmax(0,1fr) 340px;gap:12px;align-items:start}
+.dash-col{min-width:0}
+.dash-list,.dash-replay{max-height:calc(100vh - 140px);overflow:auto}
+.dash-stats{display:flex;flex-direction:column;gap:12px;min-width:0}
+.dash-row{display:flex;flex-direction:column;gap:2px;width:100%;text-align:left;background:none;border:1px solid transparent;border-radius:var(--r-md);padding:8px 10px;font:inherit;cursor:pointer;color:var(--text)}
+.dash-row:hover{background:var(--surface);border-color:var(--border)}
+.dash-row.active{background:var(--surface);border-color:var(--primary)}
+.dash-row-id{font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dash-row-meta{font-size:12px;color:var(--text-sub)}
+.replay-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px;font-size:12px;color:var(--text-sub)}
+.replay-msg{border:1px solid var(--border);border-radius:var(--r-md);padding:10px 12px;margin-bottom:10px;background:var(--surface)}
+.replay-msg.user{background:var(--surface-muted)}
+.replay-role{font-size:12px;color:var(--text-faint);margin-bottom:4px}
+.replay-text{font-size:14px;line-height:1.6;color:var(--text);white-space:pre-wrap;word-break:break-word}
+.attr{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.attr-chip{font-size:11px;color:var(--text-sub);background:var(--surface-muted);border:1px solid var(--border);border-radius:999px;padding:2px 8px}
+.attr-chip.danger{color:var(--danger);border-color:var(--danger)}
+.attr-chip.ref{color:var(--primary)}
+.metric-d{font-size:11px;color:var(--text-faint);margin-top:4px;line-height:1.4}
+.metric-note{font-size:11px;color:var(--text-faint);margin:8px 0 0}
+.dash-foot{font-size:11px;color:var(--text-faint);margin:0}
+.replay-handoff{font-size:12px;color:var(--warning);border-top:1px dashed var(--border);padding-top:8px;margin-top:4px}
+
+@media (max-width:1024px){
+  .dash{grid-template-columns:240px minmax(0,1fr)}
+  .dash-stats{grid-column:1 / -1}
+}
+@media (max-width:767px){
+  .dash{grid-template-columns:minmax(0,1fr)}
+  .dash-list,.dash-replay{max-height:none}
+}
+
 @media (max-width:767px){
   .admin-wrap{flex-direction:column;padding:12px 14px 32px}
   .admin-nav{width:auto;flex:none;flex-direction:row;overflow-x:auto;gap:6px}

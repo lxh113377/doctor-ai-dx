@@ -66,3 +66,11 @@ agent-service/server/*.d.ts
 !agent-service/server/index.d.ts
 agent-service/*.tsbuildinfo
 agent-service/vite.config.js
+
+# ── 回收区（2026-10-04 补，一手起因）────────────────────────────────────────
+# `_trash/` 是 `handoff.py recycle` 的回落落点，**按设计永不入库**：
+#   它的内容已被判定为「可恢复搬移」的产物，manifest 记的是「搬到哪」而不是源码；
+#   入库会造成两件事——① 仓库凭空多一份产物（`_trash/recycle_manifest.jsonl`
+#   本轮实测 7,084B 且随每次回收单调增长）；② 下一个 clone 者会以为那是源码。
+#   判据：git status 里出现 `_trash/` 即为违规（与根仓 .gitignore 第 ⑥ 条同条纪律）。
+_trash/

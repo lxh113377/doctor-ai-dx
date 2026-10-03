@@ -40,6 +40,7 @@ function hasSlot(text, history) {
  * 抛错一律用 limits.js 的 RequestBadShape 系列（422），沿用既有故障编号口径。
  */
 export async function handleChat({ text, history = [], conversation_id = null, env = {} }) {
+  const startedAt = Date.now();
   const raw = String(text ?? "").trim()
   if (!raw) {
     const { RequestBadShape, BAD_SHAPE_MESSAGE } = await import("./limits.js")
@@ -86,6 +87,9 @@ export async function handleChat({ text, history = [], conversation_id = null, e
   // 话术常量与生成处共用 SLOT_ASK_TEXT 单一源）；追问过仍缺 ⇒ 才升级 MISSING_SLOT 转人工。
   const escalateSlot = missingSlot && askedSlotBefore
   const handoff = decideHandoff({
+    // r96：强词（投诉/索赔/监管）判定吃原始文本，与意图置信度无关——
+    // 「我要投诉，胸口还闷」这类输入不能因为混着症状词就绕过升级。
+    text: raw,
     intent: det.intent,
     confidence: det.confidence,
     flags: det.flags,
@@ -117,6 +121,17 @@ export async function handleChat({ text, history = [], conversation_id = null, e
     handoff: handoff.need_handoff
       ? { reason_code: handoff.reason_code, reason_text: handoff.reason_text, context_digest: handoff.context_digest }
       : null,
+    // r96 归因六字段：让「这条回答是谁给的/为什么/花了多久」真的落库，而不是只存在于返回值里。
+    // provider 在本面恒为 rule —— 本面从不调用模型（见文件头），模型表达只发生在面3；
+    // 面3 把全链耗时（含本面）在响应里回传，由调用侧展示，不在本面重复落一次。
+    attribution: {
+      intent: det.intent,
+      confidence: det.confidence,
+      kb_hits: (answer.citations || []).map((c) => String(c.title || "")).filter(Boolean),
+      source_refs: (answer.citations || []).map((c) => ({ title: String(c.title || ""), source: c.source, year: c.year })),
+      provider: "rule",
+      latency_ms: Date.now() - startedAt,
+    },
   })
   const cid = turn.persisted ? turn.conversation_id : conversation_id || null
   const persisted = !!turn.persisted

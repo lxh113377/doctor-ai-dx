@@ -6,7 +6,7 @@ import { execFileSync } from "node:child_process"
 import { readFileSync } from "node:fs"
 import { fileURLToPath } from "node:url"
 import { redactPii } from "../functions/lib/pii.js"
-import { isValidScore, d1Available } from "../functions/lib/chat_store.js"
+import { isValidScore, d1Available, ATTRIBUTION_FIELDS, SCHEMA_VERSION as STORE_SCHEMA_VERSION } from "../functions/lib/chat_store.js"
 
 const REPO = fileURLToPath(new URL("../../", import.meta.url))
 let pass = 0
@@ -82,6 +82,31 @@ check("B4 persistTurnBatch 生成真实工单 id 并回传（供后台 PATCH 用
 check("B5 反例自证：判据对失真的源码必须翻红（证明 B1 不是恒真）",
   !storeSrc.replaceAll(".batch(", ".BATCH_MISSING(").includes(".batch(")
   && storeSrc.replaceAll(".batch(", ".BATCH_MISSING(").includes(".BATCH_MISSING("))
+
+console.log("== r96 归因列与补丁账本 ==")
+check("schema 为 v3（归因列已入产物）", /schema_version=3/.test(schema))
+for (const col of ATTRIBUTION_FIELDS) {
+  check(`messages 含归因列 ${col}`, new RegExp(`\\b${col}\\s+(TEXT|REAL|INTEGER)`).test(schema))
+}
+check("patch 三件套：每条升级都有成对回滚（--check-patch 绿）", (() => {
+  try {
+    const out = execFileSync(process.execPath, [REPO + "scripts/d1_migrate.mjs", "--check-patch"], { encoding: "utf8", stdio: "pipe" })
+    return out.includes("[GATE:d1-patch-pass]")
+  } catch { return false }   // 未用的捕获参数：删除而不是改名（no-unused-vars）
+})())
+check("补丁账本文件存在（登记那一半）", readFileSync(REPO + "scripts/chat_patch_ledger.md", "utf8").includes("PATCH-003"))
+check("回滚是成套的六条 DROP，与新增列一一对应", (() => {
+  const out = execFileSync(process.execPath, [REPO + "scripts/d1_migrate.mjs", "--rollback"], { encoding: "utf8" })
+  const cols = [...out.matchAll(/DROP COLUMN (\w+)/g)].map((m) => m[1])
+  return ATTRIBUTION_FIELDS.every((c) => cols.includes(c)) && cols.length === ATTRIBUTION_FIELDS.length
+})())
+check("chat_store 的 SCHEMA_VERSION 与生成器一致（两边叫同一件事）", STORE_SCHEMA_VERSION === 3, String(STORE_SCHEMA_VERSION))
+check("persistTurnBatch 写入归因列（只写进 INSERT 才真的会落库）", /MSG_COLS/.test(storeSrc) && /INSERT INTO messages \(\$\{MSG_COLS\}\)/.test(storeSrc))
+check("用户消息的 latency_ms 不参赛（置 0，否则拉低首响均值）", /"user", cleanUser\.text[^\n]*attr\.provider, 0, ts/.test(storeSrc))
+// 反向对照：把归因列从 schema 里删掉，同一判据必须变红——否则上面那批 check 可能恒真
+const stripped = schema.replace(/\n {2}intent TEXT DEFAULT 'general_medical',/, "")   // 计数空格用 {2}（no-regex-spaces）
+check("M2 变异自证：删掉归因列后同一判据必须判假（证明不是恒真）",
+  !/intent\s+TEXT\s+DEFAULT/.test(stripped) && /intent\s+TEXT\s+DEFAULT/.test(schema))
 
 console.log(`\nD1 PERSIST GUARD: ${pass} pass / ${fail} fail`)
 process.exit(fail ? 1 : 0)

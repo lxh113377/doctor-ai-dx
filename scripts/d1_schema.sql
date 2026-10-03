@@ -1,8 +1,11 @@
--- D1 schema（构建期产物，禁手改）——由 scripts/d1_migrate.mjs 生成，schema_version=2。
+-- D1 schema（构建期产物，禁手改）——由 scripts/d1_migrate.mjs 生成，schema_version=3。
 -- 对话面持久化：会话 / 消息 / 意图事件 / 转人工 / 满意度反馈。
 -- TTL（r91 S10）：conversations.expires_at 到期由 scripts/d1_cleanup.mjs 清理（级联删消息/事件/工单/反馈）；
 --   v1 时代的存量行 expires_at 为 NULL，视为不过期（不静默删旧数据），需清理由运维显式回填。
 -- 漂移守卫：node scripts/d1_migrate.mjs --check（逐字节比对，漂移即红）。
+-- r96 v3：messages 增六列归因字段（intent/confidence/kb_hits/source_refs/provider/latency_ms）；
+--   存量 v2 库不受 CREATE TABLE 影响，需显式跑 `node scripts/d1_migrate.mjs --upgrade` 取 ALTER 语句，
+--   登记与回滚见 scripts/chat_patch_ledger.md。
 
 PRAGMA foreign_keys = ON;
 CREATE TABLE IF NOT EXISTS conversations (
@@ -22,6 +25,12 @@ CREATE TABLE IF NOT EXISTS messages (
   content TEXT NOT NULL,
   redacted_hits TEXT NOT NULL DEFAULT '[]',
   red_flag INTEGER NOT NULL DEFAULT 0,
+  intent TEXT DEFAULT 'general_medical',
+  confidence REAL DEFAULT 0,
+  kb_hits TEXT DEFAULT '[]',
+  source_refs TEXT DEFAULT '[]',
+  provider TEXT DEFAULT 'rule',
+  latency_ms INTEGER DEFAULT 0,
   created_at TEXT NOT NULL,
   FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
 );
@@ -70,3 +79,9 @@ CREATE INDEX IF NOT EXISTS idx_intent_events_intent ON intent_events(intent);
 CREATE INDEX IF NOT EXISTS idx_handoffs_status ON handoffs(status, created_at ASC);
 
 CREATE INDEX IF NOT EXISTS idx_feedback_score ON feedback(score);
+
+CREATE INDEX IF NOT EXISTS idx_messages_intent ON messages(intent);
+
+CREATE INDEX IF NOT EXISTS idx_messages_provider ON messages(provider);
+
+CREATE INDEX IF NOT EXISTS idx_messages_created ON messages(created_at ASC);
