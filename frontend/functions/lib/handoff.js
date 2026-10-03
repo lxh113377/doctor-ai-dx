@@ -16,6 +16,7 @@ export const REASON_CODES = Object.freeze({
   MISSING_SLOT: "MISSING_SLOT",
   REPEATED_FAILURE: "REPEATED_FAILURE",
   ABSTAIN: "ABSTAIN",
+  STRONG_TERM: "STRONG_TERM",
 })
 
 const REASON_TEXT = Object.freeze({
@@ -26,7 +27,30 @@ const REASON_TEXT = Object.freeze({
   MISSING_SLOT: "缺少查询所需的关键信息且未能补齐，已转人工客服",
   REPEATED_FAILURE: "技术支持问题重复出现仍未解决，已转人工客服",
   ABSTAIN: "现有知识库证据不足，未作判断，已转人工客服",
+  STRONG_TERM: "您的描述涉及投诉、索赔或监管事项，已转人工客服处理",
 })
+
+/**
+ * 强词（投诉/索赔/举报/监管）命中 ⇒ 立即转人工，**不看意图置信度**。
+ *
+ * 为什么单列一档：这些词出现时，继续自动回答的代价不是「答错」而是「二次伤害」——
+ * 用户已经在表达不满，机器再给一段流程话术等于火上浇油。r96 之前本文件只有三类触发
+ * （缺一档），「强词命中」被隐含在 out_of_scope 意图里，**只有当整句判成越界才生效**；
+ * 一旦句子里还混着症状词（「我要投诉，胸口还闷」），意图会判成 general_medical 而完全绕过。
+ */
+// 2026-10-04 修一处误伤：初版把裸的「12345」列进强词表，而挂号单号/订单号常常就是
+// 「12345678」这种数字串 ⇒ 用户补号那一轮会被判成「在投诉 12345」，被 chat_api_guard S5b 抓到。
+// 教训：强词必须带**语境**，纯数字串不能当情绪信号——它更像标识符而非表达。
+export const HANDOFF_STRONG_TERMS = Object.freeze([
+  "投诉", "举报", "索赔", "赔偿", "媒体曝光", "起诉", "律师函", "监管", "卫健委", "消协", "曝光",
+  "12345热线", "12345投诉", "12315投诉", "市民热线", "找媒体",
+])
+
+/** 纯函数判定，便于守卫穷举（与 detectIntent 不冲突：这里管「是否升级」，那边管「是什么意图」）。 */
+export function matchStrongTerm(text) {
+  const raw = String(text ?? "")
+  return HANDOFF_STRONG_TERMS.find((t) => raw.includes(t)) || null
+}
 
 /** 连续低置信多少轮才转人工：1 轮就转会显得草率，5 轮才转会显得迟钝，取 3。 */
 export const LOW_CONFIDENCE_TURNS = 3
@@ -53,6 +77,7 @@ export function decideHandoff(input) {
     unresolved_turns = 0,
     missing_slot = false,
     abstain = false,
+    text = "",
   } = input || {}
 
   const hit = (code) => ({
@@ -77,30 +102,36 @@ export function decideHandoff(input) {
     }
   }
 
-  // 2) 用户显式要人工。
+  // 2) 强词命中：优先于用户显式请求之前判，且**不依赖意图置信度**。
+  const strong = matchStrongTerm(text)
+  if (strong) {
+    return { ...hit(REASON_CODES.STRONG_TERM), context_digest: String(strong).slice(0, 80) }
+  }
+
+  // 3) 用户显式要人工。
   if (need_human) return hit(REASON_CODES.USER_REQUESTED)
 
   const spec = intentSpec(intent)
 
-  // 3) 注册表策略：总是转人工（超范围）。
+  // 4) 注册表策略：总是转人工（超范围）。
   if (spec?.handoff_policy === "always_handoff") return hit(REASON_CODES.OUT_OF_SCOPE)
 
-  // 4) 缺关键信息且用户不补（查询/退费类槽位未命中）。
+  // 5) 缺关键信息且用户不补（查询/退费类槽位未命中）。
   if (spec?.handoff_policy === "escalate_if_missing_slot" && missing_slot) {
     return hit(REASON_CODES.MISSING_SLOT)
   }
 
-  // 5) 连续重复失败（技术支持类）。
+  // 6) 连续重复失败（技术支持类）。
   if (spec?.handoff_policy === "escalate_if_repeated" && unresolved_turns >= REPEATED_FAILURE_TURNS) {
     return hit(REASON_CODES.REPEATED_FAILURE)
   }
 
-  // 6) 证据不足弃权：医疗类不许硬答。
+  // 7) 证据不足弃权：医疗类不许硬答。
   if (spec?.handoff_policy === "abstain_or_low_confidence" && abstain) {
     return hit(REASON_CODES.ABSTAIN)
   }
 
-  // 7) 连续低置信。
+  // 8) 连续低置信。
   if (unresolved_turns >= LOW_CONFIDENCE_TURNS) {
     const floor = spec?.confidence_floor ?? 0.3
     if (confidence < floor) return hit(REASON_CODES.LOW_CONFIDENCE)
