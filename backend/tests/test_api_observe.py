@@ -1,6 +1,7 @@
 """FastAPI 侧可观测性契约：X-Request-Id 对账、500 零泄漏、日志脱敏。镜像 frontend/tests/route_guard.mjs。"""
 import io
 import json
+import os
 import re
 import sys
 from contextlib import redirect_stdout
@@ -183,6 +184,62 @@ check("sk- 形态密钥被脱敏", "sk-" not in observe.redact("header: sk-abcde
 check("密钥原文被脱敏", "[已脱敏]" in observe.redact("failed with abc123secretkey", "abc123secretkey"))
 check("内部路径被替换", "[内部路径]" in observe.redact("at run (C:\\Users\\secret\\app\\engine.py:1:1)"))
 check("超长信息被截断", len(observe.redact("x" * 900)) <= 300)
+
+print("== 对话面镜像端点契约（S 系列把 api.py 打到 66%，本段把覆盖补回地板而不是放宽地板） ==")
+chat_hit = client.post("/api/chat", json={"text": "压榨样胸痛向左肩臂放射，伴出冷汗"})
+check("POST /api/chat 红旗句仍走红线出口（intent=red_flag）",
+      chat_hit.status_code == 200 and chat_hit.json()["data"]["intent"] == "red_flag",
+      f"{chat_hit.status_code} {str(chat_hit.json())[:120]}")
+chat_empty = client.post("/api/chat", json={})
+check("POST /api/chat 空载荷的 ValueError 落 422 而不是 500", chat_empty.status_code == 422,
+      str(chat_empty.status_code))
+chat_read = client.get("/api/chat/cv-1")
+read_data = chat_read.json()["data"]
+check("GET /api/chat/{id} 如实声明镜像面不持久化（available=false＋回显 id）",
+      chat_read.status_code == 200 and read_data["available"] is False
+      and read_data["conversation_id"] == "cv-1", str(read_data)[:160])
+fb_ok = client.post("/api/chat/cv-1/feedback", json={"score": 4})
+fb_data = fb_ok.json()["data"]
+check("POST feedback 合法评分落 200 且 persisted=false",
+      fb_ok.status_code == 200 and fb_data["satisfaction"] == 4 and fb_data["persisted"] is False,
+      str(fb_data)[:160])
+for fb_payload, fb_case in (({"score": "4"}, "字符串"), ({"score": True}, "布尔冒充整数"),
+                            ({"score": 0}, "下界外"), ({"score": 6}, "上界外"), ({}, "缺字段")):
+    fb_bad = client.post("/api/chat/cv-1/feedback", json=fb_payload)
+    check(f"POST feedback {fb_case}评分 → 422", fb_bad.status_code == 422,
+          f"{fb_payload} 实得 {fb_bad.status_code}")
+
+print("== 后台鉴权四态（未配置/缺令牌/错令牌/正确令牌） ==")
+for guard_path in ("/api/admin/conversations", "/api/admin/handoffs", "/api/admin/stats"):
+    unconfigured = client.get(guard_path)
+    check(f"{guard_path} 未配置 ADMIN_TOKEN → 503（既不是 401 也不是放行 200）",
+          unconfigured.status_code == 503, str(unconfigured.status_code))
+prev_admin_token = os.environ.get("ADMIN_TOKEN")
+os.environ["ADMIN_TOKEN"] = "r97-guard-token"
+try:
+    no_header = client.get("/api/admin/handoffs")
+    wrong_header = client.patch("/api/admin/handoffs/h-1", headers={"X-Admin-Token": "not-it"})
+    check("配置令牌后不带 X-Admin-Token → 401", no_header.status_code == 401, str(no_header.status_code))
+    check("带错令牌 PATCH → 403（与 401 分档，医生能知道是哪种失败）", wrong_header.status_code == 403,
+          str(wrong_header.status_code))
+    good = {"X-Admin-Token": "r97-guard-token"}
+    adm_conv = client.get("/api/admin/conversations", headers=good)
+    adm_hand = client.get("/api/admin/handoffs", headers=good)
+    adm_patch = client.patch("/api/admin/handoffs/h-9", headers=good)
+    adm_stats = client.get("/api/admin/stats", headers=good)
+    check("四个后台镜像端点带正确令牌均 200 且 available=false（镜像面不复制存储＝两个真值的防线）",
+          all(x.status_code == 200 and x.json()["data"]["available"] is False
+              for x in (adm_conv, adm_hand, adm_patch, adm_stats)),
+          str([x.status_code for x in (adm_conv, adm_hand, adm_patch, adm_stats)]))
+    check("PATCH /admin/handoffs/{id} 回显 handoff_id（S3 与权威面同形契约）",
+          adm_patch.json()["data"]["id"] == "h-9", str(adm_patch.json())[:120])
+finally:
+    if prev_admin_token is None:
+        os.environ.pop("ADMIN_TOKEN", None)
+    else:
+        os.environ["ADMIN_TOKEN"] = prev_admin_token
+check("ADMIN_TOKEN 判后复原为进入前的值（测试不得把令牌留在环境里）",
+      os.environ.get("ADMIN_TOKEN") == prev_admin_token, str(os.environ.get("ADMIN_TOKEN")))
 
 print(f"\nRESULT: {passed} pass / {failed} fail")
 sys.exit(1 if failed else 0)
