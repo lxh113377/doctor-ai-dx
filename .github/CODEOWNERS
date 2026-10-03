@@ -1,0 +1,73 @@
+# CODEOWNERS — 归属面（第 98 轮 H-4）
+#
+# 为什么补这个件（对标依据，非推演）
+#   `work/bench-r98/self-facts-20261003.json` 的 `has_codeowners=false`：
+#   我方 README / CONTRIBUTING / SECURITY / CHANGELOG / ISSUE_TEMPLATE / PULL_REQUEST_TEMPLATE
+#   **全部在位**，唯独 CODEOWNERS 缺失 —— 而 34 条提交链判据已经在跑，
+#   「谁负责改这一面」却没有落进版本控制。对照侧 blaze / openmrs / openemr 均在 CODEOWNERS 实践内。
+#
+# 写法约定（避免这份文件变成又一份失真的文档）：
+#   · 每行一个**真实存在的路径面**，不写不存在的目录；
+#   · 只写「谁审」，不写「谁写」——判据本身可由任何人提 PR 修，归属是**审查责任**；
+#   · 与 docs/COMPATIBILITY.md / memory 的 34 条判据一一对得上；
+#   · 新增判据面时**必须**在此追加一行，否则 review 无从下手。
+#
+# 归属人用 GitHub 用户名/团队；单人项目先落到 owner，后续再细分。
+
+# ── 权威链路：引擎 / 检索 / 规则层 / 知识库单一源 ─────────────────────────
+/frontend/functions/lib/engine.js        @lxh113377
+/frontend/functions/lib/rag.js           @lxh113377
+/frontend/functions/lib/retriever.js     @lxh113377
+/frontend/functions/lib/hybrid_rrf.js    @lxh113377
+/frontend/functions/lib/semantic_neighbors.js @lxh113377
+/frontend/functions/lib/rules.js         @lxh113377
+/frontend/functions/lib/red_flag_rules.js @lxh113377
+/frontend/functions/lib/scope_rules.js   @lxh113377
+/frontend/functions/lib/knowledge.js     @lxh113377
+/backend/app/services/engine.py          @lxh113377
+/backend/app/services/llm.py             @lxh113377
+
+# ── 互操作与集成面（FHIR / CDS Hooks / 契约）────────────────────────────
+/frontend/functions/lib/fhir.js          @lxh113377
+/frontend/functions/lib/cds_*.js         @lxh113377
+/backend/app/services/fhir.py           @lxh113377
+/backend/app/services/cds_hooks.py       @lxh113377
+/docs/openapi.json                      @lxh113377
+/docs/OPENAPI.md                        @lxh113377
+/scripts/gen_openapi.py                 @lxh113377
+
+# ── 安全面：脱敏 / 合成病例 / 配额 / 管理鉴权 ───────────────────────────
+/frontend/functions/lib/pii.js                       @lxh113377
+/frontend/functions/lib/chat_synth.js                @lxh113377
+/scripts/synth_case_pipeline.py                      @lxh113377
+/frontend/functions/lib/limits.js                    @lxh113377
+/frontend/functions/lib/admin_auth.js                @lxh113377
+/SECURITY.md                                         @lxh113377
+
+# ── 可观测与性能判据面（第 98 轮新增）─────────────────────────────────
+/frontend/functions/lib/observe.js    @lxh113377
+/scripts/observe_slo_check.mjs        @lxh113377
+/scripts/load_probe.mjs               @lxh113377
+/scripts/perf_gate.mjs                @lxh113377
+/docs/OBSERVABILITY.md                @lxh113377
+
+# ── 依赖与供应链 ─────────────────────────────────────────────────────
+/backend/requirements.lock   @lxh113377
+/scripts/lock_guard.py       @lxh113377
+/scripts/sbom_guard.mjs      @lxh113377
+/.github/workflows/dep-audit.yml @lxh113377
+/.github/workflows/codeql.yml    @lxh113377
+
+# ── 评测与发布链 ─────────────────────────────────────────────────────
+/iCAN大学生创新创业大赛/03-评测/  @lxh113377
+/scripts/run_eval.mjs         @lxh113377
+/scripts/live_eval.mjs        @lxh113377
+/scripts/release_ci_gate.py   @lxh113377
+/.github/workflows/release.yml @lxh113377
+/.github/workflows/ci.yml       @lxh113377
+
+# ── 文档面 ───────────────────────────────────────────────────────────
+/docs/                @lxh113377
+/README.md            @lxh113377
+/CONTRIBUTING.md      @lxh113377
+/CHANGELOG.md         @lxh113377
