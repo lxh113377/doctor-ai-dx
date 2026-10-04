@@ -1,0 +1,23 @@
+# LFS 存储端点（Git LFS 官方项目级配置文件，2026-10-04 建）
+#
+# 为什么用 .lfsconfig 而不是全局 lfs.url（这是实测结论，不是偏好）：
+#   lfs.url 一旦设在**全局**，会**覆盖所有仓库**从 remote 推导的端点。实测 2026-10-04：
+#     设全局 lfs.url = 某个仓的端点后，其余仓的 Endpoint 全部被劫持成同一个，
+#     而它们各自的 remote 指向别的仓 => 对象被推进错误的存储桶，clone 时拉不到大文件，
+#     **静默坏掉**。所以 lfs.url 不能全局统一。
+#
+# .lfsconfig 的好处（这才是「统一管理」的正确形态）：
+#   · **入库** => clone 的人自动拿到正确端点，零手工配置
+#   · 端点随仓库走 => 换机、换人、新克隆都不需要重配
+#   · 仓库自描述 => 换 GitHub 仓时改这一个文件即可，不碰全局配置
+#   · 优先级高于 remote 推导 => 端点写死，不再依赖 remote 的形态
+#
+# 本仓端点（从本仓 remote 推导后写入，不是手抄）：
+#   https://github.com/lxh113377/doctor-ai-dx.git/info/lfs
+#
+# 维护：换 remote 时同步改这一行；改完跑
+#   git lfs env | findstr Endpoint      确认生效值
+#   git lfs push --all                 把本地已有对象补推上去
+
+[remote "origin"]
+	lfsurl = https://github.com/lxh113377/doctor-ai-dx.git/info/lfs
