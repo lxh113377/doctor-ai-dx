@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "_note": "Dependency audit 的按批处置机器基线（第一百零二年 r101-10）。起因：dep-audit.yml 的步骤名叫「已知 dev-only 项按批处置」，而命令是裸 `npm audit --audit-level=high`——没有任何仓内件承载「批」是哪些条、凭什么、什么时候到期，于是同一个红每周必重开一遍。对标 peer：gitleaks 的 `.gitleaksignore`、osv-scanner 的 `osv-scanner.toml` 都是把豁免做成入库可追责的机器件。判据体＝`scripts/dep_audit_gate.py`（五条规则各有反例腿）。",
+  "evidence": {
+    "taken_at": "2026-10-06T04:35:00+08:00",
+    "full_tree_face": "cd frontend && npm audit --json --registry=https://registry.npmjs.org ⇒ rc=1，vulnerabilities 包名 [miniflare, undici, wrangler]，undici 包级 severity=high，advisory 10 条（high 2／moderate 5／low 3，逐条按 severity 现计数），metadata={\"moderate\":2,\"high\":1,\"total\":3}（这一组是**按包**聚合不是按 advisory，两个分母别混）",
+    "prod_tree_face": "cd frontend && npm audit --json --omit=dev --registry=https://registry.npmjs.org ⇒ rc=0，vulnerabilities 为空，metadata 全 0",
+    "dev_only_proof": "「dev-only」不靠人写形容词：由两面差集现证——同一 advisory 在全树在场、在 --omit=dev（生产树）不在场 ⇒ 它只随 devDependencies（wrangler→miniflare→undici 链）进入，不会进线上产物面。这一层由 dep_audit_gate.py 每次跑时重新证明，任何一条在生产树里出现即判红（DEV_CLAIM_REFUTED）。",
+    "local_registry_caveat": "本机 npm 全局配置把 registry 指到 registry.npmmirror.com，该镜像不实现 audit 端点（实测 `404 NOT_IMPLEMENTED - POST /-/npm/v1/security/advisories/bulk`）。⇒ 本机跑本判据须显式加 `--registry=https://registry.npmjs.org`，否则判据按取数不可用记 BLOCKED（rc=3），绝不记绿；CI 上 setup-node 用默认 registry，不受此限。"
+  },
+  "waivers": [
+    {
+      "ghsa": "GHSA-rfgv-xxqx-mfg5",
+      "package": "undici",
+      "severity": "high",
+      "range": ">=7.0.0 <7.29.1",
+      "title": "undici vulnerable to Denial of Service via unrequested WebSocket subprotocol",
+      "reason": "仅随 devDependencies 进入（wrangler → miniflare → undici），生产树面实测 0 条；不改变「部署产物不含该包」这一事实，故按批处置",
+      "added": "2026-10-06",
+      "fix_due": "2026-11-02",
+      "remedy_candidate": "升 wrangler 到把 undici 拉到 >=7.29.1 的版本（audit 自报 fixAvailable=true）——**这是待验处方，不是已完成动作**；执行后须重跑两条面并核对本件",
+      "owner": "医·第一百零二年 r101-10"
+    },
+    {
+      "ghsa": "GHSA-w293-vg96-wgc3",
+      "package": "undici",
+      "severity": "high",
+      "range": ">=7.24.1 <7.29.1",
+      "title": "undici vulnerable to TLS certificate validation bypass via dropped connect options in BalancedPool",
+      "reason": "同上一条同链同版本区间（dev-only 由两面差集现证）；TLS 校验绕过那一支在本地部署工具链内，不在运行时暴露面",
+      "added": "2026-10-06",
+      "fix_due": "2026-11-02",
+      "remedy_candidate": "同上（升 wrangler / undici ≥7.29.1）；待验处方，非已完成",
+      "owner": "医·第一百零二年 r101-10"
+    }
+  ],
+  "_retire_rule": "两条腿都会自动判红，不需要人记着清：① 某条 waiver 在当日全树面里已不出现 ⇒ DEAD_WAIVER（死豁免不许永远绿）；② 今天晚于 fix_due ⇒ EXPIRED（豁免有保质期）。到期后要么升版本让它在两条面里都消失并删条目，要么显式改 fix_due 并写明为什么——改日期是**可 diff 的动作**，比每周重开同一个红便宜。"
+}
