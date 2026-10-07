@@ -1,0 +1,36 @@
+{
+  "_meta": {
+    "purpose": "开放 Dependabot PR 的分诊名册：scripts/dep_triage.py 的第二证据面。一张开放 PR 的『分诊痕迹』＝PR 侧标记（正文/标签含 marker）**或** 本件里一条合法登记。",
+    "why_second_face": "第一百零六轮定因（一手实测）：原设计只认 PR 侧 marker，而那个面只有一个不可持续的生产者＝人在公开 PR 上逐张写评论（gh api 实测：#23 带着第八十五轮手落的那条 marker，其余 18 张开放 PR 命中 0），CI 作业本身权限只有 pull-requests: read、脚本零 POST 能力 ⇒ 没人手补的那天它一定红；同一时刻『超龄』那条是 PASS（19 张最老 8 天 < 14 天），于是一条长期变不了绿的腿把唯一的真信号一起淹成背景噪声。补库内侧不是为了消红，是为了让『分诊』这件事有一个不必对外写、又能被 git 复算的落点。",
+    "borrowed_from": "prometheus/alertmanager 的 silence：静音条目**强制**带 expiresAt + comment，过期即自动失效。因此本件每行必须带 reason + expires_at，到期未复审即视为无痕迹 ⇒ 判红。豁免不许是永久的。",
+    "conclusions": {
+      "structural-conflict": "该生态的升级通道与本仓机制不兼容（actions 的 uses: 钉 commit SHA／pip 走 uv pip compile 重算 requirements.lock），合了反而破坏供应链对账。",
+      "range-satisfied": "仓内 package.json 的声明范围已覆盖目标版本，差的只是锁文件重算。",
+      "transitive-only": "未直接声明的传递依赖，版本由上游决定。",
+      "awaiting-human-review": "major 升版需人工跑双视口 E2E 与 bundle/fhir 判据，尚未排期。"
+    },
+    "measured_at": "2026-10-08",
+    "not_auto_generated": "判据**不写本件**（只读）。自动改自己的豁免名单＝绿灯自造证据；处置由人写、由判据查。"
+  },
+  "rows": [
+    {"number": 43, "conclusion": "awaiting-human-review", "reason": "组合升级（postcss-selector-parser + tailwindcss）跨两个耦合包，单独合无法归因；agent-service 侧声明 tailwindcss ^3.4.17", "decided_at": "2026-10-08", "expires_at": "2026-10-31"},
+    {"number": 42, "conclusion": "transitive-only", "reason": "source-map-js 未在 frontend/package.json 直接声明（实读零命中），由上游 vite/postcss 决定", "decided_at": "2026-10-08", "expires_at": "2026-12-31"},
+    {"number": 41, "conclusion": "awaiting-human-review", "reason": "vite 5.4.21→8.3.2 是 major，agent-service/package.json 现声明 ^5.0.10；需重跑双视口 E2E 与构建", "decided_at": "2026-10-08", "expires_at": "2026-10-31"},
+    {"number": 38, "conclusion": "awaiting-human-review", "reason": "uuid 9→14 是 major，agent-service/package.json 现声明 ^9.0.0；需先核调用点是否用到被移除的 v4 API", "decided_at": "2026-10-08", "expires_at": "2026-10-31"},
+    {"number": 37, "conclusion": "structural-conflict", "reason": "docker/build-push-action：我方 workflows 把 uses: 钉到 commit SHA（r18 供应链钉版），dependabot 提 tag 版本号，合了即破坏钉版", "decided_at": "2026-10-08", "expires_at": "2026-12-31"},
+    {"number": 36, "conclusion": "structural-conflict", "reason": "docker/login-action：同 SHA 钉版冲突", "decided_at": "2026-10-08", "expires_at": "2026-12-31"},
+    {"number": 35, "conclusion": "structural-conflict", "reason": "github/codeql-action/analyze：同 SHA 钉版冲突", "decided_at": "2026-10-08", "expires_at": "2026-12-31"},
+    {"number": 34, "conclusion": "structural-conflict", "reason": "github/codeql-action/autobuild：同 SHA 钉版冲突", "decided_at": "2026-10-08", "expires_at": "2026-12-31"},
+    {"number": 33, "conclusion": "range-satisfied", "reason": "frontend/package.json 声明 wrangler ^4.136.1，caret 范围已含 4.147.0，只差锁文件重算", "decided_at": "2026-10-08", "expires_at": "2026-12-31"},
+    {"number": 32, "conclusion": "structural-conflict", "reason": "pip：requirements.txt 只是区间声明，真值由 requirements.lock（22 包／505 条 sha256）承载并受 lock_guard 逐包对账；dependabot 不重算锁", "decided_at": "2026-10-08", "expires_at": "2026-12-31"},
+    {"number": 31, "conclusion": "awaiting-human-review", "reason": "@eslint/js 9→10 是 major，与 #29 eslint 10 成对才可能解析（第二十三轮 #12/#20 的实测结论是同族）", "decided_at": "2026-10-08", "expires_at": "2026-10-31"},
+    {"number": 30, "conclusion": "structural-conflict", "reason": "pip：同 requirements.lock 通道，ruff 由 uv pip compile 升级", "decided_at": "2026-10-08", "expires_at": "2026-12-31"},
+    {"number": 29, "conclusion": "awaiting-human-review", "reason": "eslint 9→10 是 major，frontend/package.json 现声明 ^9.39.4；规则集变动需实跑 lint 面", "decided_at": "2026-10-08", "expires_at": "2026-10-31"},
+    {"number": 28, "conclusion": "structural-conflict", "reason": "pip：codespell 同 requirements.lock 通道", "decided_at": "2026-10-08", "expires_at": "2026-12-31"},
+    {"number": 27, "conclusion": "range-satisfied", "reason": "frontend/package.json 声明 vitest ^5.0.1，已含 5.0.3，只差锁文件", "decided_at": "2026-10-08", "expires_at": "2026-12-31"},
+    {"number": 26, "conclusion": "structural-conflict", "reason": "pip：coverage 同 requirements.lock 通道", "decided_at": "2026-10-08", "expires_at": "2026-12-31"},
+    {"number": 25, "conclusion": "structural-conflict", "reason": "pip：backend/requirements.txt 实读为 pyyaml>=6.0.1，升级走 uv pip compile 重算锁", "decided_at": "2026-10-08", "expires_at": "2026-12-31"},
+    {"number": 24, "conclusion": "structural-conflict", "reason": "docker/setup-qemu-action：同 SHA 钉版冲突", "decided_at": "2026-10-08", "expires_at": "2026-12-31"},
+    {"number": 23, "conclusion": "awaiting-human-review", "reason": "undici + wrangler 组合升级；wrangler 受 ^4.136.1 覆盖但 undici 为安全相关件，须单独核验后再合", "decided_at": "2026-10-08", "expires_at": "2026-10-31"}
+  ]
+}

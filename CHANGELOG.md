@@ -5,7 +5,22 @@
 
 ## [Unreleased]
 
-（暂无）
+### Fixed（第一百零六轮 CI 既存红归因）
+
+- **已发布镜像作业的版本对账改取「同一制品内部声明」**：该作业原本拿 latest 镜像的 version 比 HEAD 源码的
+  version，属跨版本比——只要两版不同必红（实测镜像 1.45.0 ⇄ HEAD 1.46.0），且它与 `release.yml` 的
+  `release_ci_gate.py`（要求 CI 全绿才发版）互锁成死结。现在作业先从镜像里 `docker run --entrypoint cat`
+  取出 `/srv/backend/app/version.py`，再按**同一把 regex** 比镜像内外两侧；取不到文件 ⇒ `exit 2`，不判绿。
+  `live-smoke` 的 version 那条腿改名「线上 /api/health 的 version 与期望源全等」，并新增恒不判红的
+  DELTA 提示行（线上 ⇄ 仓内版本差如实报告、归因留给发版门）；`--selftest` 27/27。
+- **依赖分诊的「分诊痕迹」补第二证据面**：`scripts/dep_triage.py` 原先只认 PR 评论/标签里的
+  `dep-triage:v1`，而那个面的唯一生产者是人手在公开 PR 上逐张写评论（实测 #23 带着第八十五轮手落的那条，
+  其余 18 张开放 PR 命中 0；作业权限 `pull-requests: read`、脚本无 POST 能力）⇒ 该腿长期必红，
+  而同一时刻「超龄」那条是 PASS（19 张最老 8 天 < 14 天），真信号被淹成背景噪声。新增仓内名册
+  `frontend/tests/fixtures/dep_triage_ledger.json`（一行一 PR：`conclusion` 闭集 + `reason` + `expires_at`），
+  形态照 `prometheus/alertmanager` 的 silence——**到期即自动失效**，所以自愈路径存在而永久豁免不存在；
+  名册缺件/不可解析 ⇒ rc=2，判据本身**不写**名册（只读）。`--selftest` 10/10 → 18/18，真面
+  `[GATE:dep-triage-pass] 3/3`，变异实测：抽掉名册一行或把该行 `expires_at` 改到过去 ⇒ 判红并点名 #43。
 
 ## [1.46.0] - 2026-10-03
 

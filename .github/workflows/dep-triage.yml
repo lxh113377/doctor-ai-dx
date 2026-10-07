@@ -30,6 +30,10 @@ permissions:
   # 而这里原本只给 `contents: read` ⇒ 就算它哪天真被触发，第一次执行就会 403。
   # "配了作业"与"作业跑得通"是两件事，缺的那条权限由 dep_triage.py 的自证腿钉住（判据 8）。
   pull-requests: read
+  # 第一百零六轮：这里**刻意不加** `pull-requests: write`。PR 侧 marker 那个面的唯一生产者一直是人工
+  # 写评论（实测 #23 带着第八十五轮手落的那条，其余 18 张命中 0），把对外写权限交给定时作业并不合适；
+  # 修法不是给它配写权限，而是补一个库内侧——`frontend/tests/fixtures/dep_triage_ledger.json` 的一条
+  # 未到期登记同样算痕迹（带 reason + expires_at，到期即失效）。对外动作留在人手里，机器只查在场与不为真。
 
 jobs:
   triage:

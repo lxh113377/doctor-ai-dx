@@ -10,10 +10,20 @@ r19「门禁挂在长期 skipped 的 deploy 作业 = 没有门禁」同族，只
 必须过 Playwright 双视口与 bundle/fhir 判据（本轮 #12/#20 的实测结论就是"单张不可构建、成对才解析"），
 所以取「超龄即判红 + 每张必须有分诊痕迹」而不是「绿了就合」。
 
+第一百零六轮定因与修复：痕迹原本**只认 PR 侧 marker**，而那个面只有一个不可持续的生产者——人工在
+公开 PR 上逐张写评论。一手实测：`gh api …/issues/23/comments` 有 1 条含 `dep-triage:v1`（第八十五轮
+人工处置留下的），而其余 18 张开放 PR 的命中数是 **0**；CI 作业本身权限 `pull-requests: read`、
+脚本零 POST 能力 ⇒ 没人手补的那天它就一定红。同一时刻『超龄』那条是 PASS（19 张最老 8 天 < 14 天），
+于是一条长期变不了绿的腿把唯一的真信号一起淹成了背景噪声。
+修法不是给人配写权限、也不是放宽阈值，而是补**第二个证据面**（仓内分诊名册）：照
+`prometheus/alertmanager` 的 silence 做——每条处置**强制**带 reason 与 expires_at，到期即自动失效，
+所以它给出「一次正常提交就能变绿」的自愈路径，同时不提供永久豁免；PR 侧 marker 面保留不删。
+
 用法：
   python scripts/dep_triage.py                # 判据（CI 定时作业；需 GITHUB_TOKEN）
   python scripts/dep_triage.py --selftest     # 反例自证（零网络）
-退出码：0 无逾期且都有痕迹 / 1 有逾期或漏分诊 / 2 环境错误（API 取不到＝不判绿，禁止"没查到"当"没有"）。
+退出码：0 无逾期且都有痕迹 / 1 有逾期、漏分诊或名册行到期 / 2 环境错误（API 或名册取不到＝不判绿，
+禁止"没查到"当"没有"）。
 """
 from __future__ import annotations
 
@@ -31,7 +41,12 @@ from typing import Any
 
 REPO = Path(__file__).resolve().parents[1]
 FIXTURE = REPO / "frontend" / "tests" / "fixtures" / "dep_triage.json"
+LEDGER = REPO / "frontend" / "tests" / "fixtures" / "dep_triage_ledger.json"
 API = "https://api.github.com"
+
+# 分诊结论的闭集：名册里只能出现这四个值，写别的按「名册非法」处理而不是「算有痕迹」。
+# 为什么要有闭集：自由文本的处置理由一多就退化成「写了字＝处置过」，而这条判据要防的正是不处置。
+CONCLUSIONS = frozenset({"structural-conflict", "range-satisfied", "transitive-only", "awaiting-human-review"})
 
 
 def load_cfg() -> dict[str, Any]:
@@ -46,6 +61,58 @@ def load_cfg() -> dict[str, Any]:
         print("[GATE:dep-triage-fail] marker 非法（太短的分诊标记会被正文里任意文本撞中）", file=sys.stderr)
         raise SystemExit(2)
     return cfg
+
+
+def _date(value: Any) -> datetime | None:
+    """按 YYYY-MM-DD 解析日期；解析不了返回 None——调用方按非法处理，禁止把 None 读成『无限期』。"""
+    if not isinstance(value, str):
+        return None
+    try:
+        return datetime.fromisoformat(value.strip()).replace(tzinfo=UTC)
+    except ValueError:
+        return None
+
+
+def load_ledger() -> tuple[dict[int, dict[str, Any]], list[str]]:
+    """读分诊名册（痕迹的第二证据面）。返回 (PR 号 → 行, 名册自身的违规行)。
+
+    文件读不到／没有 rows ⇒ SystemExit(2)：名册是判据的输入，不是可选装饰，取不到就无从判
+    『有痕迹』——与『没查到 PR』不得读成『没有 PR』同一条口径。
+    逐行的形状问题（结论不在闭集、缺 reason、日期不可解析）**记成违规行而不抛**：一行坏不该把
+    整条判据弄崩，但绝不能把坏行读成合规（该行的 PR 由 trace_state 判成无痕迹）。
+    """
+    if not LEDGER.is_file():
+        print(f"[GATE:dep-triage-fail] 分诊名册缺失：{LEDGER}", file=sys.stderr)
+        raise SystemExit(2)
+    try:
+        doc = json.loads(LEDGER.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError, ValueError) as bad:
+        print(f"[GATE:dep-triage-fail] 分诊名册不可解析：{type(bad).__name__} {bad}", file=sys.stderr)
+        raise SystemExit(2) from bad
+    raw_rows = doc.get("rows") if isinstance(doc, dict) else None
+    if not isinstance(raw_rows, list):
+        print("[GATE:dep-triage-fail] 分诊名册没有 rows 数组 ⇒ 取不到处置登记，不判绿", file=sys.stderr)
+        raise SystemExit(2)
+    out: dict[int, dict[str, Any]] = {}
+    bad_rows: list[str] = []
+    for i, row in enumerate(raw_rows):
+        if not isinstance(row, dict):
+            bad_rows.append(f"rows[{i}]: 行不是对象")
+            continue
+        number = row.get("number")
+        if not (isinstance(number, int) and not isinstance(number, bool) and number >= 1):
+            bad_rows.append(f"rows[{i}]: number 非法（当前={number!r}）")
+            continue
+        if number in out:
+            bad_rows.append(f"#{number}: 同号重复登记（一名一行，重复＝第二份真值）")
+        if str(row.get("conclusion")) not in CONCLUSIONS:
+            bad_rows.append(f"#{number}: conclusion 不在闭集")
+        if not (isinstance(row.get("reason"), str) and row["reason"].strip()):
+            bad_rows.append(f"#{number}: 缺 reason（处置结论必须带为什么）")
+        if _date(row.get("expires_at")) is None:
+            bad_rows.append(f"#{number}: expires_at 不可解析 ⇒ 永不到期的豁免就是永久豁免")
+        out[number] = row
+    return out, bad_rows
 
 
 def token() -> str:
@@ -100,9 +167,40 @@ def fetch_pending(repo_slug: str, tok: str) -> list[dict[str, Any]] | None:
     return out
 
 
-def evaluate(pending: list[dict[str, Any]], cfg: dict[str, Any], now: datetime) -> list[tuple[str, bool, str]]:
+def trace_state(pr: dict[str, Any], cfg: dict[str, Any], ledger: dict[int, dict[str, Any]],
+                now: datetime) -> tuple[bool, str]:
+    """这张开放 PR 有没有分诊痕迹。返回 (有无, 来源或失效原因)——原因串要能落进 FAIL 的 detail。
+
+    两个合法面：PR 侧 marker（原设计，评论能带实测数字），或仓内名册的一条**未到期**登记。
+    第一百零六轮补后者的原因：只认 PR 侧 marker 时，那个面只有一个不可持续的生产者＝人在公开 PR 上
+    逐张写评论（实测 #23 带着第八十五轮手落的那条，其余 18 张命中 0），CI 作业自己无写权限 ⇒ 没人手
+    补就一定红；同一时刻『超龄』那条是 PASS（最老 8 天 < 14 天），一条长期变不了绿的腿把真信号淹成了
+    背景噪声。名册面照 prometheus/alertmanager 的 silence 做：**必须带 reason 与 expires_at，到期即
+    自动失效**，所以它既给出「一次正常提交就能变绿」的自愈路径，又不提供永久豁免。
+    """
     marker = str(cfg["marker"])
+    if any(marker in b for b in pr["bodies"]) or any(marker in lbl for lbl in pr["labels"]):
+        return True, "PR 侧标记"
+    row = ledger.get(pr["number"]) if isinstance(pr.get("number"), int) else None
+    if row is None:
+        return False, f"无痕迹（PR 侧无 {marker}，名册也没有 #{pr.get('number')}）"
+    if str(row.get("conclusion")) not in CONCLUSIONS:
+        return False, f"名册行 conclusion 不在闭集（当前={row.get('conclusion')!r}）"
+    if not (isinstance(row.get("reason"), str) and row["reason"].strip()):
+        return False, "名册行缺 reason（写了结论没写为什么＝没有处置）"
+    expires = _date(row.get("expires_at"))
+    if expires is None:
+        return False, f"名册行 expires_at 不可解析（当前={row.get('expires_at')!r}）"
+    if expires < now:
+        return False, f"名册行已到期（{row['expires_at']}，结论 {row['conclusion']}）⇒ 豁免不是永久的"
+    return True, f"仓内名册 {row['conclusion']}｜{row['expires_at']} 前有效"
+
+
+def evaluate(pending: list[dict[str, Any]], cfg: dict[str, Any], now: datetime,
+             ledger: dict[int, dict[str, Any]] | None = None,
+             ledger_bad: list[str] | None = None) -> list[tuple[str, bool, str]]:
     limit = int(cfg["max_age_days"])
+    rows_ledger = ledger or {}
     stale: list[str] = []
     untriaged: list[str] = []
     for pr in pending:
@@ -112,16 +210,20 @@ def evaluate(pending: list[dict[str, Any]], cfg: dict[str, Any], now: datetime) 
             stale.append(f"#{pr.get('number')} created_at 不可解析（判据不能因脏数据而放行）")
             continue
         age = (now - created).days
-        has_marker = any(marker in b for b in pr["bodies"]) or any(marker in lbl for lbl in pr["labels"])
+        has_trace, trace = trace_state(pr, cfg, rows_ledger, now)
         flag = f"#{pr['number']} {age}天 · {pr['title'][:48]}"
         if age > limit:
             stale.append(f"{flag}（>{limit} 天未处置）")
-        if not has_marker:
-            untriaged.append(f"{flag}（缺分诊标记 {marker}）")
-    return [
+        if not has_trace:
+            untriaged.append(f"{flag}（{trace}）")
+    out = [
         (f"开放 Dependabot PR 均不超过 {limit} 天", not stale, "; ".join(stale) or "无"),
-        ("每张开放 PR 都有分诊痕迹（评论或标签带 marker）", not untriaged, "; ".join(untriaged) or "无"),
+        ("每张开放 PR 都有分诊痕迹（PR 侧 marker 或仓内名册未到期登记）", not untriaged, "; ".join(untriaged) or "无"),
     ]
+    if ledger_bad is not None:
+        out.append(("分诊名册自身合法（number 唯一／结论在闭集／带 reason／expires_at 可解析）",
+                    not ledger_bad, "; ".join(ledger_bad) or "无"))
+    return out
 
 
 def _pr(n: int, days: int, marked: bool, now: datetime) -> dict[str, Any]:
@@ -254,7 +356,53 @@ def run_selftest() -> int:
     passed += 1 if neg_ok else 0
     passed += 1 if eco_ok else 0
     passed += 1 if zero_ok else 0
-    total = len(cases) + 5
+    # ── 第一百零六轮补：痕迹的第二证据面（仓内名册）与它的到期语义 ────────────────────────
+    lcases = [
+        ("名册有效行补上痕迹 ⇒ 绿", [_pr(7, 5, False, now)],
+         {7: {"number": 7, "conclusion": "structural-conflict", "reason": "uses: 钉 SHA",
+              "expires_at": "2026-12-31"}}, [], 0),
+        ("名册行已到期 ⇒ 判红且点名到期日", [_pr(8, 5, False, now)],
+         {8: {"number": 8, "conclusion": "range-satisfied", "reason": "caret 已含",
+              "expires_at": "2026-01-01"}}, [], 1),
+        ("名册行缺 reason ⇒ 视为无痕迹（写了结论没写为什么不算处置）", [_pr(9, 5, False, now)],
+         {9: {"number": 9, "conclusion": "transitive-only", "reason": "   ",
+              "expires_at": "2026-12-31"}}, [], 1),
+        ("名册行结论不在闭集 ⇒ 视为无痕迹（自由文本会让『写了字』等于『处置过』）", [_pr(10, 5, False, now)],
+         {10: {"number": 10, "conclusion": "已看过", "reason": "散文结论",
+               "expires_at": "2026-12-31"}}, [], 1),
+        ("名册自身有重复号 ⇒ 第三条腿红", [_pr(11, 5, True, now)], {}, ["#11: 同号重复登记"], 1),
+        ("反向对照：PR 侧 marker 仍然算（旧面没被换掉）", [_pr(12, 5, True, now)], {}, [], 0),
+    ]
+    ledger_pass = 0
+    for label, pending, led, bad_rows, expect in lcases:
+        rows = evaluate(pending, cfg, now, led, bad_rows)
+        rc = 1 if any(not ok for _, ok, _ in rows) else 0
+        ok = rc == expect
+        print(f"{'ok  ' if ok else 'BAD '} :: {label} -> rc={rc} 期望={expect}")
+        ledger_pass += 1 if ok else 0
+    # 名册缺件必须 rc=2（取不到登记 ⇒ 不判绿），且不得把异常吞成 0
+    saved_ledger = globals()["LEDGER"]
+    try:
+        globals()["LEDGER"] = saved_ledger.parent / "dep_triage_ledger-不存在.json"
+        exit_code: int | str | None = None
+        try:
+            load_ledger()
+        except SystemExit as se:
+            exit_code = se.code
+        miss_ok = exit_code == 2
+    finally:
+        globals()["LEDGER"] = saved_ledger
+    print(f"{'ok  ' if miss_ok else 'BAD '} :: 名册缺件 ⇒ rc=2 不判绿（没查到不等于没有）-> exit={exit_code}")
+    # 盘上真名册要被读通且逐行合法（否则这条自愈路径要到 CI 才发现是坏的）
+    try:
+        live_rows, live_bad = load_ledger()
+        real_ok = bool(live_rows) and not live_bad
+        real_detail = f"行数={len(live_rows)} 违规行={len(live_bad)}"
+    except SystemExit:
+        real_ok, real_detail = False, "盘上名册读不到"
+    print(f"{'ok  ' if real_ok else 'BAD '} :: 盘上名册可读且逐行合法 -> {real_detail}")
+    total = len(cases) + 5 + len(lcases) + 2
+    passed += ledger_pass + (1 if miss_ok else 0) + (1 if real_ok else 0)
     print(f"[GATE:dep-triage-selftest-{'pass' if passed == total else 'fail'}] {passed}/{total}")
     return 0 if passed == total else 1
 
@@ -267,6 +415,7 @@ def main() -> int:
     if args.selftest:
         return run_selftest()
     cfg = load_cfg()
+    ledger, ledger_bad = load_ledger()
     tok = token()
     if not tok:
         print("[GATE:dep-triage-fail] 无 GitHub Token：取不到开放 PR 时不得判绿", file=sys.stderr)
@@ -276,13 +425,18 @@ def main() -> int:
         print(f"[GATE:dep-triage-fail] 上游 {args.repo} 的开放 PR 读取失败（区分不了『没有』与『没查到』）",
               file=sys.stderr)
         return 2
-    rows = evaluate(pending, cfg, datetime.now(UTC))
+    now = datetime.now(UTC)
+    rows = evaluate(pending, cfg, now, ledger, ledger_bad)
     for name, ok, detail in rows:
         print(f"{'PASS' if ok else 'FAIL'} :: {name}" + ("" if ok else f" :: {detail}"))
     print(f"开放 Dependabot PR={len(pending)}"
           + ("（零 PR 也如实报数：本判据不因『没活干』而假绿，也不因『没活干』而假红）" if not pending else ""))
+    covered = sum(1 for pr in pending if isinstance(pr.get("number"), int) and pr["number"] in ledger)
+    print(f"名册登记 {len(ledger)} 行｜覆盖开放 PR {covered}/{len(pending)}｜其余走 PR 侧标记面")
     for pr in pending:
-        print(f"  #{pr['number']} base={pr['base']} {pr['title'][:60]}")
+        has_trace, trace = trace_state(pr, cfg, ledger, now)
+        print(f"  #{pr['number']} base={pr['base']} 痕迹={'有' if has_trace else '无'}（{trace}）"
+              f" {pr['title'][:40]}")
     # 生态产出读数（第四十五轮，advisory：只报告，不改变上面的判定与退出码；取不到即 fail-open）
     try:
         allp = fetch_all_states(str(args.repo), tok)
