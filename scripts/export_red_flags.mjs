@@ -13,12 +13,16 @@ const AUTHORITY = ROOT + "data/red_flag_rules.json"
 const JS_OUT = ROOT + "frontend/functions/lib/red_flag_rules.js"
 const PY_OUT = ROOT + "backend/app/red_flag_rules.py"
 
-const TOP_KEYS = ["schema_version", "bp", "negation", "positive_terms", "danger", "combo"]
-const DANGER_FIELDS = ["name", "keywords", "severity", "advice"]
-const COMBO_FIELDS = ["name", "all", "severity", "advice"]
+const TOP_KEYS = ["schema_version", "referral_departments", "bp", "negation", "positive_terms", "danger", "combo"]
+const DANGER_FIELDS = ["name", "keywords", "severity", "advice", "department"]
+const COMBO_FIELDS = ["name", "all", "severity", "advice", "department"]
 // 条数下限是**当轮实交付量**留出的半空哨兵：读漏一段（分隔符/正则/键名写错）通常表现为条数骤减，
 // 而不是零——所以只判 0 不够（lessons R48 的第二次踩法就是"抽到 1 个当 125 个用"）。
-const MIN_COUNTS = { danger: 10, combo: 3, negation_tokens: 8 }
+const MIN_COUNTS = { danger: 10, combo: 3, negation_tokens: 8, referral_departments: 12 }
+// 第一百零四轮改造二：红旗建议里说「转诊/转运/转上级/送医」却不给去向，等于把最贵的一步留给医生现想。
+// 一手分母：改前 17 条规则中 13 条含转诊动作、0 条带结构化科室字段。此约束把「说了转就要说转去哪」
+// 钉成生成期硬门（不是注释里的建议），删掉任一 department 即 rc=2 零写盘。
+const TRANSFER_RE = /转诊|转运|转上级|送医/
 
 const src = JSON.parse(readFileSync(AUTHORITY, "utf8"))
 const abort = (msg) => { console.error(`FAIL 生成中止（未写任何文件）：${msg}`); process.exit(2) }
@@ -38,16 +42,39 @@ for (const k of ["systolic_crisis", "diastolic_crisis", "plausible_max_systolic"
   if (typeof src.bp[k] !== "number") abort(`bp.${k} 必须是数值`)
 }
 
+// 可选字段：允许缺席（不是每条红旗都要求转专科），但**在场就必须合规矩**；
+// 而「advice 提到转诊/转运」时它由下面的不变量强制变必填。
+const OPTIONAL_FIELDS = ["department"]
 const pick = (r, fields, at) => {
   if (!r || typeof r !== "object") abort(`${at} 不是对象`)
-  const missing = fields.filter((f) => r[f] === undefined)
+  const missing = fields.filter((f) => !OPTIONAL_FIELDS.includes(f) && r[f] === undefined)
   if (missing.length) abort(`${at} 缺字段 ${missing.join(",")}（不产出半成品）`)
   const extra = Object.keys(r).filter((k) => !fields.includes(k) && !k.startsWith("_"))
   if (extra.length) abort(`${at} 有未声明字段 ${extra.join(",")}`)
-  return Object.fromEntries(fields.map((f) => [f, r[f]]))
+  return Object.fromEntries(fields.filter((f) => r[f] !== undefined).map((f) => [f, r[f]]))
 }
 const danger = src.danger.map((r, i) => pick(r, DANGER_FIELDS, `danger#${i}(${r?.name || "?"})`))
 const combo = src.combo.map((r, i) => pick(r, COMBO_FIELDS, `combo#${i}(${r?.name || "?"})`))
+
+// ---------- 转诊去向（第一百零四轮改造二）----------
+const ROSTER = src.referral_departments
+if (!Array.isArray(ROSTER) || ROSTER.length < MIN_COUNTS.referral_departments) {
+  abort(`referral_departments 只有 ${Array.isArray(ROSTER) ? ROSTER.length : "非数组"} 项，低于下限 ${MIN_COUNTS.referral_departments}（读漏名册＝去向校验整体失效）`)
+}
+if (new Set(ROSTER).size !== ROSTER.length) {
+  abort(`referral_departments 含重复项（同一科室两种写法会让「去向⇄名册」对账各自都能过）`)
+}
+const noDept = []
+for (const [kind, arr] of [["danger", danger], ["combo", combo]]) {
+  arr.forEach((r, i) => {
+    const at = `${kind}#${i}(${r.name})`
+    if (r.department !== undefined && (typeof r.department !== "string" || !ROSTER.includes(r.department))) {
+      abort(`${at} 的 department=${JSON.stringify(r.department)} 不在 referral_departments 名册内（自由文本科室＝界面读不到、双端可对不上）`)
+    }
+    if (TRANSFER_RE.test(r.advice) && !r.department) noDept.push(at)
+  })
+}
+if (noDept.length) abort(`advice 说了转诊/转运却没给去向（最贵的一步留给医生现想）：\n  - ${noDept.join("\n  - ")}`)
 
 const BP = src.bp
 const NEG = { tokens, lookbehind_chars: src.negation.lookbehind_chars }
@@ -68,20 +95,23 @@ const head = (lang) => lang === "js"
 
 const js = head("js") + "\n\n"
   + `export const RED_FLAG_SCHEMA = ${JSON.stringify(src.schema_version)};\n`
+  + `export const REFERRAL_DEPARTMENTS = ${JSON.stringify(ROSTER)};\n`
   + `export const BP_THRESHOLDS = ${JSON.stringify(BP)};\n`
   + `export const NEGATION = ${JSON.stringify(NEG)};\n`
   + `export const POSITIVE_TERMS = ${JSON.stringify(POS)};\n`
   + "export const DANGER_RULES = [\n" + danger.map((r) => "  " + JSON.stringify(r) + ",").join("\n") + "\n];\n"
   + "export const COMBO_RULES = [\n" + combo.map((r) => "  " + JSON.stringify(r) + ",").join("\n") + "\n];\n"
+// 可选字段缺席时 `pyVal(undefined)` 会经 JSON.stringify 变成 JS 的 undefined，拼进模板就是字面量
+// `undefined`——那是 Python 里的未定义名，载入即 NameError。所以按在场字段生成，不遍历全字段表。
+const pyRow = (r, fields) => "    {" + fields.filter((f) => r[f] !== undefined).map((f) => `"${f}": ${pyVal(r[f])}`).join(", ") + "},"
 const py = head("py") + "\n\n"
   + `RED_FLAG_SCHEMA: int = ${JSON.stringify(src.schema_version)}\n`
+  + `REFERRAL_DEPARTMENTS: list[str] = ${pyVal(ROSTER)}\n`
   + `BP_THRESHOLDS: dict[str, Any] = ${pyVal(BP)}\n`
   + `NEGATION: dict[str, Any] = ${pyVal(NEG)}\n`
   + `POSITIVE_TERMS: list[dict[str, Any]] = ${pyVal(POS)}\n`
-  + "DANGER_RULES: list[dict[str, Any]] = [\n"
-  + danger.map((r) => "    {" + DANGER_FIELDS.map((f) => `"${f}": ${pyVal(r[f])}`).join(", ") + "},").join("\n") + "\n]\n"
-  + "COMBO_RULES: list[dict[str, Any]] = [\n"
-  + combo.map((r) => "    {" + COMBO_FIELDS.map((f) => `"${f}": ${pyVal(r[f])}`).join(", ") + "},").join("\n") + "\n]\n"
+  + "DANGER_RULES: list[dict[str, Any]] = [\n" + danger.map((r) => pyRow(r, DANGER_FIELDS)).join("\n") + "\n]\n"
+  + "COMBO_RULES: list[dict[str, Any]] = [\n" + combo.map((r) => pyRow(r, COMBO_FIELDS)).join("\n") + "\n]\n"
 
 if (process.argv.includes("--check")) {
   // 「生成物 == 权威」的新鲜度判据：不写盘，只把即将写出的内容与盘上现有内容逐字节比。

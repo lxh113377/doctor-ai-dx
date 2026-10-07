@@ -5,7 +5,7 @@
 // mode 取值：live（LLM 生成）/ rule-fallback（规则降级，明确标注）
 // ============================================================
 import { CASES, INTAKE_DONE_REPLY, INTAKE_CAP_REPLY, INTAKE_UNAVAILABLE_REPLY } from "./data.js"
-import { scanFlags, scanFlagDetails, matchScopeRule } from "./rules.js"
+import { matchScopeRule, scanFlagDetailsWithSigns, scanFlagsWithSigns } from "./rules.js"
 import { hasEvidence, evidenceForSymptoms, answerability } from "./rag.js"
 import { getRetriever } from "./retriever.js"
 import { KB_BY_ID, SYMPTOM_TO_KB, kbTitleOf, kbConditionOf } from "./knowledge.js"
@@ -49,8 +49,10 @@ export function extractState(caseId, history = []) {
   const c = caseOf(caseId)
   const answers = (history || []).filter((m) => m && m.role === "user").map((m) => String(m.content ?? ""))
   const fullText = [c.chief, ...answers].join("；")
-  const flags = scanFlags(fullText)
-  const flagDetails = scanFlagDetails(fullText)
+  // 第一百零四轮：红旗扫描同时吃**结构化体征**（c.vitals）。此前这两条线是断的——
+  // 病例带着 BP/HR/RR/SpO2/T，而本行只传文本，于是任何需要数值的量表都算不出来。
+  const flags = scanFlagsWithSigns(fullText, c.vitals)
+  const flagDetails = scanFlagDetailsWithSigns(fullText, c.vitals)
   const symptoms = detectSymptoms(fullText)
   const missing = missingSlots(c, answers)
   return {

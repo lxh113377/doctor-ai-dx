@@ -68,8 +68,10 @@ def extract_state(case_id: str, history: list[dict] | None = None) -> dict:
         "patient": {"name": c["name"], "age": c["age"], "gender": c["gender"], "chief": c["chief"]},
         "transcript": full_text,
         "symptoms": _detect_symptoms(full_text),
-        "red_flags": rules.scan_flags(full_text),
-        "red_flag_details": rules.scan_flag_details(full_text),
+        # 第一百零四轮：红旗扫描同时吃结构化体征（c["vitals"]），与 JS 侧 extract_state 同改。
+        # 此前病例带着 BP/HR/RR/SpO2/T，而这里只传文本 ⇒ 任何需要数值的量表都算不出来。
+        "red_flags": rules.scan_flags_with_signs(full_text, c["vitals"]),
+        "red_flag_details": rules.scan_flag_details_with_signs(full_text, c["vitals"]),
         "missing_slots": _missing_slots(c, answers),
         "rounds": len(answers),
         "done": len(answers) >= len(c["answers"]),

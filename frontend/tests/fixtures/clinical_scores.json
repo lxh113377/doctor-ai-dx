@@ -1,0 +1,68 @@
+{
+  "_source": "临床评分双端行为对账的唯一期望源（第一百零四轮）。JS 侧 frontend/tests/clinical_score_guard.mjs 与 Py 侧 tests/test_clinical_scores.py 读**同一份**本文件，各自把自己的实现结果与 expect 比对——期望只住这一处，两端各写一遍断言正是双端漂移的起点（同 error_parity.json 的架构）。",
+  "_how_expectations_were_derived": "expect_flags 由 data/clinical_scores.json 的表逐项手算后经 JS 侧实跑核对；expect_missing 是**逐表**记的（每张量表各自列出自己缺的输入项）。第一版把两张表的缺失摊平成一个数组，于是 qSOFA 缺 rr 与 SI 缺 si 混在同一行里，读的人无法知道「缺的是谁的输入」——那是形状选错，不是实现错。",
+  "_measured_notes": [
+    "missing 语义：体征未采到/越界 ⇒ hit=null 并进 missing；文本非空时意识项属**已评估为阴性**，不进 missing；文本为空时意识项才进 missing。",
+    "脏读值：HR/RR/SpO2/T/SBP 任一越出 plausible_ranges ⇒ 该量不落值、具名落 rejected，绝不静默当 0 分；SI 由 hr÷sbp 派生，两者任一缺即 si 缺（两张条各记一次，故出现两次 si）。",
+    "hr 本身不是任何量表的直接输入项（只经 SI 进入），所以它缺失时记在 si 上而不是 hr 上。",
+    "现役演示病例 c1/c2/c3 的体征都不触发任何评分档 ⇒ 本改造对既有 31 例评测零行为变化。"
+  ],
+  "cases": [
+    {
+      "id": "qsofa_full_positive",
+      "vitals": [{ "key": "RR", "value": "24" }, { "key": "BP", "value": "90/60" }],
+      "text": "发热三天，高热寒战，意识模糊，血压测不到边缘",
+      "expect_flags": [{ "name": "qSOFA评分 3/3", "severity": "高" }],
+      "expect_missing": { "qsofa": [], "shock_index": ["si", "si"] }
+    },
+    {
+      "id": "qsofa_partial_no_trigger",
+      "vitals": [{ "key": "RR", "value": "24" }],
+      "text": "咳嗽三天，白黏痰",
+      "expect_flags": [],
+      "expect_missing": { "qsofa": ["sbp"], "shock_index": ["si", "si"] }
+    },
+    {
+      "id": "shock_index_high",
+      "vitals": [{ "key": "HR", "value": "130" }, { "key": "BP", "value": "100/60" }],
+      "text": "外伤后口渴、面色苍白",
+      "expect_flags": [{ "name": "休克指数 SI评分 2/2", "severity": "高" }],
+      "expect_missing": { "qsofa": ["rr"], "shock_index": [] }
+    },
+    {
+      "id": "shock_index_mid",
+      "vitals": [{ "key": "HR", "value": "95" }, { "key": "BP", "value": "100/60" }],
+      "text": "乏力三天，纳差",
+      "expect_flags": [{ "name": "休克指数 SI评分 1/2", "severity": "中" }],
+      "expect_missing": { "qsofa": ["rr"], "shock_index": [] }
+    },
+    {
+      "id": "implausible_reads_are_not_scored",
+      "vitals": [{ "key": "HR", "value": "400" }, { "key": "RR", "value": "200" }, { "key": "BP", "value": "999/999" }, { "key": "SpO2", "value": "150%" }],
+      "text": "家属代诉，描述不清",
+      "expect_flags": [],
+      "expect_missing": { "qsofa": ["rr", "sbp"], "shock_index": ["si", "si"] }
+    },
+    {
+      "id": "case_c1_baseline_no_new_flag",
+      "vitals": [{ "key": "BP", "value": "158/96" }, { "key": "HR", "value": "96" }, { "key": "RR", "value": "20" }, { "key": "SpO2", "value": "96%" }, { "key": "T", "value": "36.8℃" }],
+      "text": "劳累后胸闷、胸痛 2 小时",
+      "expect_flags": [],
+      "expect_missing": { "qsofa": [], "shock_index": [] }
+    },
+    {
+      "id": "negated_consciousness_still_counts_two",
+      "vitals": [{ "key": "RR", "value": "24" }, { "key": "BP", "value": "90/60" }],
+      "text": "高热、呼吸急促，无意识障碍",
+      "expect_flags": [{ "name": "qSOFA评分 2/3", "severity": "高" }],
+      "expect_missing": { "qsofa": [], "shock_index": ["si", "si"] }
+    },
+    {
+      "id": "empty_text_marks_consciousness_missing",
+      "vitals": [{ "key": "RR", "value": "24" }, { "key": "BP", "value": "90/60" }],
+      "text": "",
+      "expect_flags": [{ "name": "qSOFA评分 2/3（部分评估）", "severity": "高" }],
+      "expect_missing": { "qsofa": ["consciousness"], "shock_index": ["si", "si"] }
+    }
+  ]
+}

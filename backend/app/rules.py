@@ -6,6 +6,7 @@ import re
 import unicodedata
 from typing import Any
 
+from .clinical_scores import CONSCIOUSNESS_TOKENS, DERIVED_VALUES, PLAUSIBLE_RANGES, SCORE_TABLES
 from .red_flag_rules import BP_THRESHOLDS, COMBO_RULES, DANGER_RULES, NEGATION, POSITIVE_TERMS
 from .scope_rules import SCOPE_META, SCOPE_RULES
 
@@ -214,18 +215,29 @@ def match_scope_rule(text: str):
     return None
 
 
+def _with_dept(row: dict, dept: Any) -> dict:
+    """去向只在权威表声明时带上——不声明就整个键不出现，而不是留一个 None 键。
+    下游界面与 FHIR 映射按字段集取数，「空值」与「缺键」不是一回事（与 rules.js withDept 同式）。"""
+    out = dict(row)
+    if dept:
+        out["department"] = dept
+    return out
+
+
 def _match_flag_rules(text: str) -> list[dict]:
     hits: list[dict] = []
     for r in DANGER_RULES:
         # 两侧小写归一（对齐 rules.js，d-二聚体不漏报）
         if any(_has_positive_occurrence(text, kw) for kw in r["keywords"]):
-            hits.append({"name": r["name"], "severity": r["severity"], "advice": r["advice"]})
+            hits.append(_with_dept({"name": r["name"], "severity": r["severity"], "advice": r["advice"]}, r.get("department")))
     # 组合规则：每个线索组至少命中一词才触发（表达"症状组合"临床逻辑，降低单非特异词误报）
     for r in COMBO_RULES:
         if all(any(_has_positive_occurrence(text, kw) for kw in group) for group in r["all"]):
-            hits.append({"name": r["name"], "severity": r["severity"], "advice": r["advice"]})
+            hits.append(_with_dept({"name": r["name"], "severity": r["severity"], "advice": r["advice"]}, r.get("department")))
     if _bp_crisis(text) and not any("高血压急症" in h["name"] for h in hits):
-        hits.append({"name": "高血压急症红旗", "severity": "高", "advice": _HYPERTENSION_ADVICE})
+        hyp = next((r for r in DANGER_RULES if "高血压" in r["name"]), None)
+        hits.append(_with_dept({"name": "高血压急症红旗", "severity": "高", "advice": _HYPERTENSION_ADVICE},
+                               (hyp or {}).get("department")))
     seen, out = set(), []
     for h in hits:
         if h["name"] not in seen:
@@ -245,3 +257,148 @@ def scan_flag_details(text: str) -> list[dict]:
 def scan_flags(text: str) -> list[str]:
     """红旗字符串（既有契约，格式不变）。"""
     return [f"严重危险信号：{d['name']}。{d['advice']}" for d in scan_flag_details(text)]
+
+
+# ---------- 结构化体征 → 临床评分（第一百零四轮，镜像 rules.js 同名段）----------
+# 一手根因同 JS 侧：本文件此前只解析血压，qSOFA 在仓内只是 data/knowledge.json kb-054 的散文，
+# 而结构化体征（BP/HR/RR/SpO2/T）一直挂在病例上却没进判读层。
+# 量表表是生成物（权威 data/clinical_scores.json），此处只住逻辑。
+# 两端取值口径必须逐字段一致：`round` 在 JS 侧是 Math.round(x*f)/f，Py 侧若用内置 round()
+# 会走银行家舍入（round(0.5)=0），同一份体征两端可能一个触发一个不触发——故这里显式同式。
+
+_VITAL_KEYS = {"BP": "bp", "HR": "hr", "RR": "rr", "SPO2": "spo2", "T": "temperature_c"}
+_BP_SHAPE = re.compile(r"(\d{2,3})\s*[/／]\s*(\d{2,3})")
+_NUM_SHAPE = re.compile(r"-?\d+(?:\.\d+)?")
+_DBP_RANGE = (20, 200)
+
+
+def _first_number(raw: Any) -> float | None:
+    m = _NUM_SHAPE.search(str("" if raw is None else raw))
+    return float(m.group(0)) if m else None
+
+
+def _round_to(value: float, digits: int) -> float:
+    factor = 10 ** digits
+    # 与 JS 的 Math.round 同向：半数向上，不做银行家舍入。
+    return int(value * factor + 0.5) / factor if value >= 0 else -int(-value * factor + 0.5) / factor
+
+
+def parse_vital_values(vitals: list[dict] | None) -> tuple[dict, dict]:
+    out: dict[str, Any] = {"hr": None, "rr": None, "spo2": None, "temperature_c": None, "sbp": None, "dbp": None}
+    rejected: dict[str, str] = {}
+    for v in (vitals or []):
+        key = _VITAL_KEYS.get(str((v or {}).get("key") or "").strip().upper())
+        if not key:
+            continue
+        if key == "bp":
+            t = str((v or {}).get("value") or "")
+            m = _BP_SHAPE.search(t)
+            if not m:
+                rejected["sbp"] = f"血压形状不可解析：{t!r}"
+                continue
+            sys_, dia = int(m.group(1)), int(m.group(2))
+            lo, hi = PLAUSIBLE_RANGES["sbp"]
+            if sys_ < lo or sys_ > hi:
+                rejected["sbp"] = f"收缩压 {sys_} 越出 plausible_ranges.sbp [{lo},{hi}]"
+            else:
+                out["sbp"] = float(sys_)
+            if _DBP_RANGE[0] <= dia <= _DBP_RANGE[1]:
+                out["dbp"] = float(dia)
+            continue
+        num = _first_number((v or {}).get("value"))
+        rng = PLAUSIBLE_RANGES.get(key)
+        if num is None:
+            rejected[key] = f"取不到数值：{str((v or {}).get('value') or '')!r}"
+            continue
+        if not rng:
+            rejected[key] = f"{key} 没有值域护栏（plausible_ranges 缺档，不许直接进评分）"
+            continue
+        if num < rng[0] or num > rng[1]:
+            rejected[key] = f"{key}={num} 越出 [{rng[0]},{rng[1]}]"
+            continue
+        out[key] = num
+    for d in DERIVED_VALUES:
+        if d["kind"] != "ratio":
+            continue
+        n, den = out.get(d["numerator"]), out.get(d["denominator"])
+        if n is None or den is None or den == 0:
+            out[d["id"]] = None
+            continue
+        out[d["id"]] = _round_to(n / den, int(d["round"]))
+    return out, rejected
+
+
+def score_clinical_signs(vitals: list[dict] | None, text: str) -> list[dict]:
+    values, rejected = parse_vital_values(vitals)
+    t = (text or "").lower()
+    results: list[dict] = []
+    for s in SCORE_TABLES:
+        points = 0
+        max_points = 0
+        missing: list[dict] = []
+        items: list[dict] = []
+        for it in s["items"]:
+            max_points += int(it["points"])
+            if it["need"] == "consciousness":
+                if not t.strip():
+                    missing.append({"need": it["need"], "reason": "问诊文本为空，意识项无法评估"})
+                    items.append({"label": it["label"], "hit": None})
+                    continue
+                hit = any(_has_positive_occurrence(t, k) for k in CONSCIOUSNESS_TOKENS)
+                if hit:
+                    points += int(it["points"])
+                items.append({"label": it["label"], "hit": hit})
+                continue
+            val = values.get(it["need"])
+            if val is None:
+                missing.append({"need": it["need"], "reason": rejected.get(it["need"], "该体征未采集")})
+                items.append({"label": it["label"], "hit": None})
+                continue
+            op, th = it.get("op"), it.get("value")
+            if op is None or th is None:
+                missing.append({"need": it["need"], "reason": f"{it['need']} 是派生量却没有比较阈值（表写坏了）"})
+                items.append({"label": it["label"], "hit": None})
+                continue
+            hit = val >= th if op == ">=" else val <= th if op == "<=" else val > th if op == ">" else val < th
+            if hit:
+                points += int(it["points"])
+            items.append({"label": it["label"], "hit": hit, "measured": val, "threshold": th})
+        band = next((b for b in s["bands"] if points >= b["min"] and points <= b["max"]), None)
+        results.append({
+            "id": s["id"], "title": s["title"], "source": s["source"], "hint": s["hint"],
+            "score": points, "max_points": max_points, "items": items, "missing": missing,
+            "complete": not missing, "band": band,
+        })
+    return results
+
+
+def score_flag_details(vitals: list[dict] | None, text: str) -> list[dict]:
+    """评分触发的条目走既有红旗出口（name/severity/advice），不新增响应字段。"""
+    rows = []
+    for r in score_clinical_signs(vitals, text):
+        if not r["band"]:
+            continue
+        suffix = "" if r["complete"] else "（部分评估）"
+        rows.append(_with_dept({
+            "name": f"{r['title']}评分 {r['score']}/{r['max_points']}{suffix}",
+            "severity": r["band"]["level"],
+            "advice": r["band"]["advice"],
+        }, r["band"].get("department")))
+    return rows
+
+
+def scan_flag_details_with_signs(text: str, vitals: list[dict] | None) -> list[dict]:
+    hits = scan_flag_details(text) + score_flag_details(vitals, text)
+    seen: set[str] = set()
+    out: list[dict] = []
+    for h in hits:
+        if h["name"] in seen:
+            continue
+        seen.add(h["name"])
+        out.append(h)
+    return out
+
+
+def scan_flags_with_signs(text: str, vitals: list[dict] | None) -> list[str]:
+    return [f"严重危险信号：{d['name']}。{d['advice']}" for d in scan_flag_details_with_signs(text, vitals)]
+

@@ -3,6 +3,7 @@
 //          支持数值解析（血压）；命中即强制转诊提示，优先级高于模型输出。
 import { BP_THRESHOLDS, COMBO_RULES, DANGER_RULES, NEGATION, POSITIVE_TERMS } from "./red_flag_rules.js"
 import { SCOPE_META, SCOPE_RULES } from "./scope_rules.js"
+import { CONSCIOUSNESS_TOKENS, DERIVED_VALUES, PLAUSIBLE_RANGES, SCORE_TABLES } from "./clinical_scores.js"
 
 // 表本体外置到 data/red_flag_rules.json（第三十一轮 #89）：本文件只留**逻辑**，规则/关键词/建议/阈值一律来自生成物。
 // 上一轮补的是"改了会不会炸"（载入即校验），这一轮补的是"改一处还是改两处"——
@@ -55,22 +56,27 @@ function hasPositiveOccurrence(t, kw) {
 }
 
 // 结构化命中：按规则匹配并去重（按 name 去重，各规则 name 唯一，与原字符串去重等价）
+// department 只在权威表声明时带上（改造二）：不带就整个键不出现，而不是留一个 `department: undefined`
+// ——下游有按字段集读 flag_details 的界面与 FHIR 映射，空键与缺键不是一回事。
+const withDept = (obj, dept) => (dept ? { ...obj, department: dept } : obj)
+
 function matchFlagRules(t) {
   const hits = []
   const hit = (k) => hasPositiveOccurrence(t, k)
   for (const r of DANGER_RULES) {
     if (r.keywords.some(hit)) {
-      hits.push({ name: r.name, severity: r.severity, advice: r.advice })
+      hits.push(withDept({ name: r.name, severity: r.severity, advice: r.advice }, r.department))
     }
   }
   // 组合规则：每个线索组至少命中一词才触发（表达"症状组合"临床逻辑，降低单非特异词误报）
   for (const r of COMBO_RULES) {
     if (r.all.every((group) => group.some(hit))) {
-      hits.push({ name: r.name, severity: r.severity, advice: r.advice })
+      hits.push(withDept({ name: r.name, severity: r.severity, advice: r.advice }, r.department))
     }
   }
   if (bpCrisis(t) && !hits.some((h) => h.name.includes("高血压急症"))) {
-    hits.push({ name: "高血压急症红旗", severity: "高", advice: HYPERTENSION_ADVICE })
+    const hyp = DANGER_RULES.find((r) => r.name.includes("高血压"))
+    hits.push(withDept({ name: "高血压急症红旗", severity: "高", advice: HYPERTENSION_ADVICE }, hyp?.department))
   }
   const seen = new Set(); const out = []
   for (const h of hits) { if (!seen.has(h.name)) { seen.add(h.name); out.push(h) } }
@@ -200,3 +206,117 @@ export function scanFlagDetails(text) {
 export function scanFlags(text) {
   return scanFlagDetails(text).map((d) => `严重危险信号：${d.name}。${d.advice}`)
 }
+
+// ---------- 结构化体征 → 临床评分（第一百零四轮）----------
+// 一手根因：本文件此前只解析血压（bpCrisis），而 qSOFA 在整个仓里只以散文形式存在于
+// data/knowledge.json kb-054 的正文中——**没有任何可计算对象**；与此同时结构化体征
+// （BP/HR/RR/SpO2/T）一直挂在病例对象上（functions/lib/data.js CASES[].vitals），
+// 却只被 SOAP 报告拼成一行文本读过一次。也就是说缺口不是「没数据」，是「数据没进判读层」。
+// 量表表是生成物（权威 data/clinical_scores.json），此处只住逻辑，与红旗表 #89 的分工一致。
+
+const NUM = /-?\d+(?:\.\d+)?/
+const VITAL_KEYS = { BP: "bp", HR: "hr", RR: "rr", SPO2: "spo2", T: "temperature_c" }
+
+function firstNumber(raw) {
+  const m = NUM.exec(String(raw ?? ""))
+  return m ? Number(m[0]) : null
+}
+
+// 取不到就返回 null 并由调用方记进 missing——绝不返回 0：0 既像「正常」又像「没测」，
+// 而本层的失败代价不对称（漏报危险信号远重于多提示），把「没测」读成「正常」正是漏报的形状。
+export function parseVitalValues(vitals) {
+  const out = { hr: null, rr: null, spo2: null, temperature_c: null, sbp: null, dbp: null }
+  const rejected = {}
+  for (const v of (Array.isArray(vitals) ? vitals : [])) {
+    const key = VITAL_KEYS[String(v?.key ?? "").trim().toUpperCase()]
+    if (!key) continue
+    if (key === "bp") {
+      const t = String(v?.value ?? "")
+      const m = /(\d{2,3})\s*[/／]\s*(\d{2,3})/.exec(t)
+      if (!m) { rejected.sbp = `血压形状不可解析：${JSON.stringify(t)}`; continue }
+      const sys = Number(m[1]); const dia = Number(m[2])
+      const [lo, hi] = PLAUSIBLE_RANGES.sbp
+      if (!Number.isFinite(sys) || sys < lo || sys > hi) rejected.sbp = `收缩压 ${sys} 越出 plausible_ranges.sbp [${lo},${hi}]`
+      else out.sbp = sys
+      const dlo = 20; const dhi = 200
+      if (Number.isFinite(dia) && dia >= dlo && dia <= dhi) out.dbp = dia
+      continue
+    }
+    const num = firstNumber(v?.value)
+    const range = PLAUSIBLE_RANGES[key]
+    if (num === null) { rejected[key] = `取不到数值：${JSON.stringify(String(v?.value ?? ""))}`; continue }
+    if (!range) { rejected[key] = `${key} 没有值域护栏（plausible_ranges 缺档，不许直接进评分）`; continue }
+    if (num < range[0] || num > range[1]) { rejected[key] = `${key}=${num} 越出 [${range[0]},${range[1]}]`; continue }
+    out[key] = num
+  }
+  for (const d of DERIVED_VALUES) {
+    if (d.kind !== "ratio") continue
+    const n = out[d.numerator]; const den = out[d.denominator]
+    if (n === null || den === null || den === 0) { out[d.id] = null; continue }
+    const f = 10 ** d.round
+    out[d.id] = Math.round((n / den) * f) / f
+  }
+  return { values: out, rejected }
+}
+
+export function scoreClinicalSigns(vitals, text) {
+  const { values, rejected } = parseVitalValues(vitals)
+  const t = String(text ?? "").toLowerCase()
+  return SCORE_TABLES.map((s) => {
+    let points = 0
+    let maxPoints = 0
+    const missing = []
+    const items = s.items.map((it) => {
+      maxPoints += it.points
+      if (it.need === "consciousness") {
+        const hit = t.trim() ? CONSCIOUSNESS_TOKENS.some((k) => hasPositiveOccurrence(t, k)) : false
+        if (!t.trim()) missing.push({ need: it.need, reason: "问诊文本为空，意识项无法评估" })
+        if (hit) points += it.points
+        return { label: it.label, hit }
+      }
+      const val = values[it.need]
+      if (val === null || val === undefined) {
+        missing.push({ need: it.need, reason: rejected[it.need] || "该体征未采集" })
+        return { label: it.label, hit: null }
+      }
+      const hit = it.op === ">=" ? val >= it.value : it.op === "<=" ? val <= it.value
+        : it.op === ">" ? val > it.value : val < it.value
+      if (hit) points += it.points
+      return { label: it.label, hit, measured: val, threshold: it.value }
+    })
+    const band = s.bands.find((b) => points >= b.min && points <= b.max) || null
+    return {
+      id: s.id, title: s.title, source: s.source, hint: s.hint,
+      score: points, max_points: maxPoints,
+      items, missing,
+      complete: missing.length === 0,
+      band,
+    }
+  })
+}
+
+// 评分触发的条目走**既有红旗出口**（name/severity/advice 三字段），不新增响应字段：
+// 加字段要动 openapi 与双端契约快照，而把「qSOFA 2 分」降级成一条界面读不到的新维度，
+// 等于给医生少一个能看见的危险信号。名称带分值，保证同一次里不同量表不会互相吞并。
+export function scoreFlagDetails(vitals, text) {
+  return scoreClinicalSigns(vitals, text)
+    .filter((r) => r.band)
+    .map((r) => withDept({
+      name: `${r.title}评分 ${r.score}/${r.max_points}${r.complete ? "" : "（部分评估）"}`,
+      severity: r.band.level,
+      advice: r.band.advice,
+    }, r.band.department))
+}
+
+// 红旗＋评分的合并出口：按 name 去重的纪律沿用 matchFlagRules（同名会被静默合并＝少报一条）。
+export function scanFlagDetailsWithSigns(text, vitals) {
+  const hits = [...scanFlagDetails(text), ...scoreFlagDetails(vitals, text)]
+  const seen = new Set(); const out = []
+  for (const h of hits) { if (!seen.has(h.name)) { seen.add(h.name); out.push(h) } }
+  return out
+}
+
+export function scanFlagsWithSigns(text, vitals) {
+  return scanFlagDetailsWithSigns(text, vitals).map((d) => `严重危险信号：${d.name}。${d.advice}`)
+}
+

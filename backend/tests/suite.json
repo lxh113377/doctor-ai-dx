@@ -8,6 +8,7 @@
     "tests/test_fhir.py",
     "tests/test_scope_rules.py",
     "tests/test_red_flag_rules.py",
+    "tests/test_clinical_scores.py",
     "tests/test_retriever_channels.py",
     "tests/test_api_observe.py",
     "tests/test_cds_hooks.py",
