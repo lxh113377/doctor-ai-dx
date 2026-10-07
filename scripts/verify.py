@@ -23,6 +23,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import shlex
 import shutil
 import subprocess
@@ -31,6 +32,21 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 
+def npm_test_note() -> str:
+    """前端套件数＝现算 `frontend/package.json` 里 `scripts.test` 的 `&&` 段数。
+
+    一手（第一百零七轮）：这里原本手抄「前端 26 套件」，而当时链上实测 39 段——第一百零六轮
+    刚把 `gen_modules_manifest.py` 里同类的手抄 26/25/5 改成现算，这一处漏在射程外（`docs_link_guard`
+    只量 md 文档，代码字符串里的计数没人量）。取不到 ⇒ 明写「现算不可得」，不印一个像样的假数。
+    """
+    try:
+        chain = json.loads((ROOT / "frontend" / "package.json").read_text(encoding="utf-8"))["scripts"]["test"]
+    except (OSError, ValueError, KeyError, TypeError):
+        return "前端 npm test 链（套件数现算不可得，唯一源＝frontend/package.json 的 scripts.test）"
+    n = len([s for s in chain.split("&&") if s.strip()])
+    return f"前端 {n} 套件（现算，唯一源＝frontend/package.json 的 scripts.test 链）"
+
+
 # (id, 说明, cwd（相对仓根，".." 表示工作区父仓）, 命令, 超时秒)
 SUITES: dict[str, list[tuple[str, str, str, str, int]]] = {
     "static": [
@@ -38,7 +54,7 @@ SUITES: dict[str, list[tuple[str, str, str, str, int]]] = {
          "pre-commit run --all-files", 900),
     ],
     "test": [
-        ("npm-test", "前端 26 套件（含 docs_link_guard / version_guard / sbom_guard 等）", "frontend",
+        ("npm-test", npm_test_note(), "frontend",
          "npm test", 900),
         ("backend-selftest", "FastAPI 镜像面自证（套件清单唯一源 backend/selftest.py）", ".",
          "python backend/selftest.py", 300),
