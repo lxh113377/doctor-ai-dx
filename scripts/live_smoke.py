@@ -147,10 +147,42 @@ def obj(value: object) -> dict[str, Any]:
 
 
 def check_health(body: dict[str, Any], expect_version: str) -> list[Row]:
-    """线上信封是 {code,data:{status,llm_mode,version}}（2026-09-26 实测），不是平铺字段。"""
+    """线上信封是 {code,data:{status,llm_mode,version}}（2026-10-06 实测），不是平铺字段。"""
     data = obj(body.get("data"))
     got = str(data.get("version", ""))
-    return [("线上 /api/health 的 version 与仓内单一源全等", got == expect_version, f"线上={got!r} 仓内={expect_version!r}")]
+    return [("线上 /api/health 的 version 与期望源全等", got == expect_version, f"服务={got!r} 期望={expect_version!r}")]
+
+
+def health_delta_row(body: dict[str, Any], repo_ver: str) -> Row:
+    """HEAD 与制品的差值：**具名提示行，不判红**（第一百零六轮 r106-10a）。
+
+    一手：镜像作业原本拿「已发布镜像（`latest`＝上一个发布版）」比「checkout 出来的 HEAD」，
+    两版不同就必红；而 `release.yml` 的 `release_ci_gate.py` 又要求 CI 全绿才让发版
+    ⇒ **不发版永远追不平、追不平就永远过不了发版门**（v1.46.0 的 tag 至今只在本地，
+    `git ls-remote --tags origin refs/tags/v1.45.0` 之后空，GitHub Latest 仍是 v1.45.0）。
+    所以这条本来就**不是在检制品坏**，是在检"有没有发版"——那是发版门的事，不该由观察者视角的作业代判。
+    信息不丢：差值照样具名印出来，只是不当闸。
+    """
+    got = str(obj(body.get("data")).get("version", ""))
+    if got == repo_ver:
+        return ("版本差值提示（制品⇄HEAD，不判红）", True, f"一致={got}")
+    return ("版本差值提示（制品⇄HEAD，不判红）", True,
+            f"DELTA 制品={got!r} HEAD={repo_ver!r} ⇒ 有一个版本未发布，去发版流程处置，不在本作业判红")
+
+
+def version_from_file(path_str: str) -> str:
+    """从**给定文件**里读版本单一源（与 `repo_version()` 同一把 regex，不写第二份读法）。
+
+    读不到/解析不出 ⇒ 抛错由调用方记 rc=2（UNVERIFIED），**绝不退化成"期望为空"而恒真**。
+    """
+    p = Path(path_str)
+    if not p.exists():
+        raise SystemExit(f"[GATE:live-smoke-fail] 期望版本文件不存在：{p} ⇒ 取数面坏，不记绿")
+    m = re.search(r'^\s*(?:APP_VERSION|__version__)\s*=\s*["\']([^"\']+)["\']',
+                  p.read_text(encoding="utf-8"), re.M)
+    if not m:
+        raise SystemExit(f"[GATE:live-smoke-fail] 期望版本文件里读不到 APP_VERSION/__version__：{p}")
+    return m.group(1)
 
 
 def check_unknown_case(status: int, body: dict[str, Any]) -> list[Row]:
@@ -250,8 +282,10 @@ def check_abstain(body: dict[str, Any], allowed_ids: set[str]) -> list[Row]:
     ]
 
 
-def run_live(base: str, quiet: bool) -> int:
-    expect = repo_version()
+def run_live(base: str, quiet: bool, expect_version: str | None = None) -> int:
+    # 期望源默认为仓内单一源；镜像作业显式传 `--expect-version-file`＝**同一制品自己的版本声明**，
+    # 于是判据变成"制品内部是否自相矛盾"，而不是"制品是否追上了 HEAD"（后者归发版门，见 health_delta_row）。
+    expect = expect_version or repo_version()
     allowed = kb_ids()
     rows: list[Row] = []
     try:
@@ -260,6 +294,7 @@ def run_live(base: str, quiet: bool) -> int:
             print(f"[GATE:live-smoke-fail] /api/health 返回 {st}＝线上不可达，这不属于「检查通过」", file=sys.stderr)
             return 2
         rows += check_health(health, expect)
+        rows.append(health_delta_row(health, repo_version()))
         st, body, _ = call(base, "POST", "/api/dx/no-such-case-for-smoke", valid_case())
         rows += check_unknown_case(st, body)
         st, body, _ = call(base, "POST", "/api/dx/c1", oversize_case())
@@ -284,6 +319,22 @@ def run_live(base: str, quiet: bool) -> int:
             print(f"{'PASS' if ok else 'FAIL'} :: {name}" + ("" if ok else f" :: {detail}"))
     print(f"[GATE:live-smoke-{'pass' if not failed else 'fail'}] {len(rows) - len(failed)}/{len(rows)} 项通过（目标 {base}）")
     return 1 if failed else 0
+
+
+def _expect_file_guard() -> bool:
+    """反例腿：`--expect-version-file` 指向一个没有 APP_VERSION 的临时文件时必须**抛错**，
+    不许返回空串——空期望会让「版本全等」退化成恒真（取数面坏被读成通过）。"""
+    import tempfile
+    with tempfile.NamedTemporaryFile("w", suffix=".py", delete=False, encoding="utf-8") as fh:
+        fh.write("# 没有版本声明的文件\n")
+        p = fh.name
+    try:
+        version_from_file(p)
+        return False
+    except SystemExit:
+        return True
+    finally:
+        Path(p).unlink(missing_ok=True)
 
 
 def run_selftest() -> int:
@@ -316,6 +367,16 @@ def run_selftest() -> int:
         ("health 版本一致判绿", all(r[1] for r in ok_case)),
         ("health 版本漂移判红", any(not r[1] for r in check_health({"data": {"version": "0.0.1"}}, repo_version()))),
         ("health 缺 version 字段判红", any(not r[1] for r in check_health({"data": {}}, repo_version()))),
+        # r106-10a：取数面从「制品⇄HEAD」改成「制品内部⇄同一制品」，四向都要有腿
+        ("同版本自比一致 ⇒ 绿", all(r[1] for r in check_health({"data": {"version": "9.9.9"}}, "9.9.9"))),
+        ("制品内部自相矛盾 ⇒ 红（health 说的版本与该制品里的 version.py 不等）",
+         any(not r[1] for r in check_health({"data": {"version": "1.45.0"}}, "1.46.0"))),
+        ("跨版本比不再当闸，但差值必须具名印出（信息不丢）",
+         all(r[1] for r in [health_delta_row({"data": {"version": "1.45.0"}}, "1.46.0")])
+         and "DELTA" in health_delta_row({"data": {"version": "1.45.0"}}, "1.46.0")[2]
+         and any(not r[1] for r in check_health({"data": {"version": "1.45.0"}}, "1.46.0"))),
+        ("期望版本文件缺字段 ⇒ 抛错不静默（读不到不得退化成恒真）",
+         _expect_file_guard()),
         ("404 契约三判据对好数据全绿", all(r[1] for r in check_unknown_case(404, {"code": 404, "message": "unknown case: c9"}))),
         ("404 变 500 判红", any(not r[1] for r in check_unknown_case(500, {"code": 404, "message": "unknown case: c9"}))),
         ("错误体退化为 detail 判红", any(not r[1] for r in check_unknown_case(404, {"detail": "Not Found"}))),
@@ -361,16 +422,20 @@ def run_selftest() -> int:
 def main() -> int:
     ap = argparse.ArgumentParser(description="线上交付物持续可用烟测")
     ap.add_argument("--base-url", default=DEFAULT_BASE)
+    ap.add_argument("--expect-version-file", default="",
+                    help="版本对账的期望源改由该文件提供（镜像作业用：拿同一制品内部的 version.py 自比）")
     ap.add_argument("--selftest", action="store_true")
     ap.add_argument("--quiet", action="store_true")
     args = ap.parse_args()
     if args.selftest:
         return run_selftest()
+    evf = str(args.expect_version_file or "").strip()
+    expect_v = version_from_file(evf) if evf else None
     for f in (VERSION_PY, KNOWLEDGE_JSON, KNOWLEDGE_JS):
         if not f.is_file():
             print(f"[GATE:live-smoke-fail] 单一源缺失：{f}", file=sys.stderr)
             return 2
-    return run_live(str(args.base_url), args.quiet)
+    return run_live(str(args.base_url), args.quiet, expect_version=expect_v)
 
 
 if __name__ == "__main__":

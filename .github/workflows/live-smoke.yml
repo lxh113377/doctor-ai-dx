@@ -43,7 +43,7 @@ jobs:
         run: docker pull --platform linux/amd64 "$IMAGE"
       - name: 镜像内套件自证（清单单一源 backend/tests/suite.json）
         run: docker run --rm --workdir /srv/backend --entrypoint python "$IMAGE" selftest.py
-      - name: 真起服务跑同一套线上断言（健康检查 + 三条红线 + 错误契约）
+      - name: 真起服务跑同一套线上断言（健康检查 + 三条红线 + 错误契约；版本对账取同一制品内部声明）
         run: |
           set -eu
           docker run -d --rm --name smoke -p 8787:8000 "$IMAGE"
@@ -54,7 +54,13 @@ jobs:
             sleep 2
           done
           test -n "$ok" || { echo "容器 80s 内未就绪"; docker logs smoke 2>&1 | tail -30; exit 1; }
-          python scripts/live_smoke.py --base-url http://127.0.0.1:8787
+          # 版本对账的期望源＝**同一制品里的 version.py**，不是 checkout 出来的 HEAD。
+          # 原写法拿"latest 镜像（上一个发布版）"比"HEAD 源码版本"，两版不同必红；而发版门又要求
+          # CI 全绿才让发版 ⇒ 不发版永远追不平、追不平永远过不了发版门（第一百零六轮 r106-10a 实测）。
+          # 现在判的是"这个制品是否自相矛盾"；HEAD 与制品的差值仍由脚本具名印出（DELTA 行，不判红）。
+          docker run --rm --entrypoint cat "$IMAGE" /srv/backend/app/version.py > /tmp/image_version.py
+          test -s /tmp/image_version.py || { echo "镜像内取不到 version.py ⇒ 取数面坏，不记绿"; exit 2; }
+          python scripts/live_smoke.py --base-url http://127.0.0.1:8787 --expect-version-file /tmp/image_version.py
 
   live-site:
     name: 线上 Pages 持续可用（外部观察者视角）
