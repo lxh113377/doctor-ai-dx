@@ -54,7 +54,7 @@ jobs:
           python-version: "3.12"
       - name: npm audit（high 即红；已知 dev-only 项按批处置＝frontend/.npm-audit-baseline.json，判据体 scripts/dep_audit_gate.py）
         working-directory: frontend
-        # 第一百零二年 r101-10：这一步原先是裸 `npm audit --audit-level=high`，而步名承诺的「按批处置」
+        # 第一百零二轮 r101-10：这一步原先是裸 `npm audit --audit-level=high`，而步名承诺的「按批处置」
         # 在仓内没有任何载体（哪些条／凭什么／何时到期）⇒ 同一个红每周重开。现在「批」是入库的机器件，
         # 判据每次跑都用**两面差集**重证 dev-only（全树面在场而 --omit=dev 面不在场），
         # 并双向查死豁免与过期；取数不可用一律 rc=3 BLOCKED，绝不把「读不到」写成「没漏洞」。

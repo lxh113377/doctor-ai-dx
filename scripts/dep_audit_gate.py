@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""dep_audit_gate.py — 「已知 dev-only 项按批处置」的机器载体（医·第一百零二年 r101-10）。
+"""dep_audit_gate.py — 「已知 dev-only 项按批处置」的机器载体（医·第一百零二轮 r101-10）。
 
 起因（不是预防性加闸）：`dep-audit.yml` 的步骤名叫「npm audit（high 即红；已知 dev-only 项按批处置）」，
 而命令是裸 `npm audit --audit-level=high`——**仓内没有任何件承载「批」是哪些条、凭什么、什么时候到期**。
@@ -132,7 +132,7 @@ def run_npm_audit(frontend_dir, extra_args, npm_cmd="npm", registry=None):
     """跑一条面。返回 (dict|None, 诊断文本)——**rc≠0 不是失败**（有漏洞时 rc 本来就是 1），
     认的是「stdout 能不能解析成 JSON」。
 
-    两处一手实测的形状（第一百零二年）：
+    两处一手实测的形状（第一百零二轮）：
       ① Windows 下 subprocess 不走 shell，`npm` 解析不到（npm 实为 npm.cmd）⇒ `FileNotFoundError WinError 2`。
          这里按 PATHEXT 逐个试（npm → npm.cmd），并把**实际用的命令**印进诊断，不留"静默换命令"的暗道；
          Linux runner 上第一发就中，走不到回退。
