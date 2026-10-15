@@ -1,23 +1,26 @@
 # 数据留存与隐私声明（PRIVACY）
 
-> 版本：v1.11.0 起 ｜ 生成：2026-09-25 ｜ 适用范围：`doctor-ai-dx` 全部运行面（Cloudflare Pages + Functions 权威面、FastAPI 镜像面、本地演示）
+> 版本：v1.12.0（第一百零八轮：镜像面新增**缺省关闭**的可选 MySQL 持久化，见 §2/§7）｜ 生成：2026-09-25 ｜ 适用范围：`doctor-ai-dx` 全部运行面（Cloudflare Pages + Functions 权威面、FastAPI 镜像面、本地演示）
 > **本声明描述的是实现事实，不构成 HIPAA / GDPR / 个人信息保护法等任何合规认证。** 每条都给出代码位置，可被 `npm run test:privacy` 机器核对；代码一变而本文件未同步，该门禁即判红。
 
 ## 1. 一句话结论
 
-**服务端不存任何患者数据**；数据只在一次请求的生命周期内存在；唯一的对外数据流是发给大模型供应商的推理请求，而它**必然包含问诊文本**——这是产品功能的必要代价，本文件如实写明而不隐藏。
+**权威面（线上）不存任何患者数据**；数据只在一次请求的生命周期内存在。镜像面（自托管 FastAPI）自第一百零八轮起提供**可选**的 MySQL 持久化，**缺省关闭**（`PERSIST_BACKEND` 不设即不建引擎、不落一行），且只覆盖会话记录与派生语料副本，不含真实患者数据（本项目只用脱敏合成病例）。唯一的对外数据流仍是发给大模型供应商的推理请求，而它**必然包含问诊文本**——这是产品功能的必要代价，本文件如实写明而不隐藏。
 
 ## 2. 我们存了什么
 
-**什么都不存。**
+**权威面什么都不存；镜像面缺省什么都不存，显式开启后按下表存。**
 
 | 层 | 事实 | 实现位置 |
 |---|---|---|
-| 服务端会话 | 无。接口 stateless，问诊历史由前端随请求携带 | `backend/app/models.py` `IntakeAskRequest.history`（注释「由前端随请求携带（stateless）」）、`frontend/functions/api/[[route]].js` 各 `body.history` 透传 |
-| 数据库 / 文件写 | 无。全仓无 DB 驱动、无文件系统写入（门禁扫描判定） | `npm run test:privacy` 断言持久化原语计数为 0 |
-| 客户端存储 | 无。不使用 localStorage / sessionStorage / IndexedDB / Cookie | 同上，由门禁扫描 `frontend/src` 全量源码 |
+| 服务端会话（权威面） | 无。接口 stateless，问诊历史由前端随请求携带 | `backend/app/models.py` `IntakeAskRequest.history`（注释「由前端随请求携带（stateless）」）、`frontend/functions/api/[[route]].js` 各 `body.history` 透传 |
+| 持久化（权威面） | 仅 Cloudflare D1 会话/消息/转人工/满意度（绑定式 serverless 库，见 `docs/DEPLOY_RUNBOOK.md` §6.5 的 TTL 清理）；**不含问诊自由文本以外的患者身份数据** | `frontend/functions/lib/chat_store.js` + `scripts/d1_schema.sql` |
+| 持久化（镜像面，**缺省关闭**） | 把 `PERSIST_BACKEND` 置为 `mysql` 时才会写：会话/消息/意图事件/转人工/满意度（与 D1 同构）+ `data/*.json` 语料的派生副本 + 评测报告副本。不设时不建引擎、不写任何行，与未装驱动时行为一致 | `backend/app/db/engine.py`（`current_engine()` 三种关闭态各带可归因 reason）、`backend/app/db/repository.py` |
+| 语料权威源 | MySQL 里的语料/评测行**只是派生下游**：权威源仍是 `data/*.json` 与 `eval_report*.json`，`scripts/mysql_load_corpus.py --verify` 逐键指纹对账，库侧手写必被抓 | `scripts/mysql_load_corpus.py` |
+| 客户端存储 | 无。不使用 localStorage / sessionStorage / IndexedDB / Cookie | `npm run test:privacy` 由门禁扫描 `frontend/src` 全量源码 |
 | 日志 | 只落归因最小集：`req / path / method / ms / kind / msg`；**不写请求体、不写堆栈** | `frontend/functions/api/[[route]].js` 的 `logEvent("error", …)` 字段集与注释；`frontend/functions/lib/observe.js` ↔ `backend/app/observe.py` |
 | 日志保留期 | 由运行平台决定：日志只写 stdout，本项目不额外留存、不接第三方日志后端（Sentry/Langfuse/OTLP 均未接入，需外部账号与密钥） | `docs/EVAL_CARD.md` §3「日志留存与集中化」 |
+| 持久化保留期（镜像面） | 会话行带 30 天 TTL 语义（与 D1 清理同形）；语料/评测副本随权威源重灌整体替换。**TTL 清理任务属部署方义务**，本仓未内置定时器 | `backend/app/db/repository.py` `TTL_DAYS` |
 
 ## 3. 数据会流向谁（唯一出站面）
 
@@ -53,16 +56,20 @@
 |---|---|---|
 | 认证与授权 | 任何能访问该 URL 的人都能调用；无用户身份、无租户隔离 | 竞赛/演示可接受，真实部署不可 |
 | 审计日志 | 无法回答"谁在何时看了哪个病例" | 监管与医院内控的基本项 |
-| 数据主体请求（DSR）流程 | 无删除/导出/更正通道 | 因本就不存数据，**当前**无个人数据可删除；一旦引入持久化必须先补此流程 |
-| 静态加密 | 不适用（无静态存储）；引入持久化后必须重评 | — |
+| 数据主体请求（DSR）流程 | 无删除/导出/更正通道 | 权威面因本就不存个人数据，**当前**无个人数据可删除；镜像面**开启持久化后**，会话行的删除通道 = 按 conversation_id 删（`backend/app/db/repository.py` 清理语义），**完整的 DSR 流程仍属部署方义务**，试点前必须先补 |
+| 静态加密 | 权威面 D1 由平台侧负责；镜像面 MySQL **不做应用层加密**，静态加密（磁盘/TDE/传输 TLS）由私有化部署方在库侧配置，开启持久化前必须先落实 | `MYSQL_URL` 支持 `ssl_*` 参数（pymysql 原生），但本仓不做默认值——密钥与证书属部署方资产 |
 | LLM 供应商数据处理协议 | 未签署任何 DPA | 试点前必办 |
 | 伦理审查与知情同意 | 未开展 | 真实试点前置条件 |
 
-## 7. 若将来引入持久化，本文件必须同步改动的条款
+## 7. 持久化条款（第一百零八轮起生效；取代原「将来引入时」的预案）
 
-1. §2「什么都不存」失效 → 必须写明存什么、存多久、加密方式、访问主体、删除机制与保留期依据。
-2. §6 的 DSR 一项从"不适用"变为**必做**（客户端存储亦同：把问诊叙述落到浏览器存储即属新增风险，须先在本文件写明隐私口径与数据留存声明——这也是当前刻意不做的原因，见 `docs/EVAL_CARD.md` §3）。
-3. `npm run test:privacy` 的"零持久化"断言必须被替换为"持久化白名单 + 加密断言"，禁止直接删断言凑绿。
+原 §7 是预案，第一百零八轮已把它兑现成实现 + 判据，逐条对账：
+
+1. ~~§2「什么都不存」失效 → 必须写明存什么/多久/加密/访问主体/删除机制/保留期~~ → **已写入 §2**（存什么/保留期）与 §6（加密与 DSR 义务）。
+2. ~~DSR 一项从"不适用"变为必做~~ → **§6 已改**：镜像面开启持久化后 DSR 属部署方必做项；权威面口径不变。
+3. ~~`npm run test:privacy` 的"零持久化"断言必须被替换为"持久化白名单 + 加密断言"，禁止直接删断言凑绿~~ → **已照此实现**（`frontend/tests/privacy_guard.mjs`）：① 权威面与前端仍**零持久化、零豁免**；② 镜像面命中持久化原语的文件必须**全部**落在 `backend/app/db/` 白名单内（白名单外命中即红）；③ 白名单非空时必须证明开关**缺省关闭**（`PERSIST_BACKEND` 缺省 `off` 且非 `mysql` 即提前返回）——装进依赖锁 ≠ 接进运行链路。对照组负向断言同步改口径（白名单外三类全零），旧「persistence 全零」口径已按第 3 条预案替换而非删除。
+
+**红线不变式（第一百零八轮不改变它）**：任何持久化面都不得让它能覆盖红旗判定或引用白名单——红旗规则层仍独立于 LLM 与存储（`data/red_flag_rules.json` 单源，库里那份只是派生副本）。
 
 ## 8. 复现核验
 

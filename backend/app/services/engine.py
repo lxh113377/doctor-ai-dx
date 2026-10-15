@@ -9,6 +9,7 @@ from ..knowledge import KNOWLEDGE_BASE, SYMPTOM_TO_KB
 from ..retriever import get_retriever
 from . import fhir as fhir_svc
 from . import llm as llm_svc
+from . import trace_version as trace_version_svc
 
 MISSING_CASE = "(未提供)"  # 与 functions/lib/engine.js 同值，由 error_parity_guard 逐字对账
 
@@ -158,7 +159,7 @@ def build_diagnosis(case_id: str, history: list[dict] | None = None) -> dict:
     out["mode"] = mode
     out["fallback_reason"] = reason
     out["fallback_cause"] = cause
-    out["trace"] = {"evidence_ids": evidence_ids, "rounds": state["rounds"], "symptoms": state["symptoms"]}
+    out["trace"] = {"evidence_ids": evidence_ids, "rounds": state["rounds"], "symptoms": state["symptoms"], "versions": trace_version_svc.trace_versions()}  # r109 改进3：决策指纹
     out["state"] = state
     # 能力级适用范围（#76）：先判"该不该我做"，再判"证据够不够"；红旗已在上面算完且不被范围命中清空（红线）。
     scope = rules.match_scope_rule(state["transcript"])
@@ -343,7 +344,7 @@ def _reuse_or_build(state: dict, history, provided_dx: dict | None) -> dict:
         dx["evidence"] = valid if valid else _RETRIEVER.search(state["transcript"], 5)
         if not dx.get("trace"):
             dx["trace"] = {"evidence_ids": [e["id"] for e in dx["evidence"]],
-                           "rounds": state["rounds"], "symptoms": state["symptoms"]}
+                           "rounds": state["rounds"], "symptoms": state["symptoms"], "versions": trace_version_svc.trace_versions()}  # r109 改进3
         return dx
     return build_diagnosis(state["case_id"], history)
 

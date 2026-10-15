@@ -18,7 +18,6 @@
 /frontend/functions/lib/engine.js        @lxh113377
 /frontend/functions/lib/rag.js           @lxh113377
 /frontend/functions/lib/retriever.js     @lxh113377
-/frontend/functions/lib/hybrid_rrf.js    @lxh113377
 /frontend/functions/lib/semantic_neighbors.js @lxh113377
 /frontend/functions/lib/rules.js         @lxh113377
 /frontend/functions/lib/red_flag_rules.js @lxh113377

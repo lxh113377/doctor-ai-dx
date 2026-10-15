@@ -10,6 +10,7 @@ import { hasEvidence, evidenceForSymptoms, answerability } from "./rag.js"
 import { getRetriever } from "./retriever.js"
 import { KB_BY_ID, SYMPTOM_TO_KB, kbTitleOf, kbConditionOf } from "./knowledge.js"
 import { toFhirBundle } from "./fhir.js"
+import { traceVersions } from "./trace_version.js"
 
 // 404 文案里的"未提供"占位：双端必须同值（tests/error_parity_guard.mjs 逐字比对 message，
 // 之前 JS 打 `undefined`、Py 打空串，码相同但文案漂＝支持侧对不上话）
@@ -167,7 +168,7 @@ export async function buildDiagnosis(caseId, history = [], env = {}) {
   out.mode = mode
   out.fallback_reason = fallbackReason
   out.fallback_cause = fallbackCause
-  out.trace = { evidence_ids: evidenceIds, rounds: state.rounds, symptoms: state.symptoms }
+  out.trace = { evidence_ids: evidenceIds, rounds: state.rounds, symptoms: state.symptoms, versions: traceVersions() } // r109 改进3：决策指纹（复盘用）
   out.state = state
   // 能力级适用范围（#76）：先判"这件事该不该我做"，再判"证据够不够"。
   // 顺序很重要——影像/剂量/兽医这类请求即使分数很高也不该给出倾向性诊断；
@@ -311,7 +312,7 @@ async function reuseOrBuild(state, history, env, providedDx) {
     dx.flag_details = state.red_flag_details
     const validEv = (Array.isArray(dx.evidence) ? dx.evidence : []).filter((e) => e && typeof e.id === "string" && hasEvidence(e.id))
     dx.evidence = validEv.length ? validEv : retriever.search(state.transcript, 5)
-    if (!dx.trace) dx.trace = { evidence_ids: dx.evidence.map((e) => e.id), rounds: state.rounds, symptoms: state.symptoms }
+    if (!dx.trace) dx.trace = { evidence_ids: dx.evidence.map((e) => e.id), rounds: state.rounds, symptoms: state.symptoms, versions: traceVersions() } // r109 改进3
     return dx
   }
   return buildDiagnosis(state.case_id, history, env)

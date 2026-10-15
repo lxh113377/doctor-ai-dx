@@ -1,0 +1,31 @@
+# MySQL 私有化持久化的**本地验证 overlay**（第一百零八轮）——不进默认链路。
+#
+# 用法：docker compose -f docker-compose.yml -f docker-compose.mysql.yml up -d
+# 只带 -f docker-compose.mysql.yml 起也行（纯 DB 面验证用），但 backend 不会自动连它。
+#
+# 为什么单独一份而不是塞进 docker-compose.yml：默认 compose 的承诺是「一键跑起镜像面，评审零额外
+# 依赖」——多加一个 mysql 服务等于把「评审从零启动」的门槛抬高一截，而且缺省链路根本不连库。
+# 这里只做「验证 MySQL 面能不能跑通」的一次性实例；私有化部署时的真实库由使用方自带（见
+# docs/DEPLOY_RUNBOOK.md 的 MySQL 节），本文件不是部署脚本。
+#
+# 凭据口径：密码默认值 `devroot` 是**本地一次性实例的占位符，不是凭据**；真凭据一律走环境变量，
+# 本文件与任何文档都不承载真实口令（机密扫描判据只认真密钥形态，占位符可过）。
+name: doctor-ai-dx-mysql
+
+services:
+  mysql:
+    image: mysql:8.4
+    container_name: doctor-ai-dx-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: "${MYSQL_DEV_PASSWORD:-devroot}"
+      MYSQL_DATABASE: doctor_ai_dx_dev
+    ports:
+      # 3306/3307/13306 已被本机其他会话的实例占用（实测 docker ps：xinyu-mysql-test/xiaoxinlian-mysql-verify），
+      # 取 33108 这种不易撞的端段；本机端口属共享资源，改动前先 netstat/docker ps 探占用。
+      - "33108:3306"
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-p${MYSQL_DEV_PASSWORD:-devroot}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped

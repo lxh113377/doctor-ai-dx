@@ -17,16 +17,15 @@
 | `cds_hooks.js` | 7,513 | 5 | cds_services, data, limits, rules | — | CDS Hooks 2.0 适配层（第八十五轮对标落地；权威面 JS，镜像面 backend/app/services/cds_hooks.py 同形） |
 | `cds_http.js` | 2,452 | 4 | observe | — | CDS Hooks 路由族共用的 HTTP 外壳（第八十五轮） |
 | `cds_services.js` | 3,042 | 9 | — | data/cds_services.json（export_cds_services.mjs） | CDS Hooks 服务目录（构建期产物，禁手改）——由 scripts/export_cds_services.mjs 从 data/cds_services.json 生成。 |
-| `chat.js` | 8,228 | 2 | chat_store, chat_synth, faq, handoff, intent, version | — | /api/chat 编排器：把「红旗闸门 → 意图 → FAQ → 转人工 → 脱敏落库」串成一条确定性链。 |
+| `chat.js` | 8,312 | 2 | chat_store, chat_synth, faq, handoff, intent, limits, version | — | /api/chat 编排器：把「红旗闸门 → 意图 → FAQ → 转人工 → 脱敏落库」串成一条确定性链。 |
 | `chat_store.js` | 25,931 | 26 | pii | — | D1 持久化门面：会话 / 消息 / 意图事件 / 转挂 / 反馈。 |
 | `chat_synth.js` | 6,842 | 3 | intent | — | 确定性话术合成：Agent SDK 不可用、或红旗旁路时，**仍然要给出一段合规回复**。 |
 | `clinical_scores.js` | 2,648 | 5 | — | data/clinical_scores.json（export_clinical_scores.mjs） | 临床评分量表表（构建期产物，禁手改）——由 scripts/export_clinical_scores.mjs 从 data/clinical_scores.json 生成。 |
 | `data.js` | 5,449 | 4 | — | — | 数据层（脱敏演示病例）——Cloudflare Functions 版 |
-| `engine.js` | 27,581 | 11 | data, fhir, knowledge, rag, retriever, rules | — | 诊断引擎：临床状态抽取 → 证据检索(BM25) → LLM 结构化生成 |
+| `engine.js` | 27,748 | 11 | data, fhir, knowledge, rag, retriever, rules, trace_version | — | 诊断引擎：临床状态抽取 → 证据检索(BM25) → LLM 结构化生成 |
 | `faq.js` | 2,423 | 2 | rag | — | FAQ 检索封装：把既有 BM25 检索器包装成「可引用的答案包」。 |
 | `fhir.js` | 10,810 | 2 | knowledge | — | FHIR R4（light 子集）导出层：把诊断结果映射为标准资源 Bundle， |
 | `handoff.js` | 5,961 | 6 | intent | — | 设计取向：**宁可多转，不可硬答**。本项目的红线是「不硬答、不拿未回链结论吓人」， |
-| `hybrid_rrf.js` | 2,367 | 2 | — | — | hybrid_rrf.js — RRF 融合层（零新依赖，为 dense 预留接口） |
 | `intent.js` | 6,655 | 9 | intents, knowledge, rules | — | 对话面意图识别器。 |
 | `intents.js` | 5,977 | 6 | — | data/intents.json（export_intents.mjs） | 意图注册表（构建期产物，禁手改）——由 scripts/export_intents.mjs 从 data/intents.json 生成。 |
 | `knowledge.js` | 44,299 | 8 | — | — | 医学知识库（RAG 语料，带完整元数据）+ 同义词表 + 检索加权词 + 症状映射 |
@@ -39,9 +38,10 @@
 | `rules.js` | 18,336 | 13 | clinical_scores, red_flag_rules, scope_rules | — | 危险信号规则引擎（红旗拦截层）——独立于 LLM：可解释、可单测，评审安全叙事核心 |
 | `scope_rules.js` | 2,810 | 4 | — | data/scope_rules.json（export_scope.mjs） | 适用范围规则（构建期产物，禁手改）——由 scripts/export_scope.mjs 从 data/scope_rules.json 生成。 |
 | `semantic_neighbors.js` | 9,896 | 2 | — | 本地 BAAI/bge-small-zh-v1.5 蒸馏产物（build_semantic_neighbors.py） | 语义邻接表（构建期产物，禁手改）——由 scripts/build_semantic_neighbors.py 生成。 |
+| `trace_version.js` | 2,439 | 5 | knowledge, red_flag_rules, retriever, version | — | trace_version.js — 决策指纹（第一百零九轮改进3）。把「任一份报告能复盘完整生成链」落成机器可验。 |
 | `version.js` | 267 | 1 | — | — | 版本单一真值源（后端口径 = backend/app/version.py，二者由 tests/version_guard.mjs 强制同值）。 |
 
-**合计 27 个模块**，其中 **6 个是构建期产物**（生成源列非空），字节合计 242,032。
+**合计 27 个模块**，其中 **6 个是构建期产物**（生成源列非空），字节合计 242,355。
 <!-- gen_modules_manifest.py:END -->
 
 ## 约定

@@ -1,0 +1,297 @@
+{
+  "_source": "对外契约一致性套件（conformance kit）的声明式用例面。第三方与 CI 读同一份，禁在任一侧另列第二份输入。",
+  "_why": "第八维对标实测：peer `inferno-framework/smart-app-launch-test-kit` 的存在说明「能集成」这句话可以被别人拿去跑。我方有 lib/fhir.js 与 lib/cds_hooks.js 实现，此前没有任何一件是第三方可以指向它做验证的契约面（差距量化：对外契约测试 0 vs 现成套件 1）。",
+  "_how_to_run": "node tests/conformance_guard.mjs（离线，直驱权威处理器）；加 --base <url> 则打真实部署（第三方可自验线上）。",
+  "_scoring": "本件只断言**对外可见的契约不变量**，不断言任何结论文本（live 走模型，同输入两次输出不同是常态）。每条用例都配一条反例腿，证明判据有牙。",
+  "cds": {
+    "discovery_path": "/cds-services",
+    "discovery_method": "GET",
+    "service_ids": [
+      "red-flag-screen",
+      "scope-boundary"
+    ],
+    "required_service_fields": [
+      "hook",
+      "title",
+      "description",
+      "id",
+      "usageRequirements"
+    ],
+    "required_card_fields": [
+      "summary",
+      "indicator",
+      "detail",
+      "source",
+      "overrideReasons"
+    ],
+    "forbidden_card_fields": [
+      "uuid",
+      "links",
+      "suggestions",
+      "selectionBehavior"
+    ],
+    "summary_max_chars": 139,
+    "indicators": [
+      "info",
+      "warning",
+      "critical"
+    ],
+    "source_label_must_contain": "医生终审",
+    "invocations": [
+      {
+        "id": "acs-critical",
+        "service": "red-flag-screen",
+        "context": {
+          "patientId": "c1",
+          "symptoms": [
+            "压榨样胸痛向左肩放射",
+            "出冷汗"
+          ]
+        },
+        "expect": {
+          "card_count": 1,
+          "indicators": [
+            "critical"
+          ]
+        }
+      },
+      {
+        "id": "gi-bleed",
+        "service": "red-flag-screen",
+        "context": {
+          "symptoms": [
+            "呕血",
+            "柏油样黑便三天"
+          ]
+        },
+        "expect": {
+          "card_count": 1,
+          "indicators": [
+            "critical"
+          ]
+        }
+      },
+      {
+        "id": "dyspnoea-warning",
+        "service": "red-flag-screen",
+        "context": {
+          "symptoms": [
+            "活动后呼吸困难，没有胸痛"
+          ]
+        },
+        "expect": {
+          "card_count": 1,
+          "indicators": [
+            "warning"
+          ]
+        }
+      },
+      {
+        "id": "no-flag",
+        "service": "red-flag-screen",
+        "context": {
+          "symptoms": [
+            "发热三天，咽痛，咳嗽一天"
+          ]
+        },
+        "expect": {
+          "card_count": 0,
+          "indicators": []
+        }
+      },
+      {
+        "id": "scope-imaging",
+        "service": "scope-boundary",
+        "context": {
+          "symptoms": [
+            "帮我看看这张CT片子上的结节"
+          ]
+        },
+        "expect": {
+          "card_count": 1,
+          "indicators": [
+            "warning"
+          ]
+        }
+      },
+      {
+        "id": "scope-none",
+        "service": "scope-boundary",
+        "context": {
+          "symptoms": [
+            "发热三天，咽痛，咳嗽一天"
+          ]
+        },
+        "expect": {
+          "card_count": 0,
+          "indicators": []
+        }
+      }
+    ],
+    "rejections": [
+      {
+        "id": "missing-hook",
+        "service": "red-flag-screen",
+        "body": {
+          "hookInstance": "cf-1",
+          "context": {
+            "symptoms": [
+              "呕血"
+            ]
+          }
+        },
+        "status": 422
+      },
+      {
+        "id": "hook-mismatch",
+        "service": "red-flag-screen",
+        "body": {
+          "hook": "order-sign",
+          "hookInstance": "cf-2",
+          "context": {
+            "symptoms": [
+              "呕血"
+            ]
+          }
+        },
+        "status": 422
+      },
+      {
+        "id": "empty-context",
+        "service": "red-flag-screen",
+        "body": {
+          "hook": "patient-view",
+          "hookInstance": "cf-3",
+          "context": {
+            "symptoms": []
+          }
+        },
+        "status": 422
+      },
+      {
+        "id": "symptoms-not-array",
+        "service": "red-flag-screen",
+        "body": {
+          "hook": "patient-view",
+          "hookInstance": "cf-4",
+          "context": {
+            "symptoms": "呕血"
+          }
+        },
+        "status": 422
+      },
+      {
+        "id": "unknown-patient",
+        "service": "red-flag-screen",
+        "body": {
+          "hook": "patient-view",
+          "hookInstance": "cf-5",
+          "context": {
+            "patientId": "P-真实患者-9527"
+          }
+        },
+        "status": 422
+      },
+      {
+        "id": "unknown-service",
+        "service": "no-such-service",
+        "body": {
+          "hook": "patient-view",
+          "hookInstance": "cf-6",
+          "context": {
+            "symptoms": [
+              "呕血"
+            ]
+          }
+        },
+        "status": 404
+      }
+    ],
+    "method_probes": [
+      {
+        "id": "post-discovery",
+        "path": "/cds-services",
+        "method": "POST",
+        "status": 404
+      },
+      {
+        "id": "get-invocation",
+        "path": "/cds-services/red-flag-screen",
+        "method": "GET",
+        "status": 404
+      }
+    ]
+  },
+  "fhir": {
+    "request": {
+      "case_id": "c1",
+      "history": [
+        {
+          "role": "user",
+          "content": "压榨样胸痛向左肩放射，出冷汗"
+        }
+      ]
+    },
+    "path": "/api/dx/c1",
+    "bundle_type": "collection",
+    "required_resource_types": [
+      "Patient",
+      "Encounter",
+      "Condition",
+      "Observation",
+      "DiagnosticReport"
+    ],
+    "condition_must_have": [
+      "clinicalStatus",
+      "verificationStatus",
+      "category",
+      "code"
+    ],
+    "diagnostic_report_must_have": [
+      "status",
+      "conclusion"
+    ],
+    "zero_clock_fields": [
+      "timestamp",
+      "issued",
+      "effectiveDateTime",
+      "recordedDate",
+      "authoredOn",
+      "meta"
+    ],
+    "synthetic_extension_url": "https://github.com/lxh113377/doctor-ai-dx#fhir-light/syntheticCase",
+    "conclusion_prefix": "AI 辅助参考 · 医生终审",
+    "observation_must_have": [
+      "status",
+      "code"
+    ],
+    "observation_value_choice": [
+      "valueString",
+      "valueCodeableConcept",
+      "valueQuantity",
+      "valueBoolean"
+    ],
+    "observation_must_have_one_of": "observation_value_choice",
+    "condition_code_choice": [
+      "text",
+      "coding"
+    ]
+  },
+  "envelope": {
+    "success_code": 0,
+    "error_shape_keys": [
+      "code",
+      "message"
+    ],
+    "health_path": "/api/health",
+    "cases_path": "/api/cases",
+    "expected_case_count": 3,
+    "forbidden_in_error_message": [
+      "at ",
+      "file://",
+      "Traceback",
+      "DEEPSEEK_API_KEY",
+      "sk-"
+    ]
+  }
+}

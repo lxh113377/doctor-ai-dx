@@ -73,8 +73,26 @@ for (const dir of ["frontend/src", "frontend/functions", "backend/app"]) {
 }
 
 const live = scan(productionFiles)
-check("声明「无服务端/客户端持久化」与代码一致", live.persistence.length === 0, live.persistence.slice(0, 4).join(" | "))
-check("声明「无第三方遥测/埋点」与代码一致", live.telemetry.length === 0, live.telemetry.slice(0, 4).join(" | "))
+
+// 持久化白名单（第一百零八轮，PRIVACY §7 预留条款的机器面）：
+// 镜像面新增了**缺省关闭**的 MySQL 持久化（backend/app/db/），「全仓零持久化」从此不再成立，
+// 判据随之从「零命中」升级为三层——比删断言强，而不是弱：
+//   ① 权威面与前端（frontend/**）仍然零持久化，一条豁免都没有；
+//   ② backend/app 里命中持久化原语的文件**必须全部**落在 backend/app/db/ 白名单内（双向差集）；
+//   ③ 白名单非空时，开关必须被证明**缺省关闭**（engine.py 里 PERSIST_BACKEND 的缺省值是 "off"，
+//      且 current_engine 在 backend != "mysql" 时提前返回）——装进依赖锁 ≠ 接进运行链路。
+const DB_DIR = "backend/app/db/"
+const frontHits = live.persistence.filter((p) => p.startsWith("frontend/"))
+const dbHits = live.persistence.filter((p) => p.startsWith(DB_DIR))
+const outsideHits = live.persistence.filter((p) => !p.startsWith("frontend/") && !p.startsWith(DB_DIR))
+check("权威面与前端零持久化（不得有任何豁免）", frontHits.length === 0, frontHits.slice(0, 4).join(" | "))
+check("镜像面持久化只许出现在白名单 backend/app/db/ 内", outsideHits.length === 0, outsideHits.slice(0, 4).join(" | "))
+const engineSrc = read("backend/app/db/engine.py")
+check("持久化开关缺省关闭（PERSIST_BACKEND 缺省 off 且非 mysql 即提前返回）",
+  dbHits.length === 0
+  || (/os\.getenv\("PERSIST_BACKEND"\)/.test(engineSrc) && /or\s*"off"/.test(engineSrc) && /!=\s*"mysql"/.test(engineSrc)),
+  "engine.py 里找不到缺省关闭证据——持久化面不得默认接进链路")
+check("镜像面遥测/埋点仍为零", live.telemetry.length === 0, live.telemetry.slice(0, 4).join(" | "))
 check("日志调用点未把请求体/问诊文本写进日志", live.logLeak.length === 0, live.logLeak.join(" "))
 
 const CASES = ["联系人 13800138000 请回电", "身份证 11010119900307777X", "时间戳 1758777600000 毫秒", "key sk-abcdefghijkl123456", "file:///srv/app/main.py", "无敏感信息的主诉描述"]
@@ -170,7 +188,10 @@ const deadForm = new RegExp(String.fromCharCode(8) + "Sentry\\.init" + String.fr
 check("元反例：裸退格符伪装的词边界会被自证判死",
   !hit(deadForm, "Sentry.init({ dsn })") && hit(/\bSentry\.init\b/, "Sentry.init({ dsn })"),
   "自证块失去识别死判据的能力 = 本轮治本失效")
-check("对照组：当前生产面三类扫描全部零命中", live.persistence.length + live.telemetry.length + live.logLeak.length === 0)
+// 对照组口径（第一百零八轮）：白名单 backend/app/db/ 的命中合法，其余三类必须全零——
+// 原「persistence 全零」口径随白名单生效而失效，禁保留旧口径冒充更严（那是永远不会绿的死判据）。
+check("对照组：白名单外三类扫描全部零命中",
+  frontHits.length + outsideHits.length + live.telemetry.length + live.logLeak.length === 0)
 
 console.log(`\nPRIVACY GUARD SUMMARY: 扫描文件=${Object.keys(productionFiles).length} 锚点=${anchors.length} 脱敏用例=${CASES.length}`)
 console.log(`RESULT: ${pass} pass / ${fail} fail`)

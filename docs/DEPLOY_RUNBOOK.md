@@ -146,6 +146,41 @@ node scripts/d1_cleanup.mjs          # dry-run
 node scripts/d1_cleanup.mjs --apply  # 真删（需登录态）
 ```
 
+## 6.6 私有化 MySQL 持久化（第一百零八轮起，**缺省关闭**）
+
+适用场景：医院内网/自托管部署（镜像面 FastAPI）需要把会话与反馈落到自家 MySQL。
+**权威面（Cloudflare Pages）不受影响也不接 MySQL**；两侧结构对账见 `docs/ARCHITECTURE.md` 对账矩阵。
+隐私口径变化（存什么/多久/加密义务）见 `docs/PRIVACY.md` §2/§6——**开启前必须先读那两节**。
+
+```bash
+# 前置：MySQL 8.0+ 实例与目标库（库名不要带 prod/production 字样，见第 3 步红线说明）
+
+# 1) 建表：schema 由 ORM metadata 单源生成（禁手改生成物，改 models.py 再生成）
+cd doctor-ai-dx-mvp && python scripts/mysql_schema.py --print | mysql -h <host> -u <user> -p <库名>
+#   日志必见：SHOW TABLES 出 8 张（conversations/messages/intent_events/handoffs/feedback/
+#   corpus_entries/eval_reports/eval_case_modes）
+
+# 2) 灌语料 + 回读对账（一条命令闭环；权威源仍是 data/*.json，库里那份只是派生副本）
+PERSIST_BACKEND=mysql MYSQL_URL="mysql+pymysql://<user>:<pass>@<host>:3306/<库名>?charset=utf8mb4" \
+  python scripts/mysql_load_corpus.py --load --verify
+#   日志必见：`VERIFY: 6/6 面对账 rc=0` 与 `[GATE:mysql-corpus-pass]`
+
+# 3) 运行态开关（两个变量都设才生效）：
+#   PERSIST_BACKEND=mysql  MYSQL_URL="mysql+pymysql://…"
+#   红线（R196）：ENV_ROLE=development/staging 时连库名含 prod/production 的实例会被
+#   REDLINE_REFUSED 拦下——这是设计行为不是故障。
+
+# 4) 一次性本地验证（本机没有现成实例时）：
+docker compose -f docker-compose.mysql.yml up -d   # 127.0.0.1:33108，密码 devroot 是占位符不是凭据
+```
+
+- 能力回执（禁只看「能 import」）：`python -c "import sys;sys.path.insert(0,'backend');from app.db import db_status;print(db_status())"`
+  → `available=True` 且 `reason` 为空才算接通；三种关闭态（`SWITCH_OFF`/`URL_MISSING`/`REDLINE_REFUSED`）各自可归因。
+- 回滚锚：把 `PERSIST_BACKEND` 撤掉即回无库行为（库里已写的数据保留，不自动删）；代码级回滚 `git revert` 即净。
+- TTL 义务：会话行按 30 天语义打 `expires_at`，**清理任务属部署方义务**（本仓未内置定时器）。
+- CI 判据：`backend-test` 作业带 mysql service 真连跑 `test_mysql_live.py` + 语料对账；本机跳过这些腿时
+  套件会印「本维未验」的 SKIP——那不是通过，是未验。
+
 ## 7. 本 runbook 的自检命令
 
 ```powershell

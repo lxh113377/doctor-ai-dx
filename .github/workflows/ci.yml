@@ -137,7 +137,10 @@ jobs:
       - name: hadolint（规则集钉在仓根 .hadolint.yaml，failure-threshold=info）
         run: docker run --rm -v "$PWD":/work:ro -w /work ghcr.io/hadolint/hadolint:v2.14.0-alpine hadolint backend/Dockerfile
       - name: docker compose config（compose schema 与插值真解析一次）
-        run: docker compose -f docker-compose.yml config -q
+        run: |
+          docker compose -f docker-compose.yml config -q
+          # MySQL 验证 overlay 同样过一遍 schema 解析（第一百零八轮；不加这行它就只有"本机跑过"这一个证据面）
+          docker compose -f docker-compose.mysql.yml config -q
       - name: codespell（英文拼写看守；规则钉 .codespellrc + 版本钉 requirements-dev）
         # 接线前先量过误报（第二十二轮本机实测）：全仓唯一命中是 `EHR`，属医学缩写被词典当成
         # `HER` 的拼写错误 ⇒ 按原因登记进 ignore-words-list 而不是关掉整个检查。
@@ -209,6 +212,25 @@ jobs:
     defaults:
       run:
         working-directory: backend
+    env:
+      # MySQL 真连腿（第一百零八轮）：CI 用 service container 起一次性实例，密码 devroot 是
+      # **占位符不是凭据**（容器随作业销毁，库里只有测试自写的 r108- 前缀行）。没有这一步，
+      # test_mysql_live.py 只会印「本维未验」的 SKIP——能力句必须有行为回执，光有代码不算接入。
+      MYSQL_TEST_URL: mysql+pymysql://root:devroot@127.0.0.1:33108/doctor_ai_dx_test?charset=utf8mb4
+      PERSIST_BACKEND: mysql
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: devroot
+          MYSQL_DATABASE: doctor_ai_dx_test
+        ports:
+          - 33108:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -pdevroot"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
@@ -237,6 +259,15 @@ jobs:
         run: python ../scripts/suite_guard.py
       - name: Backend suites (runner 驱动，fail-fast，零网络)
         run: python selftest.py
+      - name: MySQL schema 漂移与 D1 结构对账（第一百零八轮，两步都离线）
+        # --check 防生成物被手改（与 d1_migrate --check 同一形状）；--parity 防会话面两套真值分叉。
+        run: |
+          python ../scripts/mysql_schema.py --check
+          python ../scripts/mysql_schema.py --parity
+      - name: MySQL 语料灌库 + 回读对账（E2E：生成 DDL 可执行 + JSON 单源 ⇄ 库逐键指纹相等）
+        # 刻意排在 selftest 之后：test_mysql_live 的 create_all 先把表建出来。
+        # 不带 --eval：评测报告在本仓之外（iCAN 大赛目录不入公开源码仓），CI 里没有那个输入面。
+        run: python ../scripts/mysql_load_corpus.py --load --verify
       - name: Branch protection gate（分支保护 ↔ 作业图对账，判据 scripts/branch_guard.py）
         # 立论：实测 required checks 只有 2 项而 ci.yml 有 4 个阻断作业 ⇒ 新判据可被绕过。
         # 本步骤在 CI 里静态对账；线上真实配置用 `--remote` 人工/定期核（Actions token 无 admin 读保护会 403，故不在此处强判）。

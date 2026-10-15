@@ -109,7 +109,7 @@ cd frontend && npm run test:gold2      # 确定性检索侧金标准；--selftes
 ## 5. 复现命令
 
 ```bash
-cd frontend && npm test                 # 三十九件套：smoke 57（含双端同表红旗探针 12 条逐字对账）+ 引擎 31 例 + 检索双档地板 + 检索器 3 档双端 50/50 + 语义表守卫 22（含 7 组反例）+ live 路径红线 43 + 双端契约 31:31 + FHIR 导出 45 项（含 6 组反例）+ KB 守卫 17 + 路由守卫 25 + 隐私声明对账 59 + 配置契约对账 6 + API 契约对账 + vitest 组件 + 版本真值五方对账 + 线上读数标记区⇄报告逐字对账（node tests/eval_card_guard.mjs）
+cd frontend && npm test                 # 四十三件套：smoke 57（含双端同表红旗探针 12 条逐字对账）+ 引擎 31 例 + 检索双档地板 + 检索器 3 档双端 50/50 + 语义表守卫 22（含 7 组反例）+ live 路径红线 43 + 双端契约 31:31 + FHIR 导出 45 项（含 6 组反例）+ KB 守卫 17 + 路由守卫 25 + 隐私声明对账 59 + 配置契约对账 6 + API 契约对账 + vitest 组件 + 版本真值五方对账 + 线上读数标记区⇄报告逐字对账（node tests/eval_card_guard.mjs）
 cd frontend && npm run redflags:export            # 改 data/red_flag_rules.json 后重新生成双端；改 `-- --check` 只核漂移不写盘
 node tests/coverage_floor_guard.mjs     # 覆盖率模块级地板（先跑 npm run coverage:js 生成 coverage/coverage-summary.json）
 cd frontend && npm run coverage:js      # JS 覆盖率 + 模块级地板棘轮（读数由命令本身打印，阈值单一源见 fixtures/coverage_floor.json）

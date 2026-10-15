@@ -13,6 +13,9 @@ import { synthesize, SLOT_ASK_TEXT } from "./chat_synth.js"
 import { replyPolicyOf } from "./intent.js"
 import * as store from "./chat_store.js"
 import { APP_VERSION } from "./version.js"
+// r109：错型抛错原先是三处对 limits.js 的函数内动态加载，现改顶部静态 import——
+// 动态加载形态会让 wiring_guard 的静态可达图失真（判据面见 tests/wiring_guard.mjs）。
+import { RequestBadShape, BAD_SHAPE_MESSAGE, RequestTooLarge, TOO_LARGE_MESSAGE } from "./limits.js"
 
 /** 对话轮次上限：与 limits.js 的 MAX_HISTORY_ITEMS=64 同族口径。**这是入站护栏，不是容量声明。 */
 export const CHAT_MAX_TURNS = 32
@@ -43,16 +46,13 @@ export async function handleChat({ text, history = [], conversation_id = null, e
   const startedAt = Date.now();
   const raw = String(text ?? "").trim()
   if (!raw) {
-    const { RequestBadShape, BAD_SHAPE_MESSAGE } = await import("./limits.js")
     throw new RequestBadShape(BAD_SHAPE_MESSAGE)
   }
   if (raw.length > 2000) {
-    const { RequestBadShape, BAD_SHAPE_MESSAGE } = await import("./limits.js")
     throw new RequestBadShape(BAD_SHAPE_MESSAGE)
   }
   const turns = countExchanges(history)
   if (turns > CHAT_MAX_TURNS) {
-    const { RequestTooLarge, TOO_LARGE_MESSAGE } = await import("./limits.js")
     throw new RequestTooLarge(TOO_LARGE_MESSAGE)
   }
 
