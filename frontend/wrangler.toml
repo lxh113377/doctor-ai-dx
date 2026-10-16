@@ -1,10 +1,15 @@
-# ============================================================
+﻿# ============================================================
 # 医 · AI 辅助诊断 —— Cloudflare Pages 配置（对齐超市web部署模式）
 # 部署：node node_modules/wrangler/bin/wrangler.js pages deploy dist --project-name=doctor-ai-dx
 # 密钥：DEEPSEEK_API_KEY 走 pages secret（勿写入 [vars]，防明文入库）
 # ============================================================
 name = "doctor-ai-dx"
 compatibility_date = "2024-09-23"
+# nodejs_compat（r110 修红）：functions/lib/trace_version.js（r109）import node:crypto，
+# workerd 默认不开 Node 兼容层 ⇒ `wrangler pages dev dist` 起 workerd 即报
+# "No such module 'node:crypto'"，E2E 双视口作业整红。线上 Pages 同读本旗——
+# 下次部署 doctor-ai-dx.pages.dev 会踩同一雷，本旗是本地 E2E 与线上部署的双修。
+compatibility_flags = ["nodejs_compat"]
 pages_build_output_dir = "dist"   # ⚠️ 必填：缺它 wrangler 4 会 ignoring config（坑1）
 
 # ---- 对话面持久化（round90）----

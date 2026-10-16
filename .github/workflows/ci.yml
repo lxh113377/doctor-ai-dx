@@ -217,6 +217,10 @@ jobs:
       # **占位符不是凭据**（容器随作业销毁，库里只有测试自写的 r108- 前缀行）。没有这一步，
       # test_mysql_live.py 只会印「本维未验」的 SKIP——能力句必须有行为回执，光有代码不算接入。
       MYSQL_TEST_URL: mysql+pymysql://root:devroot@127.0.0.1:33108/doctor_ai_dx_test?charset=utf8mb4
+      # MYSQL_URL 别名（r110 修红）：test_mysql_live.py 读 MYSQL_TEST_URL 后自行注入 MYSQL_URL，
+      # 但 mysql_load_corpus.py --load 走 app.db.engine 直读 MYSQL_URL ⇒ 6ce3cd7 起该步在 CI 报
+      # URL_MISSING（Backend suites 绿而灌库步骤红，正是两个名字只喂了一个的形状）。
+      MYSQL_URL: mysql+pymysql://root:devroot@127.0.0.1:33108/doctor_ai_dx_test?charset=utf8mb4
       PERSIST_BACKEND: mysql
     services:
       mysql:

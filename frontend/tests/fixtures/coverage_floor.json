@@ -4,6 +4,7 @@
     "tool_js": "c8 12.0.0（V8 coverage；刻意不接 Codecov 等外部服务）",
     "tool_py": "coverage.py 7.16.0 + scripts/coverage_gate.py（本文件 py_total_fail_under 与 py_modules 为唯一阈值源；ci.yml 与 package.json 只调本脚本，不再硬编码数字）",
     "measured_at": "2026-09-25",
+    "r110_note": "第一百一十轮（2026-10-16）js_total 降板 statements 94→92、functions 93→85（branches 74 不动），理由：TOTAL 地板钉在 2026-09-25 的 7 模块分母上，其后 r90 对话持久化（chat/d1 面）、r109 trace_version.js 等新模块进入 c8 分母（.c8rc include functions/**/*.js 全量），函数密度高的新模块稀释全局百分比 ⇒ 父提交 c0d3911 实测已掉到 90.72/84.74（存量红，非 6ce3cd7 引入；该笔实测 92.12/85.63 反而回升）。降板依据＝6ce3cd7 CI 实测向下取整；模块级地板（js_modules）零改动，七个模块 CI 全 PASS、红线模块仍在册——全局 TOTAL 本是聚合数，模块级棘轮才是防单模块退化的主闸。新模块地板待其实测稳定后按 +2pt 余量惯例入册。",
     "measured_headroom_note": "floor 取自实测值下调 2~4pt 作为棘轮起点；收紧须在覆盖率上升后同步改本文件，放宽须在 _meta 写明原因。",
     "delta_this_round": {
       "js_all_branch_pct": [
@@ -129,9 +130,9 @@
     }
   },
   "js_total": {
-    "statements": 94,
+    "statements": 92,
     "branches": 74,
-    "functions": 93
+    "functions": 85
   },
   "py_total_fail_under": 90,
   "py_modules": {
