@@ -53,7 +53,7 @@ docker compose run --rm selftest   # 镜像内可跑的那部分离线断言（�
 
 ```bash
 cd frontend
-npm test       # 四十四件套：49 冒烟(含双端同表红旗探针) + 31 例引擎评测 + 检索分层回归 + 检索器 3 档双端一致 + 语义表守卫 22 + 弃权守卫 20 + 范围表守卫 46 + 红旗表守卫 37（权威==JS==Py 三方全等＋同一份变异夹具两边各跑一遍） + live 路径红线 43 项（含追问 live 分支与续问上限零外呼） + 双端契约 31:31 + FHIR 导出 45 项 + 隐私声明对账 59 项 + 配置契约对账 6 项 + 滥用护栏对账 33 项（契约需本机 Python） + 对外契约自验 25 面（含线上/离线双档） + 自验入口 rc 传递（真起子进程，含取数面坏/零栈帧两态）
+npm test       # 四十五件套：49 冒烟(含双端同表红旗探针) + 31 例引擎评测 + 检索分层回归 + 检索器 3 档双端一致 + 语义表守卫 22 + 弃权守卫 20 + 范围表守卫 46 + 红旗表守卫 37（权威==JS==Py 三方全等＋同一份变异夹具两边各跑一遍） + live 路径红线 43 项（含追问 live 分支与续问上限零外呼） + 双端契约 31:31 + FHIR 导出 45 项 + 隐私声明对账 59 项 + 配置契约对账 6 项 + 滥用护栏对账 33 项（契约需本机 Python） + 对外契约自验 25 面（含线上/离线双档） + 自验入口 rc 传递（真起子进程，含取数面坏/零栈帧两态）
 npm run lint     # 静态检查：ESLint（frontend，--max-warnings=0）+ ruff（backend 与 scripts，规则集钉在仓根 ruff.toml）
 npm run typecheck  # Python 类型门禁：mypy 严格档（check_untyped_defs）+ 阈值单一源，实测 23 文件 0 error、抑制项 0（零豁免有机器判据）
 npm run sbom       # 生成前端 CycloneDX SBOM（钉版 @cyclonedx/cyclonedx-npm）；属发布期产物，不入库
@@ -76,7 +76,9 @@ python tests/smoke_engine.py
 - **评测卡 / 安全卡**：[`docs/EVAL_CARD.md`](docs/EVAL_CARD.md) —— 能力边界、病种覆盖清单（60 条 · 20 域）、红旗与安全口径、指标日期一页可查。
 - **架构与不变式**：[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) —— 七段链路图、三条产品红线的代码插入点、JS/Py 双端镜像对账矩阵、检索层实测参数、环境变量与门禁清单（数字均为磁盘实测）。
 - **一条命令跑完本机验证面**：`python scripts/verify.py --suite gate`（步骤清单唯一源 = `scripts/verify.py` 的 `SUITES` 表；`--suite all` 另加交付面，缺工作区父仓时该步记 SKIP 而不是记绿）。
-- **提交前快检**：[`.pre-commit-config.yaml`](.pre-commit-config.yaml) —— `pre-commit install` 后复用仓内既有守卫，共 19 个钩，钩名以该文件为唯一源（本行不抄清单：第三十七轮实测这类抄件的历史值与实数差着 3 只，钩数现已由文档守卫从配置现算对账），秒级；全量四十四件套仍由 CI 兜底。
+- **提交前快检**：[`.pre-commit-config.yaml`](.pre-commit-config.yaml) —— `pre-commit install` 后复用仓内既有守卫，共 19 个钩，钩名以该文件为唯一源（本行不抄清单：第三十七轮实测这类抄件的历史值与实数差着 3 只，钩数现已由文档守卫从配置现算对账），秒级；全量四十五件套仍由 CI 兜底。
+- **可访问性收据**：`node frontend/tests/a11y_receipt_guard.mjs` —— 十项结构性事实（lang／减少动效／高对比档／可缩放字号／图片可访问名／非语义点击／地标／工具链／i18n／浏览器矩阵）＋**已知缺口棘轮**（GAP 必须落在 named 名册内，新增 GAP 即红、名册条目转绿即「死豁免」判红）。判的是「这个面现在处在哪一档」，与 `npm run lint:js` 的 jsx-a11y 规则（判「这行代码对不对」）**刻意不合并**。
+- **网络面并发读数**：每日由 `.github/workflows/live-smoke.yml` 的 `live-concurrency` 作业打线上 `/api/health` 现算（`--serial` 取串行基线，判「并发是否比串行慢一半以上」）；本机可复算 `node scripts/load_probe.mjs --base https://doctor-ai-dx.pages.dev --path /api/health --vu 8 --duration 20 --serial`。接线本身由 `python scripts/load_probe_wiring.py` 在 CI 阻断链看守。
 - **安全边界与未保障项**：[`SECURITY.md`](SECURITY.md) —— 已实现的控制、明确未提供的保障（无认证/无审计/日志不留存）、漏洞报告渠道。
 - **对外契约自验**：[`docs/CONFORMANCE.md`](docs/CONFORMANCE.md) —— 给集成方与第三方评审的一页：一条命令（`node examples/conformance_basic.mjs`，可加 `--base` 打线上）验 CDS Hooks 与 FHIR-light 的对外契约不变量；零密钥零部署，用例面是可改的声明式 JSON。
 - **错误契约一览**：[`docs/ERRORS.md`](docs/ERRORS.md) —— 集成方只需这张表就能写对重试分支；由 `npm run test:api` 双向核对（表里的码集合 == openapi 声明、三处文案逐字等于 `limits` 常量），改码不改表或表领先实现都判红。

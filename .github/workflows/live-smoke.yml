@@ -123,6 +123,48 @@ jobs:
             echo "- 读数说明: health 为 UNREACHABLE 或状态码为 000 ⇒ 站点/网络层问题；两者正常而作业红 ⇒ 渲染或断言问题"
           } >> "$GITHUB_STEP_SUMMARY"
 
+  # 第一百一十二轮对标落地（r111-8 收口）：`scripts/load_probe.mjs` 早就进了仓，但**没有任何作业在跑它**
+  # ——docs/OBSERVABILITY.md §七 自陈「活端点并发读数仍需人工触发」。peer `locustio/locust` 的 borrowable
+  # 原话：「benchmarks/dispatch.py 单件仓内可复算负载基准……这正是我方性能维缺的那一件」。
+  # 本作业把它变成每日现算：打**线上** /api/health，量网络堆栈下的吞吐/错误率/并发 P95。
+  # 判定口径完全复用 load_probe 的四态退出码，**不另造第二套阈值**（LOAD_SLO 单一源在 scripts/load_probe.mjs）：
+  #   PASS/WARN ⇒ rc=0（WARN 是 advisory，不成闸）｜FAIL/UNVERIFIED ⇒ rc=1（不可达不折成「没问题」）。
+  # 分层口径与既有 live 族一致：**不进 ci.yml 阻断链**（那条链必须零网络零密钥），红了单独知道。
+  live-concurrency:
+    name: 线上并发读数（网络面吞吐/错误率/并发 P95，四态不折叠）
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - name: 判据先自证（离线 18 条腿，含「全失败时拒绝数不得当吞吐」）
+        run: node scripts/load_probe.mjs --selftest
+      - name: 打线上 /api/health 量并发（VU8 × 20s，带串行基线）
+        # --serial 是关键（第一百一十二轮一手实测推翻了不用它的版本）：
+        #   本机打线上 VU8 实测只有 4.48 req/s，而 LOAD_SLO.min_rps=20 是**本地起服务**的经验值——
+        #   绝对地板搬到公网端点上，从国内网络跑恒红、从美国 runner 跑可能恒绿（同阈值两处结论相反＝不是一把尺）。
+        #   --serial 先跑 1 VU 取同一端点的串行基线，判据改成「并发 ≥ 串行 × 0.5」：只看退化，不看绝对吞吐。
+        #   错误率与并发 P95 仍沿用 LOAD_SLO（单一源，不另造阈值）；公网取样的噪声由「作业不阻断合码」兜住——
+        #   红了是**去看一眼**的信号，不是门禁（与 live-site / online-eval 同性质）。
+        run: |
+          set -eu
+          node scripts/load_probe.mjs --base https://doctor-ai-dx.pages.dev --path /api/health --vu 8 --duration 20 --serial --json | tee /tmp/load.json
+      - name: 读数进作业摘要（评审看的数字要对到具体某次运行）
+        if: always()
+        run: |
+          if [ -f /tmp/load.json ]; then
+            { echo '### 线上并发读数回执'; echo; echo '```json'; cat /tmp/load.json; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo '### 线上并发读数：无结果产出（作业在探针步之前即失败）' >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: 读数发布为工件（跨 run 可核，而不是只在本次作业里恒真）
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: load-probe-live
+          path: /tmp/load.json
+          if-no-files-found: error
   # 第二十四轮对标落地：peer 侧 openemr 有 `docker/container_benchmarking/`、ragflow 有 `test/benchmark/`，
   # 而我方 docs/EVAL_CARD.md 的 p50 4.1s / p95 4.73s 长期是**一次本机运行的记录**——产出脚本不在仓里
   # （README 指的是一个 clone 后不存在的工作区路径），第三方既复现不了也无从知道它后来有没有退化。

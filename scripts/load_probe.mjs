@@ -20,8 +20,18 @@
 // 用法：
 //   node scripts/load_probe.mjs --selftest
 //   node scripts/load_probe.mjs --base http://127.0.0.1:8788 --vu 8 --duration 20
-//   node scripts/load_probe.mjs --base <线上地址> --vu 8 --duration 20 --json
+//   node scripts/load_probe.mjs --base <线上地址> --vu 8 --duration 20 --json --serial   # 判并发退化（网络面）
 // 退出码：0 PASS/WARN（advisory）｜1 FAIL 或 UNVERIFIED（结构失败）｜2 用法错误
+//
+// 【第一百一十二轮新增：--serial 并发退化判据】
+//   一手实测（2026-10-17 本机打线上 https://doctor-ai-dx.pages.dev/api/health）：
+//     VU8 × 15.4s ⇒ 3.19 req/s、P50 2097ms、P95 6211ms、错误率 0%
+//   而 LOAD_SLO.min_rps = 20 是**本地起服务**时的经验值（localhost 无网络 RTT）。
+//   把 20 搬到公网端点上：从国内网络跑是每天恒红，从美国 runner 跑可能恒绿——
+//   **同一个阈值在两个位置给出相反结论，它就不是一把尺**（同族：r111 并发加速比 3× 把 Node 单线程判成恒红）。
+//   故新增 --serial：先跑 1 VU 拿**串行基线**，再跑目标 VU 拿并发读数，判据改为
+//   「并发吞吐 ≥ 串行吞吐 × 0.5」（方向与位置无关：只判「并发比单跑还慢」，不判绝对吞吐）。
+//   绝对地板 min_rps 保留但**只在没有串行基线时生效**（本地自测仍可用），口径写进 --help 与本注释。
 // 末行 [GATE:load-pass|warn|fail] 是唯一权威读数
 
 import { dirname, resolve } from 'node:path';
@@ -38,6 +48,10 @@ export const LOAD_SLO = {
   max_error_rate: 0.02,   // 错误率上限 2%
   max_p95_ms: 10000,      // 并发下 P95 不得超过项目约束的 10s
   warn_error_rate: 0.005, // 0.5% 起进 WARN 区间（早报警，不等撞线）
+  // 并发/串行吞吐比地板（第一百一十二轮）。方向说明见文件头：判「退化」不判「收益」。
+  //   为什么是 0.5 而不是 1：公网端点的并发吞吐受 RTT 与 CDN 边缘调度影响，略低于串行是正常的；
+  //   真缺陷形态是**并发比单跑还慢一半以上**（全局锁、同步阻塞、连接池打满）。
+  min_conc_ratio: 0.5,
 };
 
 // 纯函数：探针结果 → 判定。离线可驱动，故能被变异测试双向断言。
@@ -75,7 +89,18 @@ export function judge(r, slo = LOAD_SLO) {
     add('吞吐读数可否声称', 'FAIL', `${rps.toFixed(1)} req/s`, '不否认',
       `错误率 100% ⇒ 这个“${rps.toFixed(1)} req/s”是拒绝数而非吞吐，禁当吞吐读数引用`);
     add('吞吐 ≥ 地板', 'FAIL', `${rps.toFixed(1)} req/s`, `>= ${slo.min_rps}`, '全部失败时不可声称吞吐');
+  } else if (Number.isFinite(Number(r.serial_rps)) && Number(r.serial_rps) > 0) {
+    // 【第一百一十二轮】有串行基线时判**退化比**，不判绝对吞吐。
+    //   绝对地板 min_rps=20 是**本地起服务**的经验值；挪到公网端点上，从国内网络跑恒红、
+    //   从美国 runner 跑可能恒绿 —— 同一阈值在两地给出相反结论，它就不是一把尺（r111 同族教训）。
+    //   方向改成「并发比串行慢一半以上才红」：与位置无关，只判真缺陷形态（全局锁/同步阻塞/连接池打满）。
+    const serial = Number(r.serial_rps);
+    const ratio = rps / serial;
+    add('并发 ≥ 串行 × 地板比', ratio >= slo.min_conc_ratio ? 'PASS' : 'FAIL',
+      `${ratio.toFixed(2)}×`, `>= ${slo.min_conc_ratio}×`,
+      `并发 ${rps.toFixed(1)} req/s ÷ 串行 ${serial.toFixed(1)} req/s = ${ratio.toFixed(2)}×`);
   } else {
+    // 没有串行基线（例如本地自测）⇒ 退回原有绝对地板，口径不变。
     add('吞吐 ≥ 地板', rps >= slo.min_rps ? 'PASS' : 'FAIL', +rps.toFixed(1), `>= ${slo.min_rps}`,
       `${rps.toFixed(1)} req/s（VU=${r.vu}，时长 ${r.duration_s}s，样本 ${r.requests}）`);
   }
@@ -185,6 +210,19 @@ function selftest() {
   ck('全失败时有「禁当吞吐读数引用」的具名红因',
     allFail.checks.some((c) => c.msg && c.msg.includes('禁当吞吐读数引用')));
 
+  // 腿10-13（第一百一十二轮 --serial 并发退化判据）：判「比串行慢一半以上」而不是判绝对吞吐。
+  //   立项依据是文件头那组一手实测：本机打线上 VU8 只有 3.19 req/s，而 min_rps=20 是**本地经验值**
+  //   ⇒ 绝对地板搬到公网端点上会恒红（换个国家跑又可能恒绿，同阈值两处结论相反＝不是一把尺）。
+  //   这四条腿把方向钉住：谁把它改回「判绝对吞吐」，第三条会当场红。
+  ck('串行基线并发≈串行（1.0×）⇒ PASS', judge({ ...good, serial_rps: 185, rps: 185 }).state === 'PASS');
+  ck('并发退化到串行的 0.3× ⇒ FAIL（真缺陷形态：全局锁/同步阻塞）',
+    judge({ ...good, serial_rps: 100, rps: 30 }).state === 'FAIL', judge({ ...good, serial_rps: 100, rps: 30 }).state);
+  ck('有串行基线时不判绝对吞吐（3.19 req/s < 20 但比串行 3.0 高 ⇒ PASS，这是本轮修掉的那把错尺）',
+    judge({ ...good, rps: 3.19, serial_rps: 3.0 }).state === 'PASS', judge({ ...good, rps: 3.19, serial_rps: 3.0 }).state);
+  ck('串行基线为 0/不可读 ⇒ 退回绝对地板（不得把 0 当分母）',
+    judge({ ...good, rps: 5, serial_rps: 0 }).state === 'FAIL'
+    && judge({ ...good, rps: 30, serial_rps: undefined }).state === 'PASS');
+
   const pass = t.filter(([, ok]) => ok).length;
   for (const [n, ok] of t) console.log(`${ok ? 'PASS' : 'FAIL'}  ${n}`);
   console.log(`\nLOAD-SELFTEST ${pass === t.length ? 'PASS' : 'FAIL'} (${pass}/${t.length})`);
@@ -204,15 +242,33 @@ else {
   const duration = Number(get('--duration', '20'));
   const path = get('--path', '/api/health');
   const asJson = a.includes('--json');
+  // 【第一百一十二轮】--serial：先跑 1 VU 拿串行基线，再跑目标 VU 拿并发读数（CI 里打公网端点用这个）。
+  //   不给该旗标时行为与旧版逐字相同（本地自测/本地起服务的绝对地板仍生效），向后兼容。
+  const withSerial = a.includes('--serial');
 
   const pf = await preflight(base, path);
   let raw;
   if (!pf.reachable) {
     raw = { base, vu, reachable: false, error: pf.error };
   } else {
-    raw = await probe(base, vu, duration, path);
-    raw.reachable = true;
-    raw.preflight_status = pf.status;
+    if (withSerial) {
+      // 串行基线：1 VU 短跑（默认时长减半，最短 3s）——两个读数必须**同一端点上相邻取**，
+      // 否则「比串行慢」可能只是两次采样落在了不同的边缘节点上。
+      const serialDur = Math.max(3, Math.round(duration / 2));
+      console.log(`🔌 先取串行基线（VU=1 × ${serialDur}s）…`);
+      const s = await probe(base, 1, serialDur, path);
+      raw = await probe(base, vu, duration, path);
+      raw.reachable = true;
+      raw.preflight_status = pf.status;
+      raw.serial_rps = s.rps;
+      raw.serial_vu = 1;
+      raw.serial_duration_s = s.duration_s;
+      raw.serial_requests = s.requests;
+    } else {
+      raw = await probe(base, vu, duration, path);
+      raw.reachable = true;
+      raw.preflight_status = pf.status;
+    }
   }
   const v = judge(raw);
   if (asJson) { console.log(JSON.stringify(v, null, 1)); process.exit(v.rc); }

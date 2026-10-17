@@ -73,8 +73,8 @@ E2E 跑的是**生产构建 + `wrangler pages dev`**（不用 vite dev server，
 | 语义/向量检索档位 | ⚠️ 默认关闭 | `hybrid`/`semantic` 档 opt-in；语义邻接表需仓外 ONNX 权重，缺失时脚本 fail-closed 不产出（台账 #100） |
 | 同步 LLM 重试 / 熔断 / 配额 | ❌ 未实现 | 单次调用 + 8s 超时 + 失败降级，见 §5 |
 | 可随用户设置缩放的字号（rem/clamp） | ❌ 未适配 | 字阶在 `frontend/src/styles.css` 内以 `px` 书写；浏览器「最小字号」与系统缩放在部分内核下会绕过 px ⇒ 年长医生/强光环境的读数不保证。**未做**，登记为差距而非缺陷 |
-| 高对比度 / 强制颜色档（`prefers-contrast`、`forced-colors`） | ❌ 无 | 同一份 `frontend/src/styles.css` 未提供该档；诊室强光下无可切换的高对比形态 |
-| 可访问性自动检查（axe / jsx-a11y 一类规则集） | ❌ 无 | 依赖清单内无可访问性工具链，可达性目前**只靠人工走查**——因此本页的可达性行是「静态结构事实」，不是运行期审计结论（真实对比度/焦点顺序/读屏语义须注入浏览器才测得到） |
+| 高对比度 / 强制颜色档（`prefers-contrast`、`forced-colors`） | ✅ **已有两档**（第一百一十二轮） | `styles.css` 新增 `@media (prefers-contrast: more)` 与 `@media (forced-colors: active)`；**仍不主张**经实测验证的对比度达标（无 axe 实测），只主张「有该档且焦点环/边界在场」 |
+| 可访问性自动检查（axe / jsx-a11y 一类规则集） | ✅ **已接入 ESLint 侧**（第一百一十二轮） | `eslint-plugin-jsx-a11y@6.10.2` 的 `flatConfigs.recommended` 接进 `frontend/eslint.config.mjs`，随 `npm run lint:js`（`--max-warnings=0`）进阻断链；**仍不是运行期审计**——真实对比度/焦点顺序/读屏语义要注入浏览器（axe-core）才测得到，那半边仍未做 |
 | 读屏语义 | ⚠️ 部分 | 地标元素（main/nav/header 级）在场、界面图标不含 `<img>` 缺项；存在 1 处 `div` 绑定点击而无 `role`，读屏下不可达 |
 
 > 这三行是第九十七轮对标 `dequelabs/axe-core`／`adobe/react-spectrum` 时补的**边界声明**：本项目定位为竞赛/演示/研究原型，**不主张** WCAG 合规级可访问性（成本不划算），但必须把「当前不支持什么」写成一页——沉默会被评审默认读成「已支持」（项目红线：未回链的主张不得进入材料）。
@@ -94,8 +94,8 @@ E2E 跑的是**生产构建 + `wrangler pages dev`**（不用 vite dev server，
 
 | 面 | 当前支持到什么程度 | **明确不支持 / 未验证** | 依据 |
 |---|---|---|---|
-| 可访问性（a11y） | 语义地标与键盘可达性有基础覆盖 | **未做自动化 a11y 检查**：无 axe / jsx-a11y 依赖，**合规性未验证** | r94 收据 `a11y_toolchain`：a11y 相关依赖 0 项 |
-| 系统字号缩放 | — | **不支持系统缩放保障**：界面字号大量使用绝对 `px`，改系统字号时部分文本不随之变化 | r94 收据 `scalable_type`：`font-size: *px` 计数 **71** 处（#250 未做） |
+| 可访问性（a11y） | 语义地标与键盘可达性有基础覆盖 | **静态规则已机器化，运行期审计仍未做**：jsx-a11y recommended 进 ESLint 阻断链；**不做 WCAG 合规级主张**（不出 axe 浏览器注入报告） | 收据 `node frontend/tests/a11y_receipt_guard.mjs`（`a11y_toolchain` 项现算依赖清单） |
+| 系统字号缩放 | **已适配**（第一百一十二轮 `px`→`rem`，81 处逐值等价） | 浏览器「最小字号」与操作系统缩放现可生效；**仍未做**的是「按用户层级切换字阶」（如长者模式大字号档），那是另一件事 | 收据 `scalable_type`：`font-size: *px` **0** 处／`rem` 81 处，复算 `node frontend/tests/a11y_receipt_guard.mjs` |
 | 浏览器矩阵 | chromium 桌面 1440 与移动 390 双视口 | **只主张 chromium**：E2E 仅装 chromium，**不是**跨浏览器矩阵 | 见 §1 不兼容声明 |
 | 读屏 | 有 `lang` 属性与语义标签 | **未验证**：无读屏实测，**不得对外声称支持读屏** | r94 收据 `img_alt` 判「不适用」（页面无 `<img>`） |
 

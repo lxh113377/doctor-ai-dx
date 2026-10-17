@@ -153,6 +153,17 @@ jobs:
           test "$n" -ge 80   # 第二十二轮实测 87（git ls-files 六类后缀）；取下限而非现值，留删改余量
           codespell
           echo "[GATE:codespell-pass] 零拼写告警（误报须带原因登记进 .codespellrc）"
+      - name: 并发探针接线自证（r111-8 收口：仓内有件 ≠ 件在跑）
+        # 一手缺口：scripts/load_probe.mjs 从 r98 就在仓内，但**没有任何作业在跑它**，
+        # OBSERVABILITY §七 自承「活端点并发读数仍需人工触发」。本步把「接线」本身变成判据——
+        # 检查 live-smoke.yml 里 live-concurrency 作业真的存在、真的调用、且调用行带 --serial
+        # （不带 --serial 就是判绝对吞吐地板 20 req/s，那是 localhost 经验值，公网端点会恒红/恒绿）。
+        # 另含 8 条反例腿：删作业名/删调用行/去 --serial/自写阈值/去 serial 分支/去地板比/腿不足 各一条。
+        run: |
+          set -eu
+          python scripts/load_probe_wiring.py --selftest
+          python scripts/load_probe_wiring.py
+
       - name: 排班⇄巡检覆盖对账（在册 cron 作业必须每一条都被新鲜度巡检覆盖，静态零网络）
         # 第四十五轮立的阻断步：r44 看到"四条排班作业 0 条 run"之后，我只给两条作业补了
         # 巡检——dep-triage 又躺了一轮才被同一招抓到。**"漏了哪一半"不该靠人记名字**，故两边集合现算求差。

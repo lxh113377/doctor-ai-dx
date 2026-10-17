@@ -9,6 +9,7 @@ import js from '@eslint/js'
 import react from 'eslint-plugin-react'
 import reactHooks from 'eslint-plugin-react-hooks'
 import reactRefresh from 'eslint-plugin-react-refresh'
+import jsxA11y from 'eslint-plugin-jsx-a11y'
 import globals from 'globals'
 
 export default [
@@ -41,8 +42,14 @@ export default [
 
   {
     files: ['src/**/*.{js,jsx}'],
-    plugins: { react, 'react-hooks': reactHooks, 'react-refresh': reactRefresh },
+    plugins: { react, 'react-hooks': reactHooks, 'react-refresh': reactRefresh, 'jsx-a11y': jsxA11y },
     rules: {
+      // 可访问性判据（第一百一十二轮）：此前 docs/COMPATIBILITY.md §6/§7.5 自陈「未做自动化 a11y 检查，
+      //   只靠人工走查」——人工走查不会在下次改码时变红，是「有 X」与「X 如实工作」拆成两件事的同族。
+      //   这里接 flat config 的 recommended 段：让「div 绑 onClick 无 role / aria 写错 / label 未关联」
+      //   这类**写法上就错**的缺陷在 lint:js 判红。刻意只取 recommended 全量（不追 WCAG 合规级）：
+      //   §6 已如实声明本原型不主张 WCAG 合规，判据只管机制性错误，不制造风格刑。
+      ...jsxA11y.flatConfigs.recommended.rules,
       // ESLint 核心的 no-unused-vars 不计 JSX 引用（实测：渲染中的 ModeBadge 被误报未使用）。
       // 缺这两条 ⇒ 任何组件被"用到"仍会判红，逼人删掉在用 import ⇒ 白屏。故必须显式接线。
       'react/jsx-uses-vars': 'error',

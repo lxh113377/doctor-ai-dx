@@ -29,7 +29,7 @@
     "test:api": "node tests/api_contract_guard.mjs",
     "test:error-parity": "node tests/error_parity_guard.mjs",
     "test:bundle": "node tests/bundle_size_guard.mjs",
-    "test": "npm run test:smoke && npm run test:engine && npm run test:accuracy && npm run test:gold2 && npm run test:abstain && npm run test:scope && npm run test:table && npm run test:negation && npm run test:retrieval && npm run test:retrieval-parity && npm run test:repetition && npm run test:register && npm run test:semantic && npm run test:live && npm run test:contract && npm run test:fhir && npm run test:kb && npm run test:route && npm run test:privacy && npm run test:env && npm run test:limits && npm run test:docs && npm run test:evalcard && npm run test:api && npm run test:error-parity && npm run test:components && npm run test:version && npm run test:openapi-md && npm run test:cds && npm run test:intents && npm run test:chat && npm run test:admin && npm run test:d1 && npm run test:agent-contract && npm run test:stats-reconcile && npm run test:handoff-triggers && npm run test:modules && npm run test:docs-surface && npm run test:scores && npm run test:conformance && npm run test:conformance-entry && npm run test:wiring && npm run test:trace-version && npm run test:latency",
+    "test": "npm run test:smoke && npm run test:engine && npm run test:accuracy && npm run test:gold2 && npm run test:abstain && npm run test:scope && npm run test:table && npm run test:negation && npm run test:retrieval && npm run test:retrieval-parity && npm run test:repetition && npm run test:register && npm run test:semantic && npm run test:live && npm run test:contract && npm run test:fhir && npm run test:kb && npm run test:route && npm run test:privacy && npm run test:env && npm run test:limits && npm run test:docs && npm run test:evalcard && npm run test:api && npm run test:error-parity && npm run test:components && npm run test:version && npm run test:openapi-md && npm run test:cds && npm run test:intents && npm run test:chat && npm run test:admin && npm run test:d1 && npm run test:agent-contract && npm run test:stats-reconcile && npm run test:handoff-triggers && npm run test:modules && npm run test:docs-surface && npm run test:scores && npm run test:conformance && npm run test:conformance-entry && npm run test:wiring && npm run test:trace-version && npm run test:latency && npm run test:a11y",
     "test:retrieval-parity": "node tests/retriever_parity.mjs",
     "test:repetition": "node tests/repetition_guard.mjs",
     "test:components": "vitest run",
@@ -97,7 +97,9 @@
     "test:conformance-entry": "node tests/conformance_entry_guard.mjs",
     "test:wiring": "node tests/wiring_guard.mjs",
     "test:trace-version": "node tests/trace_version_guard.mjs",
-    "test:latency": "node tests/latency_guard.mjs"
+    "test:latency": "node tests/latency_guard.mjs",
+    "test:a11y": "node tests/a11y_receipt_guard.mjs",
+    "test:a11y": "node tests/a11y_receipt_guard.mjs"
   },
   "dependencies": {
     "react": "^19.3.0",
@@ -112,6 +114,7 @@
     "@vitejs/plugin-react": "^6.1.1",
     "c8": "^12.0.0",
     "eslint": "^9.39.4",
+    "eslint-plugin-jsx-a11y": "^6.10.2",
     "eslint-plugin-react": "^7.37.5",
     "eslint-plugin-react-hooks": "^7.1.1",
     "eslint-plugin-react-refresh": "^0.5.7",
