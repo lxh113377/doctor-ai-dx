@@ -65,8 +65,24 @@ node examples/conformance_basic.mjs --base https://doctor-ai-dx.pages.dev
 - 反例腿：`node tests/conformance_guard.mjs --selftest`（每条判据配坏样本，证判据有牙；例数由末行现算）。
 
 **零输入不记绿**：用例文件读不到、`invocations` 为空、处理器取不到 ⇒ 一律 `rc=2 BROKEN`，不读成"没有要验的"。
+传给 `--base` 的部署不可达时同样 `rc=2 BROKEN`，并给出可读原因（**不打栈帧**——本仓红线：不展示堆栈与内部路径；
+集成方看到栈会以为套件坏了，而不是「我给的地址没起服务」）。
 
-## 4. 与既有守卫的分工（四件不重叠）
+### 入口脚本自己也有判据（第一百一十一轮）
+
+`examples/conformance_basic.mjs` 是**仓外唯一会跑的那一条命令**，所以它「会不会如实转达结论」本身要被验——
+判据本体 25 面全绿只证明「判据会判」，不证明「入口把那个结论传出去了」。守卫：
+`frontend/tests/conformance_entry_guard.mjs`（进 `npm test` 链），真起子进程跑入口本体，断言三态都被如实转达：
+
+| 面 | 期望 | 为什么要这一面 |
+|---|---|---|
+| 真面离线 | `rc=0` 且末行带 `[GATE:conformance:pass]` | 不能只看退出码：入口恒 0 时退出码永远「成功」 |
+| 取数面坏（`--base` 不可达） | `rc=2` + `broken` 标记 + **零栈帧** | 坏输入被读成通过＝假绿；栈帧＝违反对外红线 |
+| 子进程没起来/超时 | 判红（`status===null` 不得读成合规） | 「没跑」与「跑过且通过」是相反的两件事 |
+
+反例腿把入口的 rc 传递换成恒 0 的合成替身 ⇒ 必须判红（证这把尺有牙）。
+
+## 4. 与既有守卫的分工（五件不重叠）
 
 | 件 | 管什么 |
 |---|---|
@@ -74,8 +90,9 @@ node examples/conformance_basic.mjs --base https://doctor-ai-dx.pages.dev
 | `frontend/tests/cds_hooks_guard.mjs` | CDS **双端行为**（权威 JS 与镜像 Py 逐条比对） |
 | `frontend/tests/api_contract_guard.mjs` | **路由 ⇄ openapi** 双向在场 |
 | `frontend/tests/conformance_guard.mjs` | **对外可被第三方自验的契约面**（一份声明式 JSON + 一条命令） |
+| `frontend/tests/conformance_entry_guard.mjs` | **入口脚本如实转达结论**（rc 三态 + 零栈帧；判据本体绿 ≠ 入口会转达） |
 
-四件都可能对同一个字段下断言，但**取数面不同**：前三件各自站在"实现侧"看自己，本件站在"集成方侧"
+五件都可能对同一个字段下断言，但**取数面不同**：前三件各自站在"实现侧"看自己，conformance 两件站在"集成方侧"
 看对外承诺。本件的第一版就是靠这一点当场抓出两个自身缺陷（把 FHIR 的 `value[x]` 选择类型误当成必填
 `valueString`；把 Pages 的两棵文件路由当成一棵），两处都是"站在实现侧看不出来"的那类。
 
@@ -84,5 +101,6 @@ node examples/conformance_basic.mjs --base https://doctor-ai-dx.pages.dev
 ```bash
 cd frontend && node tests/conformance_guard.mjs --selftest   # 反例腿（离线）
 cd frontend && node tests/conformance_guard.mjs              # 真面（离线，直驱处理器）
+cd frontend && node tests/conformance_entry_guard.mjs        # 入口脚本 rc 传递（真起子进程）
 cd .. && node examples/conformance_basic.mjs --base https://doctor-ai-dx.pages.dev   # 线上
 ```

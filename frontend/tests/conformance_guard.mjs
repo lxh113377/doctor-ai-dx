@@ -319,11 +319,37 @@ async function main() {
   // 取数面：不给 --base 就直驱权威处理器（零网络零密钥）；给了就打真实部署（第三方自验线上）。
   let call, callCds
   if (base) {
+    // 可达性预检（第一百一十一轮一手修）：旧写法直接把 fetch 抛出的异常散到 main 外面，
+    // 结果是**未捕获异常 + 栈帧**（实测 `--base http://127.0.0.1:9` ⇒ Node 崩栈，rc=1 但不是本件定义的 rc=2），
+    // 既违反本件自己写的「取数面坏 ⇒ rc=2 BROKEN」，也违反本仓红线「不展示堆栈/内部路径」。
+    // 更实在的后果：第三方（本件的目标读者）看到栈帧会以为「套件坏了」，而不是「我给的地址没起服务」。
+    // 故先单探一次健康端点：不可达 ⇒ 明确 BROKEN 并给出可读原因，不打任何栈。
+    const healthUrl = base.replace(/\/$/, "") + "/api/health"
+    let probeOk = false, probeWhy = ""
+    try {
+      const ctl = new AbortController()
+      const timer = setTimeout(() => ctl.abort(), 10000)
+      const res = await fetch(healthUrl, { signal: ctl.signal })
+      clearTimeout(timer)
+      probeOk = true
+      probeWhy = "HTTP " + res.status
+    } catch (e) {
+      probeWhy = String(e && e.message ? e.message : e).slice(0, 120)
+    }
+    if (!probeOk) {
+      console.error(`[GATE:conformance:broken] --base 不可达（${healthUrl}：${probeWhy}）⇒ 无任何契约读数，不得读成通过｜rc=2`)
+      process.exit(2)
+    }
     const doFetch = async (path, init) => {
-      const res = await fetch(base.replace(/\/$/, "") + path, init)
-      let body
-      try { body = JSON.parse(await res.text()) } catch { body = null }
-      return { status: res.status, body, headers: Object.fromEntries(res.headers) }
+      try {
+        const res = await fetch(base.replace(/\/$/, "") + path, init)
+        let body
+        try { body = JSON.parse(await res.text()) } catch { body = null }
+        return { status: res.status, body, headers: Object.fromEntries(res.headers) }
+      } catch (e) {
+        // 单条请求中途失败不得崩栈：折成 status=0 的「传输失败」，让上层断言逐条判红并点名。
+        return { status: 0, body: null, headers: {}, transport_error: String(e && e.message ? e.message : e).slice(0, 120) }
+      }
     }
     call = (path, init) => doFetch(path, init)
     callCds = (path, init) => doFetch(path, init)

@@ -13,15 +13,19 @@
    缺失值若被当成 `0ms`，会让**所有**阈值"通过"，那是最危险的假绿。判据里先拒空再转数。
 3. **只读已入库产物**。本面不跑线上、不改报告；它只负责让那个数变成会红的判据。
 
-## 二、两条判据的分工（阈值不共享）
+## 二、三条判据的分工（阈值不共享）
 
 | 判据 | 量什么 | 取数面 | 阈值表 |
 |---|---|---|---|
 | `scripts/observe_slo_check.mjs` | **单请求时延**（P50/P95/max） | live 评测报告（**仓外**：项目根仓的评测目录） | `SLO`：P95 ≤ 10,000ms、硬超时 8,000ms、余量 ≥ 25%、n ≥ 10、live 纯度 |
-| `scripts/load_probe.mjs` | **并发下的吞吐/错误率** | 活端点（`--base` + `--path`） | `LOAD_SLO`：吞吐 ≥ 20 req/s、错误率 ≤ 2%（>0.5% 进 WARN）、并发 P95 ≤ 10,000ms |
+| `scripts/load_probe.mjs` | **并发下的吞吐/错误率**（活端点，网络面） | 活端点（`--base` + `--path`） | `LOAD_SLO`：吞吐 ≥ 20 req/s、错误率 ≤ 2%（>0.5% 进 WARN）、并发 P95 ≤ 10,000ms |
+| `frontend/tests/latency_guard.mjs`（并发段） | **并发下代码路径退化 + 请求串扰**（直驱面，零网络） | 直驱 Functions 处理器（`npm test` 常驻） | `CONC`：并发/单 worker ≥ 0.5×（低于即并发更慢）、错误率 ≤ 2%、三病例交错 20 轮零串扰 |
 
-> 两张表**刻意不合并**：一处改动同时动「单请求时延」与「并发吞吐」两个语义，
+> 三张表**刻意不合并**：一处改动同时动「单请求时延」与「并发吞吐」两个语义，
 > 就是本项目台账 #168「两份尺」的同族病。
+> 第一、二行（`observe_slo_check` / `load_probe`）**也不合并**（原立论保留）；第三行（`latency_guard` 并发段）与第二行
+> 同样不合并：前者量**代码路径在并发下有没有退化/串扰**（直驱、无网络、进 `npm test` 阻断链），后者量
+> **活端点在网络堆栈下的吞吐**（需起服务、人工触发）。合成一个数就是「直驱读数被当成线上并发承诺」的假绿。
 
 ## 三、阈值出处（唯一真相源）
 
@@ -47,6 +51,8 @@ node scripts/observe_slo_check.mjs --report <评测报告绝对路径>/eval_repo
 node scripts/observe_slo_check.mjs --selftest     # 17/17
 python scripts/synth_case_pipeline.py --selftest   # 8/8
 node scripts/load_probe.mjs --selftest            # 18/18
+# 并发面判据（直驱、零网络零密钥；进 npm test 链，每次提交都跑）
+node frontend/tests/latency_guard.mjs             # 20 面（3 面时延 + 2 面并发 + 3 病例零串扰 + 12 条红态自证腿）
 
 # 并发探针（默认不联网；不给 --base 直接退 2）
 node scripts/load_probe.mjs --base http://127.0.0.1:8788 --vu 8 --duration 20
@@ -60,7 +66,8 @@ node scripts/load_probe.mjs --base http://127.0.0.1:8788 --vu 8 --duration 20
 | 报告生成时延 | P50 3,590ms / P95 4,199ms | 同上，n=6 |
 | P95 距硬超时余量 | **42.5%**（阈值 25%） | `observe_slo_check` 计算 |
 | 脱敏红线 | 31 条评测病例**脱敏零命中**、结构完整、免责声明在位 | `synth_case_pipeline.py --check` |
-| 并发探针 | 旧读数（VU8 / 185 req/s）出自项目根仓的探针件（**仓外，本仓解析不到）** | 2026-10-04 已把探针搬进本仓（`scripts/load_probe.mjs`），该数字须以本仓重跑为准 | 2026-10-04 已把探针搬进本仓（`scripts/load_probe.mjs`），该数字须以本仓重跑为准 |
+| 并发探针（活端点） | 旧读数（VU8 / 185 req/s）出自项目根仓的探针件（**仓外，本仓解析不到**）⇒ **不可引用** | 2026-10-04 已把探针搬进本仓（`scripts/load_probe.mjs`）；本仓复算命令见 §四，**本表不抄读数** |
+| 并发退化（直驱面，常驻判据） | 读数是机器相关量 ⇒ **本表不抄**；判据每轮在 `npm test` 里现算并打印（并发/单 worker 比值、错误率、串扰命中数） | `frontend/tests/latency_guard.mjs`（第一百一十一轮起） |
 
 ## 六、四态退出码（不折叠）
 
@@ -75,4 +82,10 @@ node scripts/load_probe.mjs --base http://127.0.0.1:8788 --vu 8 --duration 20
 
 - **无分布式追踪**：无 trace/span 概念，端到端分段时延靠 `eval_report_live.json` 的两个分面（dx / workup_report）近似。
 - **无指标持久化**：`observe.js` 只做单次请求内的记录，没有时间序列存储，也就没有告警阈值的历史基线。
-- **无负载读数基线**：`load_probe.mjs` 已进仓，但**尚未在 CI 里跑**，因此并发读数目前是人工触发、非守门。
+- **活端点并发读数仍非守门**：`load_probe.mjs --base`（打真实 HTTP 端点、量网络堆栈下的吞吐）需要在 CI 里起服务，
+  当前仍是人工触发。**但「并发面会不会退化」这一维已不再是盲区**——`frontend/tests/latency_guard.mjs` 自第一百一十一轮起
+  带并发判据：三面直驱 Functions 处理器（零网络零密钥），判**并发退化**（并发吞吐应 ≥ 单 worker 的 0.5 倍；
+  低于此即全局锁/同步阻塞/资源争用征兆）、**错误率**（≤2%）与**并发串扰**（三病例交错 20 轮，每条响应必须与串行基线
+  逐字节相同——单例上下文被覆盖会当场抓到）。它进 `npm test` 链，所以每次提交都在跑。
+  ⇒ 两条尺的分工不变：`load_probe` 量**网络面吞吐**（人工），`latency_guard` 的并发段量**代码路径退化**（常驻）。
+  **不把后者说成「并发 P95 承诺」**：直驱面没有网络与调度开销，其读数不可外推到线上。
