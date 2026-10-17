@@ -130,6 +130,90 @@ export function judgeDeterministic(a, b) {
   return a === b ? [] : ["同输入两次响应不一致（含时钟/随机量，或经了模型）"]
 }
 
+// FHIR 的**确定性分档**（第一百一十轮，线上实测逼出来的修正）：
+// 一手起因（现算证据，非推演）：第一百零九轮交付的 conformance kit 打线上 `--base` 跑一次，
+// 25 面里唯一红项就是本件的 `FHIR-DETERMINISTIC`（`work/_r110_conf_online.log` 末行 matched=24 mismatched=1）。
+// 两轮对照 curl 同一请求取到的 13 处差异**全部落在模型产出面**（note 文本改写、differential 次序换位、
+// evidence 数 1↔2、code.coding 时有时无、诊断名换写法）——这不是"实现里有随机量"，
+// 是**判据越界**：r109 报告与 docs/CONFORMANCE.md §2 都明写「不断言任何结论文本，live 走模型，
+// 同输入两次不同是常态」，而整包逐字节断言把模型输出也拉进了同一把尺。断言措辞＝测模型心情。
+//
+// 分档后的对外承诺（两模都过，各测各的）：
+//   离线（mode=rule-fallback，不经模型）⇒ 整包逐字节相同（保留原强度，这是 fhir.js 纯函数性的真判据）；
+//   线上（mode=live）⇒ 只断言**不经模型的那个子面**逐字节相同，即集成方可依赖的确定性：
+//     Bundle 头（resourceType/type/identifier）+ Patient 身份与 syntheticCase + Encounter 骨架与红旗 reasonCode
+//     + Observation/flag-summary（红旗面全量，规则层产物）+ DiagnosticReport 的固定骨架与终审前缀。
+//   模型产出面（Condition 文本与数量、症状 Observation 条目、citation 条目）只做**形状**断言（judgeFhir 已覆盖），
+//   不比字节——"缓存/幂等"这句对外承诺因此只对规则层产物成立，这是诚实边界而非放宽。
+const DET_ENTRY_IDS = ["flag-summary", "dx-summary"]
+const SKEL_FIELDS = {
+  Patient: ["resourceType", "id", "identifier", "gender"],
+  Encounter: ["resourceType", "id", "status", "class", "subject", "reasonCode", "reasonReference"],
+  DiagnosticReport: ["resourceType", "id", "code", "subject", "resultsInterpreter"],
+}
+
+/** 把 Bundle 投影成确定性子面（不经模型那部分）。纯函数、可注入，反例腿靠它。 */
+export function fhirSkeleton(bundle) {
+  if (!bundle || typeof bundle !== "object") return null
+  const entries = Array.isArray(bundle.entry) ? bundle.entry : []
+  const pick = (r, fields) => {
+    const o = {}
+    for (const k of fields) if (r[k] !== undefined) o[k] = r[k]
+    return o
+  }
+  const out = {
+    resourceType: bundle.resourceType,
+    type: bundle.type,
+    identifier: bundle.identifier,
+    entry: [],
+  }
+  for (const e of entries) {
+    const r = e && e.resource
+    if (!r || typeof r !== "object") continue
+    const rid = String(r.id || "")
+    if (r.resourceType === "Patient" || r.resourceType === "Encounter" || r.resourceType === "DiagnosticReport") {
+      const fields = SKEL_FIELDS[r.resourceType] || []
+      const proj = pick(r, fields)
+      if (r.resourceType === "Patient") {
+        const exts = (Array.isArray(r.extension) ? r.extension : []).filter((x) => x && /syntheticCase$/.test(String(x.url || "")))
+        if (exts.length) proj.extension = exts
+      }
+      if (r.resourceType === "DiagnosticReport") {
+        const c = String(r.conclusion || "")
+        proj.conclusion_head = c.slice(0, 12) // 只取终审前缀段：后半句是模型无关的红旗计数，仍在 code/红旗面覆盖
+      }
+      out.entry.push({ id: rid, resource: proj })
+    } else if (r.resourceType === "Observation" && DET_ENTRY_IDS.includes(rid)) {
+      out.entry.push({ id: rid, resource: r }) // 红旗摘要＝规则层全量产物，整条都该确定
+    }
+  }
+  return out
+}
+
+/** 确定性子面比对：两侧投影后逐字节，差异给到字段路径（诊断友好）。 */
+export function judgeFhirDeterministic(a, b) {
+  const sa = fhirSkeleton(a), sb = fhirSkeleton(b)
+  if (!sa || !sb) return ["Bundle 为空 ⇒ 无法投影确定性子面（零输入不记绿）"]
+  if (sa.entry.length === 0) return ["确定性子面投影到 0 条 entry ⇒ 骨架不存在，不得读成「两次相同」"]
+  const ka = JSON.stringify(sa), kb = JSON.stringify(sb)
+  if (ka === kb) return []
+  const paths = []
+  const walk = (x, y, p) => {
+    if (x === y) return
+    if (Array.isArray(x) && Array.isArray(y)) {
+      if (x.length !== y.length) { paths.push(`${p} 条数 ${x.length}≠${y.length}`); return }
+      x.forEach((v, i) => walk(v, y[i], `${p}[${i}]`)); return
+    }
+    if (x && y && typeof x === "object" && typeof y === "object") {
+      for (const k of new Set([...Object.keys(x), ...Object.keys(y)])) walk(x[k], y[k], `${p}.${k}`)
+      return
+    }
+    paths.push(p)
+  }
+  walk(sa, sb, "skeleton")
+  return [`确定性子面两次不一致：${paths.slice(0, 4).join(" / ")}`]
+}
+
 export function selftest() {
   const cases = []
   const push = (n, ok, got) => cases.push([n, ok, got])
@@ -185,6 +269,28 @@ export function selftest() {
     judgeEnvelope(spec, { body: { code: 422, message: "x", detail: [] } }).length > 0, ">0")
   push("反例腿-错误文案含内部路径 ⇒ 判红", judgeEnvelope(spec, { body: { code: 500, message: "file:///app/x" } }).length > 0, ">0")
   push("反例腿-同输入两次不同 ⇒ 判红（确定性）", judgeDeterministic("a", "b").length > 0, ">0")
+  // —— FHIR 分档确定性（第一百一十轮：判据越界修正的正反两向）——
+  const mkBundle = (over) => ({
+    resourceType: "Bundle", type: "collection", identifier: { system: "urn:s", value: "bundle-c1" },
+    entry: [
+      { fullUrl: "urn:p", resource: { resourceType: "Patient", id: "pat-c1", identifier: [{ system: "urn:c", value: "c1" }], gender: "male", extension: [{ url: spec.synthetic_extension_url, valueBoolean: true }] } },
+      { fullUrl: "urn:e", resource: { resourceType: "Encounter", id: "enc-c1", status: "finished", reasonCode: [{ text: "红旗提示：ACS 高危" }] } },
+      { fullUrl: "urn:f", resource: { resourceType: "Observation", id: "flag-summary", status: "final", valueCodeableConcept: { text: "压榨样胸痛" } } },
+      { fullUrl: "urn:cnd", resource: { resourceType: "Condition", id: "cond-differential-1", code: { text: "胃食管反流病" }, note: [{ text: "模型改写 A" }] } },
+      { fullUrl: "urn:d", resource: { resourceType: "DiagnosticReport", id: "dx-summary", status: "final", conclusion: "AI 辅助参考 · 医生终审：本资源为决策支持输出" } },
+    ].concat(over || []),
+  })
+  const skelA = mkBundle(), skelB = mkBundle()
+  push("正例-live 分档：模型产出面（Condition 文本/数量）不同而确定性子面相同 ⇒ 判绿",
+    (() => { skelB.entry[3].resource.note = [{ text: "模型改写 B" }]; skelB.entry.push({ fullUrl: "urn:cnd2", resource: { resourceType: "Condition", id: "cond-differential-2", code: { text: "肋软骨炎" } } }); return judgeFhirDeterministic(skelA, skelB).length === 0 })(), "0")
+  push("反例腿-时钟注入确定性子面 ⇒ 判红（真违例必须抓到，不是放宽）",
+    judgeFhirDeterministic(skelA, mkBundle([{ fullUrl: "urn:x", resource: { resourceType: "Observation", id: "flag-summary", status: "final", timestamp: "2026-10-16" } }])).length > 0, ">0")
+  push("反例腿-红旗面文本漂移 ⇒ 判红（flag-summary 是规则层产物，整条都该定）",
+    (() => { const b2 = mkBundle(); b2.entry[2].resource.valueCodeableConcept.text = "换了别的症状"; return judgeFhirDeterministic(skelA, b2).length > 0 })(), ">0")
+  push("反例腿-投影到 0 条 entry ⇒ 判红不记绿（骨架不存在≠两次相同）",
+    judgeFhirDeterministic({ resourceType: "Bundle", type: "collection", entry: [] }, { resourceType: "Bundle", type: "collection", entry: [] }).length > 0, ">0")
+  push("正例-离线整包：同 Bundle 两侧投影等价（纯函数面未退化）",
+    judgeFhirDeterministic(mkBundle(), JSON.parse(JSON.stringify(mkBundle()))).length === 0, "0")
 
   let bad = 0
   for (const [n, ok, got] of cases) { console.log(`${ok ? "  pass" : "  FAIL"}  ${n}${ok ? "" : `（实得 ${String(got).slice(0, 60)}）`}`); if (!ok) bad++ }
@@ -299,8 +405,16 @@ async function main() {
     fErrs.length === 0, fErrs.slice(0, 3).join(" | "))
   if (bundle) {
     const dx2 = await call(spec.fhir.path, jsonInit(spec.fhir.request))
-    const same = JSON.stringify(bundle) === JSON.stringify(dx2.body && dx2.body.data && dx2.body.data.fhir)
-    check("FHIR-DETERMINISTIC", "同一请求两次 FHIR 逐字节相同（集成方可缓存/幂等）", same)
+    const bundle2 = dx2.body && dx2.body.data && dx2.body.data.fhir
+    const mode1 = dx2.body && dx2.body.data && dx2.body.data.mode
+    if (!base && mode1 !== "live") {
+      // 离线/降级链路：不经模型 ⇒ 整包逐字节是 fhir.js 纯函数性的真判据（r109 强度保留）
+      check("FHIR-DETERMINISTIC", "rule-fallback：两次整包 Bundle 逐字节相同（纯函数）", JSON.stringify(bundle) === JSON.stringify(bundle2))
+    } else {
+      const errs = judgeFhirDeterministic(bundle, bundle2)
+      check("FHIR-DETERMINISTIC", `live：确定性子面（Bundle 头／Patient／Encounter／flag-summary／报告骨架）逐字节相同；模型产出面只断形状——见 docs/CONFORMANCE.md §2`,
+        errs.length === 0, errs.slice(0, 2).join(" | "))
+    }
   }
 
   console.log("== 5. 信封与健康面（集成方启动自检）==")

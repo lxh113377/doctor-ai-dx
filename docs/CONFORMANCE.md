@@ -30,6 +30,7 @@ node examples/conformance_basic.mjs --base https://doctor-ai-dx.pages.dev
 | CDS Discovery | `GET /cds-services` 出规范形；服务集与声明**全等**（多一个也是漂移）；每个服务带规范要求的五个字段 | 集成方第一步打的就是这个端点，它决定后续打哪些 URL |
 | CDS 调用 | 卡片只含规范字段；`indicator` 只在规范三档内；`summary` 不超长；`source.label` 含「医生终审」；`overrideReasons` 非空 | 卡片字段是集成方渲染的输入；「医生可驳回」的承载位必须存在 |
 | CDS 确定性 | 同输入两次**逐字节相同** | 集成方要缓存/幂等，不能每次拿到不同的卡 |
+| FHIR 确定性（分档） | `rule-fallback` ⇒ **整包**逐字节相同；`live` ⇒ 只有**确定性子面**逐字节相同（Bundle 头／Patient／Encounter／`Observation/flag-summary`／DiagnosticReport 骨架），模型产出面只断形状 | 集成方能缓存的是规则层产物；模型文本本来就不是幂等输入 |
 | CDS 拒绝腿 | 六种坏请求各自的**状态码**，错误体恒为 `{code,message}` 且文案零泄漏 | 集成方按这张表写分支，不看源码 |
 | FHIR-light | `data.fhir` 是 `Bundle(collection)`，含 Patient/Encounter/Condition/Observation/DiagnosticReport；引用可解析；**零时钟字段**；Patient 带 `syntheticCase=true`；DiagnosticReport 结论以「AI 辅助参考 · 医生终审」开头 | 下游 HIS 按标准资源解析；零时钟字段是「同输入逐字节相同」的前提；`syntheticCase` 让下游区分演示与真实数据 |
 | 信封与健康面 | `/api/health`、`/api/cases` 的形状；未知路径 404 的 `{code,message}` 形与零泄漏 | 集成方的启动自检与错误分支 |
@@ -38,6 +39,17 @@ node examples/conformance_basic.mjs --base https://doctor-ai-dx.pages.dev
 
 - **不断言任何结论文本**。`mode=live` 时走大模型，同输入两次输出不同是常态——断言措辞＝测模型心情。
   契约面只断言结构、字段、状态码、确定性与红线承载位。
+- **不把「逐字节相同」许诺给模型产出面**（第一百一十轮线上实测写进文档，起因见下）。
+  本仓唯一一次"承诺越界"是一手抓出来的：第 109 轮交付本套件后，第一次打线上 `--base` 就跑出
+  `matched=24 mismatched=1`，唯一红项是 FHIR 整包逐字节。两轮对照同一请求取到 13 处差异，
+  **全部落在模型产出面**（支持理由改写、鉴别诊断次序换位、evidence 数 1↔2、`code.coding` 时有时无）。
+  判据把模型输出也拉进了「逐字节」这把尺，而本文 §2 自己就写着"不断言结论文本"——
+  那是**判据越界**，不是实现里有随机量。修法＝分档（上表第二行），不是把这条断言整条删掉：
+  规则层产物（尤其 `Observation/flag-summary`）在 live 下也必须逐字节定，那是红旗独立于模型这条红线
+  在对外面上的可验形态。反例腿各配一条：往确定性子面注入 `timestamp` 必红、红旗文本漂移必红、
+  投影到 0 条 entry 必红（骨架不存在≠两次相同）。
+- **`integration 幂等/缓存`这句对外承诺的范围＝确定性子面**，不是整个 Bundle。集成方若要缓存 live 的
+  诊断文本，请当作"非幂等内容"处理（本仓不给它 ETag，也不承诺它稳定）。
 - **不验临床正确性**。诊断排序的自洽度在 `docs/EVAL_CARD.md`（口径限定在那里，不在本页）。
 - **不验认证/授权**（本仓不提供，见 `docs/INTEGRATION.md` §4）。
 - **不声称符合官方 Profile**：FHIR 是 light 子集，CDS 面不申请 `prefetch`。

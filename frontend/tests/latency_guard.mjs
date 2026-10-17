@@ -72,5 +72,24 @@ for (const [name, call] of faces) {
   const lim = LIMITS[name]
   check(`${name}：p95=${p95.toFixed(2)}ms ≤ ${lim.p95}ms（p50=${p50.toFixed(2)} max=${max.toFixed(2)}，n=${steady.length}）`, p95 <= lim.p95)
 }
+
+// —— 红态自证（第一百一十轮，r109-3 收口）：地板线判据必须自带「会红」的证据 ——
+// 三面取样循环只产 PASS 行：一次全语料线性扫描式的退化在本文件里没有任何东西会红。
+// 用**合成毫秒样本**（不真实计时 ⇒ 不受本机负载影响）驱动与真面同一条 stat() 判定路径，
+// 期望红的两条必须真红、对照腿必须绿——**期望红 ≠ 让本门禁红**：自证腿的结果独立计数，
+// 任何一条不符合期望（该红不红／该绿不绿）才把整个门禁判红（判据自己坏＝红，与 r107 红态名册同口径）。
+const redOk = (name, expectPass, got, detail) => {
+  const ok = got === expectPass
+  check(name + ` ⇒ ${expectPass ? "判绿" : "判红"}（${ok ? "符合期望" : "不符合期望"}）`, ok, detail)
+}
+{
+  const slow = stat(Array.from({ length: 60 }, () => 500))
+  redOk("红态腿-人为慢调用（p95=500ms vs 上限 10ms）", false, slow.p95 <= 10, `p95=${slow.p95.toFixed(2)}ms`)
+  const empty = stat([])
+  redOk("红态腿-零样本不得读成达标（undefined<=x 恒 false）", false, empty.p95 <= 10, `p95=${String(empty.p95)}`)
+  const fast = stat(Array.from({ length: 60 }, () => 0.5))
+  redOk("对照腿-快样本（p95=0.5ms vs 上限 10ms）", true, fast.p95 <= 10, `p95=${fast.p95.toFixed(2)}ms`)
+}
+
 console.log(`[GATE:latency:${fail === 0 ? "pass" : "fail"}] matched=${pass} mismatched=${fail}｜faces=${faces.length}×${N}｜rc=${fail === 0 ? 0 : 1}`)
 process.exit(fail === 0 ? 0 : 1)
