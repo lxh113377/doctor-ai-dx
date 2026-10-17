@@ -51,7 +51,7 @@ node scripts/observe_slo_check.mjs --report <评测报告绝对路径>/eval_repo
 # 判据自检（离线，含方向相反的反例腿）
 node scripts/observe_slo_check.mjs --selftest     # 17/17
 python scripts/synth_case_pipeline.py --selftest   # 8/8
-node scripts/load_probe.mjs --selftest            # 18/18
+node scripts/load_probe.mjs --selftest            # 条数只认末行 LOAD-SELFTEST 实跑读数，本文不抄（第一百一十二轮加过 4 条串行退化腿）
 # 并发面判据（直驱、零网络零密钥；进 npm test 链，每次提交都跑）
 node frontend/tests/latency_guard.mjs             # 20 面（3 面时延 + 2 面并发 + 3 病例零串扰 + 12 条红态自证腿）
 

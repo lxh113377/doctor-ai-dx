@@ -138,7 +138,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           persist-credentials: false
-      - name: 判据先自证（离线 18 条腿，含「全失败时拒绝数不得当吞吐」）
+      - name: 判据先自证（离线；条数由末行现算打印，步名不抄数——手抄数一轮就过期，#106 同族）
         run: node scripts/load_probe.mjs --selftest
       - name: 打线上 /api/health 量并发（VU8 × 20s，带串行基线）
         # --serial 是关键（第一百一十二轮一手实测推翻了不用它的版本）：
