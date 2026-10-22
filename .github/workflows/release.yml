@@ -151,7 +151,7 @@ jobs:
 
       - name: 准备构建器（buildx；build-push-action 的前置）
         if: ${{ startsWith(github.ref, 'refs/tags/v') }}
-        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f  # v3.12.0
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069  # v4.4.1
 
       - name: 登录 GHCR（用工作流自带 GITHUB_TOKEN，不引入额外凭据）
         if: ${{ startsWith(github.ref, 'refs/tags/v') }}
