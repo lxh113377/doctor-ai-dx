@@ -160,7 +160,7 @@ jobs:
           fi
       - name: 读数发布为工件（跨 run 可核，而不是只在本次作业里恒真）
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
         with:
           name: load-probe-live
           path: /tmp/load.json
@@ -184,7 +184,7 @@ jobs:
         # perf_gate 的「新鲜度 ≤14 天」在本作业里永远为真——报告是上一步刚生成的。
         # 真正能过期的证据必须留在**作业之外**：工件带 created_at，由 scripts/live_freshness_guard.py
         # 在别的作业里回读，才谈得上"过期会红"。缺文件即判错（if-no-files-found: error）。
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
         with:
           name: eval-report-live
           path: .eval/eval_report_live.json

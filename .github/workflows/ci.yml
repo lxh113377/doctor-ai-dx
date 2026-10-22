@@ -60,7 +60,7 @@ jobs:
         # 评审看到的是「地板数字」而看不到「这次实测多少」。路径与产物名按本机实测：
         # c8 产出 frontend/coverage/coverage-summary.json（不是 coverage-final.json）。
         # 缺文件即判错（if-no-files-found: error）——零输入不记绿。
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
         with:
           name: coverage-js
           path: frontend/coverage/coverage-summary.json
@@ -79,7 +79,7 @@ jobs:
             echo "::notice::AUTO_DEPLOY 未开启：deploy 作业将 skipped，线上更新需手工 wrangler 部署（配 secret 后置 true 接管）"
           fi
       - name: Upload dist
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
         with:
           name: dist
           path: frontend/dist
@@ -301,7 +301,7 @@ jobs:
         # 另记一次本机误读：单独跑 coverage_gate 得 84.47% < 地板 90%，先问红因再下结论——
         # 那是 .coverage 只有局部数据所致；按正规序列（rm -f .coverage → selftest --coverage → gate）
         # 复测为 94.75% ⇒ PASS。判据没坏，是我喂错了输入。
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
         with:
           name: coverage-py
           path: backend/coverage-py.json
